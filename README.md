@@ -1,31 +1,46 @@
-## Devvit React Starter
+# EchoWiki
 
-A starter to build web applications on Reddit's developer platform
+A Devvit app that turns subreddit wiki pages into interactive game asset wikis. Users import game files from their own copy, assets are decrypted and stored client-side in IndexedDB, and echo links in wiki markdown resolve to real images and audio inline.
 
-- [Devvit](https://developers.reddit.com/): A way to build and deploy immersive games on Reddit
-- [Vite](https://vite.dev/): For compiling the webView
-- [React](https://react.dev/): For UI
-- [Express](https://expressjs.com/): For backend logic
-- [Tailwind](https://tailwindcss.com/): For styles
-- [Typescript](https://www.typescriptlang.org/): For type safety
+## How It Works
 
-## Getting Started
+1. **Import** Users select their game folder. The app auto-detects the engine and decrypts assets entirely in the browser.
+2. **Store** Decrypted assets are saved to IndexedDB. Nothing is uploaded to any server.
+3. **Browse** Wiki pages render `echo://` links as inline images and audio players. An asset browser lets users explore all imported files and copy echo markdown to the clipboard.
 
-> Make sure you have Node 22 downloaded on your machine before running!
+## Echo Links
 
-1. Run `npm create devvit@latest --template=react`
-2. Go through the installation wizard. You will need to create a Reddit account and connect it to Reddit developers
-3. Copy the command on the success page into your terminal
+Standard markdown with the `echo://` scheme:
 
-## Commands
+```markdown
+![Character portrait](echo://img/characters/hero.png)
+[Battle theme](echo://audio/bgm/battle.ogg)
+```
 
-- `npm run dev`: Starts a development server where you can develop your application live on Reddit.
-- `npm run build`: Builds your client and server projects
-- `npm run deploy`: Uploads a new version of your app
-- `npm run launch`: Publishes your app for review
-- `npm run login`: Logs your CLI into Reddit
-- `npm run check`: Type checks, lints, and prettifies your app
+Users who have imported the game see resolved assets through the application. Everyone else and those looking at the original wiki page only sees the alt text.
 
-## Cursor Integration
+## Supported Engines
 
-This template comes with a pre-configured cursor environment. To get started, [download cursor](https://www.cursor.com/downloads) and enable the `devvit-mcp` when prompted.
+| Engine           | Encryption                      |
+| ---------------- | ------------------------------- |
+| RPG Maker 2003   | None (XYZ image conversion)     |
+| RPG Maker XP     | RGSSAD v1 archive               |
+| RPG Maker VX     | RGSSAD v1 archive               |
+| RPG Maker VX Ace | RGSS3A v3 archive               |
+| RPG Maker MV     | 16-byte XOR header              |
+| RPG Maker MZ     | 16-byte XOR header              |
+| TCOAAL 3.0+      | Evolving XOR with basename mask |
+
+## Wiki Integration
+
+Wiki pages are fetched from the subreddit's wiki. A page selector dropdown lets users navigate between pages. A link icon opens the Reddit wiki page in the browser.
+
+## Asset Browser
+
+A gallery view with filter tabs (All, Images, Audio, Data), search, and pagination. Clicking any asset opens a preview (full-size image or audio player with frequency visualization). Right-clicking copies the echo markdown to the clipboard. A copy icon appears on hover. When a filename mapping is configured, assets display mapped names instead of raw filenames.
+
+## Mod Settings
+
+Moderators see a Settings tab with:
+
+- **Filename Mapping** A textarea containing a `const filenamesMapped = {...};` JavaScript snippet. Mapping keys are filename stems (no extension, no path). Values are human-readable replacement names displayed in the asset browser and used in echo links.

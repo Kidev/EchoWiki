@@ -13,7 +13,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         splash: 'splash.html',
-        game: 'game.html',
+        app: 'app.html',
       },
       output: {
         entryFileNames: '[name].js',

@@ -6,10 +6,7 @@
     "entrypoints": {
       "default": {
         "inline": true,
-        "entry": "splash.html"
-      },
-      "game": {
-        "entry": "game.html"
+        "entry": "app.html"
       }
     }
   },
@@ -20,19 +17,18 @@
   "media": {
     "dir": "assets"
   },
+  "triggers": {
+    "onAppInstall": "/internal/on-app-install"
+  },
   "menu": {
     "items": [
       {
-        "label": "Create a new post",
-        "description": "echo-wiki",
-        "location": "subreddit",
+        "label": "Create an EchoWiki post",
         "forUserType": "moderator",
+        "location": "subreddit",
         "endpoint": "/internal/menu/post-create"
       }
     ]
-  },
-  "triggers": {
-    "onAppInstall": "/internal/on-app-install"
   },
   "dev": {
     "subreddit": "echo_wiki_dev"

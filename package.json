@@ -5,9 +5,9 @@
   "license": "BSD-3-Clause",
   "type": "module",
   "scripts": {
+    "build": "npm run build:client && npm run build:server",
     "build:client": "cd src/client && vite build",
     "build:server": "cd src/server && vite build",
-    "build": "npm run build:client && npm run build:server",
     "check": "npm run type-check && npm run lint:fix && npm run prettier",
     "deploy": "npm run build && devvit upload",
     "dev": "concurrently -k -p \"[{name}]\" -n \"CLIENT,SERVER,DEVVIT\" -c \"blue,green,magenta\" \"npm run dev:client\" \"npm run dev:server\" \"npm run dev:devvit\"",
@@ -15,10 +15,10 @@
     "dev:devvit": "devvit playtest",
     "dev:server": "cd src/server && vite build --watch",
     "dev:vite": "cd src/client && vite --port 7474",
+    "launch": "npm run build && npm run deploy && devvit publish",
     "lint": "eslint ./src",
     "lint:fix": "eslint --fix ./src",
     "login": "devvit login",
-    "launch": "npm run build && npm run deploy && devvit publish",
     "prettier": "prettier-package-json --write ./package.json && prettier --write .",
     "type-check": "tsc --build"
   },
@@ -29,10 +29,13 @@
     "express": "5.1.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
     "tailwind-merge": "3.3.0"
   },
   "devDependencies": {
     "@eslint/js": "9.23.0",
+    "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "4.1.6",
     "@types/express": "5.0.1",
     "@types/react": "19.1.4",

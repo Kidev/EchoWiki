@@ -1,54 +1,63 @@
 import '../index.css';
 
-import { navigateTo } from '@devvit/web/client';
 import { context, requestExpandedMode } from '@devvit/web/client';
-import { StrictMode } from 'react';
+import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { hasAssets, getMeta } from '../lib/idb';
+import type { EchoMeta } from '../lib/idb';
 
 export const Splash = () => {
+  const [imported, setImported] = useState(false);
+  const [meta, setMeta] = useState<EchoMeta | null>(null);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    const check = async () => {
+      const has = await hasAssets();
+      setImported(has);
+      if (has) {
+        const m = await getMeta();
+        setMeta(m ?? null);
+      }
+      setReady(true);
+    };
+    void check();
+  }, []);
+
+  if (!ready) return null;
+
   return (
     <div className="flex relative flex-col justify-center items-center min-h-screen gap-4">
-      <img className="object-contain w-1/2 max-w-[250px] mx-auto" src="/snoo.png" alt="Snoo" />
       <div className="flex flex-col items-center gap-2">
-        <h1 className="text-2xl font-bold text-center text-gray-900 ">
-          Hey {context.username ?? 'user'} 👋
-        </h1>
-        <p className="text-base text-center text-gray-600 ">
-          Edit{' '}
-          <span className="bg-[#e5ebee]  px-1 py-0.5 rounded">src/client/splash/splash.tsx</span> to
-          get started.
-        </p>
+        <h1 className="text-2xl font-bold text-center text-gray-900">EchoWiki</h1>
+        <p className="text-sm text-gray-500">Hey {context.username ?? 'user'}</p>
       </div>
-      <div className="flex items-center justify-center mt-5">
-        <button
-          className="flex items-center justify-center bg-[#d93900] text-white w-auto h-10 rounded-full cursor-pointer transition-colors px-4"
-          onClick={(e) => requestExpandedMode(e.nativeEvent, 'game')}
-        >
-          Tap to Start
-        </button>
-      </div>
-      <footer className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-3 text-[0.8em] text-gray-600">
-        <button
-          className="cursor-pointer"
-          onClick={() => navigateTo('https://developers.reddit.com/docs')}
-        >
-          Docs
-        </button>
-        <span className="text-gray-300">|</span>
-        <button
-          className="cursor-pointer"
-          onClick={() => navigateTo('https://www.reddit.com/r/Devvit')}
-        >
-          r/Devvit
-        </button>
-        <span className="text-gray-300">|</span>
-        <button
-          className="cursor-pointer"
-          onClick={() => navigateTo('https://discord.com/invite/R7yu2wh9Qz')}
-        >
-          Discord
-        </button>
-      </footer>
+
+      {imported && meta ? (
+        <div className="flex flex-col items-center gap-2">
+          <div className="flex items-center gap-2 text-sm text-green-600">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M5 13l4 4L19 7"
+              />
+            </svg>
+            <span>{meta.assetCount.toLocaleString()} echoes loaded</span>
+          </div>
+          {meta.gameTitle && <p className="text-xs text-gray-400">{meta.gameTitle}</p>}
+        </div>
+      ) : (
+        <p className="text-sm text-gray-400">No game assets imported yet</p>
+      )}
+
+      <button
+        className="flex items-center justify-center bg-[#d93900] text-white w-auto h-10 rounded-full cursor-pointer transition-colors px-6 font-medium"
+        onClick={(e) => requestExpandedMode(e.nativeEvent, 'app')}
+      >
+        {imported ? 'Browse Echoes' : 'Import Game Files'}
+      </button>
     </div>
   );
 };
