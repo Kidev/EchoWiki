@@ -9,6 +9,7 @@ import { processRm2k3Files } from './rm2k3';
 import { processRgssadArchive } from './rgssad';
 import { processRgss3aArchive } from './rgss3a';
 import { processTcoaalFiles } from './tcoaal';
+import { processZipArchive } from './zip';
 
 export type ImportProgress = {
   phase: 'detecting' | 'decrypting' | 'storing' | 'done' | 'error';
@@ -26,6 +27,61 @@ export type ImportOptions = {
   onProgress: (progress: ImportProgress) => void;
   signal?: AbortSignal | undefined;
 };
+
+async function getRtpDatNames(files: File[]): Promise<string[]> {
+  const confFile = getFileByNormalizedPath(files, 'mkxp.conf');
+  if (!confFile) return [];
+  try {
+    const text = await confFile.text();
+    const names: string[] = [];
+    for (const line of text.split('\n')) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('#')) continue;
+      const match = /^RTP\s*=\s*(.+)$/i.exec(trimmed);
+      if (match?.[1]) {
+        const name = match[1].trim();
+        if (name) names.push(name);
+      }
+    }
+    return names;
+  } catch {
+    return [];
+  }
+}
+
+async function sniffDatFormat(file: File): Promise<'rgssad' | 'zip' | 'unknown'> {
+  const header = new Uint8Array(await file.slice(0, 8).arrayBuffer());
+  if (
+    header.length >= 7 &&
+    header[0] === 0x52 &&
+    header[1] === 0x47 &&
+    header[2] === 0x53 &&
+    header[3] === 0x53 &&
+    header[4] === 0x41 &&
+    header[5] === 0x44 &&
+    header[6] === 0x00
+  ) {
+    return 'rgssad';
+  }
+  if (
+    header.length >= 4 &&
+    header[0] === 0x50 &&
+    header[1] === 0x4b &&
+    header[2] === 0x03 &&
+    header[3] === 0x04
+  ) {
+    return 'zip';
+  }
+  return 'unknown';
+}
+
+async function* chainGenerators(
+  generators: AsyncGenerator<ProcessedAsset>[]
+): AsyncGenerator<ProcessedAsset> {
+  for (const gen of generators) {
+    yield* gen;
+  }
+}
 
 function getAssetGenerator(
   engine: EngineType,
@@ -98,7 +154,7 @@ export async function importGameFiles(options: ImportOptions): Promise<void> {
 
   const gameTitle = await detectGameTitle(files, engine, detection.dataRoot);
 
-  const generator = getAssetGenerator(
+  let generator = getAssetGenerator(
     engine,
     files,
     engineOverride && engineOverride !== 'auto'
@@ -106,6 +162,33 @@ export async function importGameFiles(options: ImportOptions): Promise<void> {
       : detection,
     keyOverride
   );
+
+  if (engine === 'rmxp' || engine === 'rmvx' || engine === 'rmvxace') {
+    const rtpNames = await getRtpDatNames(files);
+    if (rtpNames.length > 0) {
+      const rtpGenerators: AsyncGenerator<ProcessedAsset>[] = [];
+      if (generator) rtpGenerators.push(generator);
+
+      for (const name of rtpNames) {
+        const datFile = getFileByNormalizedPath(files, name);
+        if (!datFile) continue;
+        const format = await sniffDatFormat(datFile);
+        if (format === 'zip') {
+          rtpGenerators.push(processZipArchive(datFile));
+        } else if (format === 'rgssad') {
+          if (engine === 'rmvxace') {
+            rtpGenerators.push(processRgss3aArchive(datFile));
+          } else {
+            rtpGenerators.push(processRgssadArchive(datFile));
+          }
+        }
+      }
+
+      if (rtpGenerators.length > 0) {
+        generator = chainGenerators(rtpGenerators);
+      }
+    }
+  }
 
   if (!generator) {
     throw new Error(`No processor available for engine: ${engine}`);

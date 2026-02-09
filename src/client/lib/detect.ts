@@ -126,7 +126,7 @@ export async function detectGameTitle(
           const json = JSON.parse(text) as { gameTitle?: string };
           if (json.gameTitle) return json.gameTitle;
         } catch {
-          /* non-critical */
+          //
         }
       }
       break;
@@ -140,7 +140,7 @@ export async function detectGameTitle(
           const json = JSON.parse(text) as { gameTitle?: string };
           if (json.gameTitle) return json.gameTitle;
         } catch {
-          /* non-critical */
+          //
         }
       }
       break;
@@ -155,7 +155,7 @@ export async function detectGameTitle(
           const match = /^Title=(.+)$/m.exec(text);
           if (match?.[1]) return match[1].trim();
         } catch {
-          /* non-critical */
+          //
         }
       }
       break;

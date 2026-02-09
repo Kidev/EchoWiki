@@ -33,11 +33,12 @@ const router = express.Router();
 
 const DEFAULT_CONFIG: GameConfig = {
   gameName: '',
+  storeLink: '',
   engine: 'auto',
   encryptionKey: '',
 };
 
-const DEFAULT_MAPPING_TEXT = 'const filenamesMapped = {\n\n};';
+const DEFAULT_MAPPING_TEXT = '"original_filename": "mapped_filename"';
 
 async function getConfig(): Promise<GameConfig> {
   const raw = await redis.hGetAll('config');
@@ -46,6 +47,7 @@ async function getConfig(): Promise<GameConfig> {
   }
   return {
     gameName: raw['gameName'] ?? DEFAULT_CONFIG.gameName,
+    storeLink: raw['storeLink'] ?? DEFAULT_CONFIG.storeLink,
     engine: (raw['engine'] as GameConfig['engine']) ?? DEFAULT_CONFIG.engine,
     encryptionKey: raw['encryptionKey'] ?? DEFAULT_CONFIG.encryptionKey,
   };
@@ -53,30 +55,14 @@ async function getConfig(): Promise<GameConfig> {
 
 const ALLOWED_MAPPING_CHARS = /^[a-zA-Z0-9!_\-()[\]' ]+$/;
 
-function parseMapping(text: string): Record<string, string> | null {
-  let cleaned = text.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
-  cleaned = cleaned.trim();
-
-  const header = /^const\s+filenamesMapped\s*=\s*\{/.exec(cleaned);
-  if (!header) return null;
-  if (!cleaned.endsWith('};')) return null;
-
-  const body = cleaned.slice(header[0].length, cleaned.length - 2);
-
-  const pairRegex = /"([^"]*)"[\s]*:[\s]*"([^"]*)"/g;
+function entriesFromPairs(entries: Array<[string, string]>): Record<string, string> | null {
   const result: Record<string, string> = {};
-  let match;
-
-  while ((match = pairRegex.exec(body)) !== null) {
-    const key = match[1]!.toLowerCase();
-    const value = match[2]!.toLowerCase();
-    if (!ALLOWED_MAPPING_CHARS.test(key) || !ALLOWED_MAPPING_CHARS.test(value)) return null;
-    result[key] = value;
+  for (const [key, value] of entries) {
+    const k = key.toLowerCase();
+    const v = value.toLowerCase();
+    if (!ALLOWED_MAPPING_CHARS.test(k) || !ALLOWED_MAPPING_CHARS.test(v)) continue;
+    result[k] = v;
   }
-
-  const remainder = body.replace(/"[^"]*"\s*:\s*"[^"]*"/g, '');
-  if (!/^[\s,]*$/.test(remainder)) return null;
-
   return Object.keys(result).length > 0 ? result : null;
 }
 
@@ -106,7 +92,7 @@ router.get<Record<string, never>, InitResponse | ErrorResponse>(
           const modList = await mods.all();
           isMod = modList.length > 0;
         } catch {
-          /* non-critical */
+          //
         }
       }
 
@@ -150,6 +136,9 @@ router.post<Record<string, never>, ConfigUpdateResponse | ErrorResponse, ConfigU
       if (body.gameName !== undefined) {
         fields['gameName'] = body.gameName;
       }
+      if (body.storeLink !== undefined) {
+        fields['storeLink'] = body.storeLink;
+      }
       if (body.engine !== undefined) {
         fields['engine'] = body.engine;
       }
@@ -177,7 +166,26 @@ router.get<Record<string, never>, MappingResponse | ErrorResponse>(
   async (_req, res): Promise<void> => {
     try {
       const text = (await redis.get('mappingText')) ?? DEFAULT_MAPPING_TEXT;
-      const mapping = parseMapping(text);
+      const storedMapping = await redis.get('mappingJson');
+      let mapping: Record<string, string> | null = storedMapping
+        ? (JSON.parse(storedMapping) as Record<string, string>)
+        : null;
+
+      if (!mapping && text !== DEFAULT_MAPPING_TEXT) {
+        const pairRegex = /"([^"]+)"\s*:\s*"([^"]+)"/g;
+        const pairs: Array<[string, string]> = [];
+        let m;
+        while ((m = pairRegex.exec(text)) !== null) {
+          pairs.push([m[1]!, m[2]!]);
+        }
+        if (pairs.length > 0) {
+          mapping = entriesFromPairs(pairs);
+          if (mapping) {
+            await redis.set('mappingJson', JSON.stringify(mapping));
+          }
+        }
+      }
+
       res.json({ type: 'mapping', mapping, text });
     } catch {
       res.json({ type: 'mapping', mapping: null, text: DEFAULT_MAPPING_TEXT });
@@ -191,10 +199,15 @@ router.post<Record<string, never>, MappingResponse | ErrorResponse, MappingUpdat
     try {
       const body = req.body as MappingUpdateRequest;
       const text = body.text ?? DEFAULT_MAPPING_TEXT;
+      const mapping = body.entries ? entriesFromPairs(body.entries) : null;
 
       await redis.set('mappingText', text);
+      if (mapping) {
+        await redis.set('mappingJson', JSON.stringify(mapping));
+      } else {
+        await redis.del('mappingJson');
+      }
 
-      const mapping = parseMapping(text);
       res.json({ type: 'mapping', mapping, text });
     } catch (error) {
       const message =
@@ -210,6 +223,8 @@ const DEFAULT_LIGHT: ColorTheme = {
   textColor: '#111827',
   textMuted: '#6b7280',
   thumbBgColor: '#e5e7eb',
+  controlBgColor: '#ffffff',
+  controlTextColor: '#111827',
 };
 
 const DEFAULT_DARK: ColorTheme = {
@@ -218,6 +233,8 @@ const DEFAULT_DARK: ColorTheme = {
   textColor: '#d7dadc',
   textMuted: '#818384',
   thumbBgColor: '#343536',
+  controlBgColor: '#343536',
+  controlTextColor: '#d7dadc',
 };
 
 const DEFAULT_STYLE: StyleConfig = {
@@ -248,6 +265,14 @@ function parseColorTheme(raw: Record<string, string>, defaults: ColorTheme): Col
       raw['thumbBgColor'] && VALID_HEX.test(raw['thumbBgColor'])
         ? raw['thumbBgColor']!
         : defaults.thumbBgColor,
+    controlBgColor:
+      raw['controlBgColor'] && VALID_HEX.test(raw['controlBgColor'])
+        ? raw['controlBgColor']!
+        : defaults.controlBgColor,
+    controlTextColor:
+      raw['controlTextColor'] && VALID_HEX.test(raw['controlTextColor'])
+        ? raw['controlTextColor']!
+        : defaults.controlTextColor,
   };
 }
 
@@ -326,6 +351,12 @@ router.post<Record<string, never>, StyleResponse | ErrorResponse, StyleUpdateReq
         if (body.thumbBgColor && VALID_HEX.test(body.thumbBgColor)) {
           colors['thumbBgColor'] = body.thumbBgColor;
         }
+        if (body.controlBgColor && VALID_HEX.test(body.controlBgColor)) {
+          colors['controlBgColor'] = body.controlBgColor;
+        }
+        if (body.controlTextColor && VALID_HEX.test(body.controlTextColor)) {
+          colors['controlTextColor'] = body.controlTextColor;
+        }
         if (Object.keys(colors).length > 0) {
           const key = `style:${body.mode}`;
           const entries = Object.entries(colors);
@@ -352,7 +383,14 @@ router.get<Record<string, never>, WikiPagesResponse | ErrorResponse>(
         res.status(400).json({ status: 'error', message: 'Subreddit context not available' });
         return;
       }
-      const pages = await reddit.getWikiPages(subreddit);
+      const allPages = await reddit.getWikiPages(subreddit);
+      const toCheck = allPages.slice(0, 50);
+      const results = await Promise.allSettled(
+        toCheck.map((page) => reddit.getWikiPage(subreddit, page).then(() => page))
+      );
+      const pages = results
+        .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled')
+        .map((r) => r.value);
       res.json({ type: 'wiki-pages', pages });
     } catch {
       res.json({ type: 'wiki-pages', pages: [] });

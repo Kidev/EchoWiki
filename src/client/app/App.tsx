@@ -49,6 +49,8 @@ const DEFAULT_STYLE: StyleConfig = {
     textColor: '#111827',
     textMuted: '#6b7280',
     thumbBgColor: '#e5e7eb',
+    controlBgColor: '#ffffff',
+    controlTextColor: '#111827',
   },
   dark: {
     accentColor: '#ff6b3d',
@@ -56,6 +58,8 @@ const DEFAULT_STYLE: StyleConfig = {
     textColor: '#d7dadc',
     textMuted: '#818384',
     thumbBgColor: '#343536',
+    controlBgColor: '#343536',
+    controlTextColor: '#d7dadc',
   },
 };
 
@@ -74,6 +78,14 @@ const DARK_BG_PRESETS = ['#1a1a1b', '#111827', '#1f2937', '#0f172a'] as const;
 const DARK_TEXT_PRESETS = ['#d7dadc', '#f9fafb', '#e5e7eb', '#ffffff'] as const;
 
 const DARK_THUMB_BG_PRESETS = ['#343536', '#374151', '#1f2937', '#4b5563'] as const;
+
+const CONTROL_BG_PRESETS = ['#ffffff', '#f9fafb', '#f3f4f6', '#e5e7eb'] as const;
+
+const CONTROL_TEXT_PRESETS = ['#111827', '#1f2937', '#374151', '#4b5563'] as const;
+
+const DARK_CONTROL_BG_PRESETS = ['#343536', '#374151', '#1f2937', '#4b5563'] as const;
+
+const DARK_CONTROL_TEXT_PRESETS = ['#d7dadc', '#e5e7eb', '#f9fafb', '#ffffff'] as const;
 
 const FONT_MAP: Record<FontFamily, string> = {
   system: 'ui-sans-serif, system-ui, -apple-system, sans-serif',
@@ -142,6 +154,43 @@ function toDisplayName(path: string): string {
   const stem = getStem(path);
   const ext = getExt(path);
   return stem.replace(/[_-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) + ext;
+}
+
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+function extractWikiPage(href: string, subredditName: string): string | null {
+  const sub = subredditName.toLowerCase();
+
+  try {
+    const url = new URL(href, 'https://www.reddit.com');
+    if (
+      url.hostname === 'www.reddit.com' ||
+      url.hostname === 'reddit.com' ||
+      url.hostname === 'old.reddit.com' ||
+      url.hostname === 'new.reddit.com'
+    ) {
+      const match = /^\/r\/([^/]+)\/wiki\/(.+?)(?:\/?#.*)?$/.exec(url.pathname);
+      if (match && match[1]!.toLowerCase() === sub) {
+        return match[2]!;
+      }
+    }
+  } catch {
+    //
+  }
+
+  const pathMatch = /^\/r\/([^/]+)\/wiki\/(.+?)(?:\/?#.*)?$/.exec(href);
+  if (pathMatch && pathMatch[1]!.toLowerCase() === sub) {
+    return pathMatch[2]!;
+  }
+
+  return null;
 }
 
 function formatPageName(page: string): string {
@@ -345,6 +394,7 @@ function WikiView({
   const [loading, setLoading] = useState(true);
   const [pages, setPages] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState('index');
+  const wikiContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -422,13 +472,14 @@ function WikiView({
   }
 
   return (
-    <div className="px-4 py-4">
+    <div ref={wikiContainerRef} className="px-4 py-4">
       <div className="flex items-center gap-2 mb-3">
         {pages.length > 1 ? (
           <select
             value={currentPage}
             onChange={(e) => void handlePageChange(e.target.value)}
-            className="text-sm px-2 py-1 rounded-lg border border-gray-200 bg-white focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)]"
+            className="text-sm px-2 py-1 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)]"
+            style={{ backgroundColor: 'var(--control-bg)', color: 'var(--control-text)' }}
           >
             {pages.map((p) => (
               <option key={p} value={p}>
@@ -463,6 +514,14 @@ function WikiView({
             '--tw-prose-headings': 'var(--text)',
             '--tw-prose-bold': 'var(--text)',
             '--tw-prose-links': 'var(--accent)',
+            '--tw-prose-quotes': 'var(--text-muted)',
+            '--tw-prose-quote-borders': 'var(--accent)',
+            '--tw-prose-code': 'var(--text)',
+            '--tw-prose-counters': 'var(--text-muted)',
+            '--tw-prose-bullets': 'var(--text-muted)',
+            '--tw-prose-hr': 'var(--text-muted)',
+            '--tw-prose-th-borders': 'var(--text-muted)',
+            '--tw-prose-td-borders': 'var(--text-muted)',
           } as CSSProperties
         }
       >
@@ -470,6 +529,30 @@ function WikiView({
           remarkPlugins={[remarkGfm]}
           urlTransform={(url) => (url.startsWith('echo://') ? url : defaultUrlTransform(url))}
           components={{
+            h1: ({ children: c }: { children?: ReactNode }) => {
+              const text = typeof c === 'string' ? c : '';
+              return <h1 id={slugify(text)}>{c}</h1>;
+            },
+            h2: ({ children: c }: { children?: ReactNode }) => {
+              const text = typeof c === 'string' ? c : '';
+              return <h2 id={slugify(text)}>{c}</h2>;
+            },
+            h3: ({ children: c }: { children?: ReactNode }) => {
+              const text = typeof c === 'string' ? c : '';
+              return <h3 id={slugify(text)}>{c}</h3>;
+            },
+            h4: ({ children: c }: { children?: ReactNode }) => {
+              const text = typeof c === 'string' ? c : '';
+              return <h4 id={slugify(text)}>{c}</h4>;
+            },
+            h5: ({ children: c }: { children?: ReactNode }) => {
+              const text = typeof c === 'string' ? c : '';
+              return <h5 id={slugify(text)}>{c}</h5>;
+            },
+            h6: ({ children: c }: { children?: ReactNode }) => {
+              const text = typeof c === 'string' ? c : '';
+              return <h6 id={slugify(text)}>{c}</h6>;
+            },
             img: ({ src, alt }: { src?: string | undefined; alt?: string | undefined }) => {
               if (src?.startsWith('echo://')) {
                 const echoPath = src.slice('echo://'.length).toLowerCase();
@@ -486,12 +569,71 @@ function WikiView({
               href?: string | undefined;
               children?: ReactNode | undefined;
             }) => {
-              if (href?.startsWith('echo://')) {
+              if (!href) {
+                return <span>{linkChildren}</span>;
+              }
+
+              if (href.startsWith('echo://')) {
                 const echoPath = href.slice('echo://'.length).toLowerCase();
                 return <EchoInlineAsset path={echoPath}>{linkChildren}</EchoInlineAsset>;
               }
+
+              const wikiPage = extractWikiPage(href, subredditName);
+              if (wikiPage !== null) {
+                return (
+                  <a
+                    href={href}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      void handlePageChange(wikiPage);
+                    }}
+                    className="text-[var(--accent)] hover:underline cursor-pointer"
+                  >
+                    {linkChildren}
+                  </a>
+                );
+              }
+
+              if (href.startsWith('#')) {
+                return (
+                  <a
+                    href={href}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      const id = href.slice(1);
+                      const target =
+                        wikiContainerRef.current?.querySelector(`[id="${CSS.escape(id)}"]`) ??
+                        wikiContainerRef.current?.querySelector(
+                          `[id="${CSS.escape(id.toLowerCase())}"]`
+                        );
+                      if (target) {
+                        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }
+                    }}
+                    className="text-[var(--accent)] hover:underline cursor-pointer"
+                  >
+                    {linkChildren}
+                  </a>
+                );
+              }
+
+              const externalUrl =
+                href.startsWith('http://') || href.startsWith('https://')
+                  ? href
+                  : `https://www.reddit.com${href.startsWith('/') ? href : `/${href}`}`;
               return (
-                <a href={href} target="_blank" rel="noopener noreferrer">
+                <a
+                  href={externalUrl}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    try {
+                      navigateTo({ url: externalUrl });
+                    } catch {
+                      window.open(externalUrl, '_blank');
+                    }
+                  }}
+                  className="text-[var(--accent)] hover:underline cursor-pointer"
+                >
                   {linkChildren}
                 </a>
               );
@@ -777,32 +919,77 @@ function ColorPickerRow({
   );
 }
 
+function parseMappingText(text: string): Array<[string, string]> {
+  const cleaned = text.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+  const pairRegex = /"([^"]+)"\s*:\s*"([^"]+)"/g;
+  const results: Array<[string, string]> = [];
+  let match;
+  while ((match = pairRegex.exec(cleaned)) !== null) {
+    results.push([match[1]!.toLowerCase(), match[2]!.toLowerCase()]);
+  }
+  return results;
+}
+
+type SettingsTab = 'general' | 'style' | 'mapping';
+
 function SettingsView({
   mappingText,
   style,
+  config,
   onMappingSaved,
   onStyleChanged,
+  onConfigChanged,
 }: {
   mappingText: string;
   style: StyleConfig;
+  config: GameConfig;
   onMappingSaved: (text: string, mapping: Record<string, string> | null) => void;
   onStyleChanged: (style: StyleConfig) => void;
+  onConfigChanged: (config: GameConfig) => void;
 }) {
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('general');
   const [text, setText] = useState(mappingText);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<{ ok: boolean; message: string } | null>(null);
   const [editingMode, setEditingMode] = useState<'light' | 'dark'>('light');
+  const [gameTitle, setGameTitle] = useState(config.gameName);
+  const [storeLink, setStoreLink] = useState(config.storeLink);
+  const [savingConfig, setSavingConfig] = useState(false);
 
   const editingColors = editingMode === 'light' ? style.light : style.dark;
+
+  const parsedEntries = useMemo(() => parseMappingText(text), [text]);
+
+  const configDirty = gameTitle !== config.gameName || storeLink !== config.storeLink;
+
+  const handleSaveConfig = useCallback(async () => {
+    setSavingConfig(true);
+    try {
+      const res = await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameName: gameTitle, storeLink }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { config: GameConfig };
+        onConfigChanged(data.config);
+      }
+    } catch {
+      //
+    } finally {
+      setSavingConfig(false);
+    }
+  }, [gameTitle, storeLink, onConfigChanged]);
 
   const handleSaveMapping = useCallback(async () => {
     setSaving(true);
     setStatus(null);
     try {
+      const entries = parseMappingText(text);
       const res = await fetch('/api/mapping', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, entries: entries.length > 0 ? entries : undefined }),
       });
       if (res.ok) {
         const data: MappingResponse = await res.json();
@@ -835,7 +1022,7 @@ function SettingsView({
           onStyleChanged(data.style);
         }
       } catch {
-        /* non-critical */
+        //
       }
     },
     [onStyleChanged]
@@ -848,130 +1035,241 @@ function SettingsView({
     [saveStyle, editingMode]
   );
 
+  const SETTINGS_TABS: readonly { value: SettingsTab; label: string }[] = [
+    { value: 'general', label: 'General' },
+    { value: 'style', label: 'Style' },
+    { value: 'mapping', label: 'Mapping' },
+  ] as const;
+
   return (
-    <div className="flex-1 overflow-auto px-4 py-4 max-w-lg">
-      <h2 className="text-sm font-semibold mb-4">Mod Settings</h2>
-
-      <h3 className="text-xs font-semibold mb-3 uppercase tracking-wide">Page Style</h3>
-      <div className="flex flex-col gap-4 mb-6">
-        <div className="flex flex-col gap-2">
-          <span className="text-xs font-medium">Font</span>
-          <SegmentedControl
-            value={style.fontFamily}
-            options={[
-              { value: 'system' as FontFamily, label: 'System' },
-              { value: 'serif' as FontFamily, label: 'Serif' },
-              { value: 'mono' as FontFamily, label: 'Mono' },
-            ]}
-            onChange={(v) => void saveStyle({ fontFamily: v })}
-          />
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <span className="text-xs font-medium">Card Size</span>
-          <SegmentedControl
-            value={style.cardSize}
-            options={[
-              { value: 'compact' as CardSize, label: 'Compact' },
-              { value: 'normal' as CardSize, label: 'Normal' },
-              { value: 'large' as CardSize, label: 'Large' },
-            ]}
-            onChange={(v) => void saveStyle({ cardSize: v })}
-          />
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <span className="text-xs font-medium">Wiki Font Size</span>
-          <SegmentedControl
-            value={style.wikiFontSize}
-            options={[
-              { value: 'small' as WikiFontSize, label: 'Small' },
-              { value: 'normal' as WikiFontSize, label: 'Normal' },
-              { value: 'large' as WikiFontSize, label: 'Large' },
-            ]}
-            onChange={(v) => void saveStyle({ wikiFontSize: v })}
-          />
-        </div>
-      </div>
-
-      <h3 className="text-xs font-semibold mb-3 uppercase tracking-wide">Colors</h3>
-      <div className="flex flex-col gap-4 mb-6">
-        <SegmentedControl
-          value={editingMode}
-          options={[
-            { value: 'light' as const, label: 'Light' },
-            { value: 'dark' as const, label: 'Dark' },
-          ]}
-          onChange={setEditingMode}
-        />
-
-        <ColorPickerRow
-          key={`accent-${editingMode}`}
-          label="Accent Color"
-          value={editingColors.accentColor}
-          presets={ACCENT_PRESETS}
-          onSelect={(c) => saveColor('accentColor', c)}
-        />
-
-        <ColorPickerRow
-          key={`bg-${editingMode}`}
-          label="Background"
-          value={editingColors.bgColor}
-          presets={editingMode === 'light' ? BG_PRESETS : DARK_BG_PRESETS}
-          onSelect={(c) => saveColor('bgColor', c)}
-        />
-
-        <ColorPickerRow
-          key={`text-${editingMode}`}
-          label="Text Color"
-          value={editingColors.textColor}
-          presets={editingMode === 'light' ? TEXT_PRESETS : DARK_TEXT_PRESETS}
-          onSelect={(c) => saveColor('textColor', c)}
-        />
-
-        <ColorPickerRow
-          key={`muted-${editingMode}`}
-          label="Muted Text"
-          value={editingColors.textMuted}
-          presets={MUTED_PRESETS}
-          onSelect={(c) => saveColor('textMuted', c)}
-        />
-
-        <ColorPickerRow
-          key={`thumb-${editingMode}`}
-          label="Thumbnail Background"
-          value={editingColors.thumbBgColor}
-          presets={editingMode === 'light' ? THUMB_BG_PRESETS : DARK_THUMB_BG_PRESETS}
-          onSelect={(c) => saveColor('thumbBgColor', c)}
-        />
-      </div>
-
-      <h3 className="text-xs font-semibold mb-3 uppercase tracking-wide">Filename Mapping</h3>
-      <div className="flex flex-col gap-3">
-        <label className="flex flex-col gap-1">
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            rows={12}
-            spellCheck={false}
-            className="text-sm font-mono px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)] resize-y"
-          />
-        </label>
-
-        <div className="flex items-center gap-3">
+    <div className="flex-1 overflow-auto">
+      <div className="flex gap-1 px-4 pt-3 pb-2 border-b border-gray-200">
+        {SETTINGS_TABS.map((tab) => (
           <button
-            onClick={() => void handleSaveMapping()}
-            disabled={saving}
-            className="text-sm px-4 py-1.5 rounded-full bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] transition-colors cursor-pointer disabled:opacity-50"
+            key={tab.value}
+            className={`text-xs px-3 py-1.5 rounded-full transition-colors cursor-pointer ${
+              settingsTab === tab.value
+                ? 'bg-[var(--accent)] text-white'
+                : 'text-[var(--text-muted)] hover:bg-gray-100'
+            }`}
+            onClick={() => setSettingsTab(tab.value)}
           >
-            {saving ? 'Saving...' : 'Save'}
+            {tab.label}
           </button>
-          {status && (
-            <span className={`text-xs ${status.ok ? 'text-green-600' : 'text-red-600'}`}>
-              {status.message}
-            </span>
-          )}
-        </div>
+        ))}
+      </div>
+
+      <div className="px-4 py-4 max-w-lg">
+        {settingsTab === 'general' && (
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-medium">Game Title</span>
+              <input
+                type="text"
+                value={gameTitle}
+                onChange={(e) => setGameTitle(e.target.value)}
+                className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)]"
+                style={{ backgroundColor: 'var(--control-bg)', color: 'var(--control-text)' }}
+              />
+              <span className="text-[10px] text-[var(--text-muted)]">
+                Shown to users on import. Warns if imported game doesn't match.
+              </span>
+            </div>
+
+            {gameTitle.trim() && (
+              <div className="flex flex-col gap-2">
+                <span className="text-xs font-medium">Store Link</span>
+                <input
+                  type="text"
+                  value={storeLink}
+                  onChange={(e) => setStoreLink(e.target.value)}
+                  placeholder="https://store.steampowered.com/app/..."
+                  className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)]"
+                  style={{ backgroundColor: 'var(--control-bg)', color: 'var(--control-text)' }}
+                />
+                <span className="text-[10px] text-[var(--text-muted)]">
+                  If set, a purchase link is shown on the import screen.
+                </span>
+              </div>
+            )}
+
+            <button
+              onClick={() => void handleSaveConfig()}
+              disabled={savingConfig || !configDirty}
+              className="self-start text-sm px-4 py-1.5 rounded-full bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] transition-colors cursor-pointer disabled:opacity-50"
+            >
+              {savingConfig ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        )}
+
+        {settingsTab === 'style' && (
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-medium">Font</span>
+              <SegmentedControl
+                value={style.fontFamily}
+                options={[
+                  { value: 'system' as FontFamily, label: 'System' },
+                  { value: 'serif' as FontFamily, label: 'Serif' },
+                  { value: 'mono' as FontFamily, label: 'Mono' },
+                ]}
+                onChange={(v) => void saveStyle({ fontFamily: v })}
+              />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-medium">Card Size</span>
+              <SegmentedControl
+                value={style.cardSize}
+                options={[
+                  { value: 'compact' as CardSize, label: 'Compact' },
+                  { value: 'normal' as CardSize, label: 'Normal' },
+                  { value: 'large' as CardSize, label: 'Large' },
+                ]}
+                onChange={(v) => void saveStyle({ cardSize: v })}
+              />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-medium">Wiki Font Size</span>
+              <SegmentedControl
+                value={style.wikiFontSize}
+                options={[
+                  { value: 'small' as WikiFontSize, label: 'Small' },
+                  { value: 'normal' as WikiFontSize, label: 'Normal' },
+                  { value: 'large' as WikiFontSize, label: 'Large' },
+                ]}
+                onChange={(v) => void saveStyle({ wikiFontSize: v })}
+              />
+            </div>
+
+            <div className="border-b border-gray-200 my-1" />
+
+            <SegmentedControl
+              value={editingMode}
+              options={[
+                { value: 'light' as const, label: 'Light' },
+                { value: 'dark' as const, label: 'Dark' },
+              ]}
+              onChange={setEditingMode}
+            />
+
+            <ColorPickerRow
+              key={`accent-${editingMode}`}
+              label="Accent Color"
+              value={editingColors.accentColor}
+              presets={ACCENT_PRESETS}
+              onSelect={(c) => saveColor('accentColor', c)}
+            />
+
+            <ColorPickerRow
+              key={`bg-${editingMode}`}
+              label="Background"
+              value={editingColors.bgColor}
+              presets={editingMode === 'light' ? BG_PRESETS : DARK_BG_PRESETS}
+              onSelect={(c) => saveColor('bgColor', c)}
+            />
+
+            <ColorPickerRow
+              key={`text-${editingMode}`}
+              label="Text Color"
+              value={editingColors.textColor}
+              presets={editingMode === 'light' ? TEXT_PRESETS : DARK_TEXT_PRESETS}
+              onSelect={(c) => saveColor('textColor', c)}
+            />
+
+            <ColorPickerRow
+              key={`muted-${editingMode}`}
+              label="Muted Text"
+              value={editingColors.textMuted}
+              presets={MUTED_PRESETS}
+              onSelect={(c) => saveColor('textMuted', c)}
+            />
+
+            <ColorPickerRow
+              key={`thumb-${editingMode}`}
+              label="Thumbnail Background"
+              value={editingColors.thumbBgColor}
+              presets={editingMode === 'light' ? THUMB_BG_PRESETS : DARK_THUMB_BG_PRESETS}
+              onSelect={(c) => saveColor('thumbBgColor', c)}
+            />
+
+            <ColorPickerRow
+              key={`control-bg-${editingMode}`}
+              label="Control Background"
+              value={editingColors.controlBgColor}
+              presets={editingMode === 'light' ? CONTROL_BG_PRESETS : DARK_CONTROL_BG_PRESETS}
+              onSelect={(c) => saveColor('controlBgColor', c)}
+            />
+
+            <ColorPickerRow
+              key={`control-text-${editingMode}`}
+              label="Control Text"
+              value={editingColors.controlTextColor}
+              presets={editingMode === 'light' ? CONTROL_TEXT_PRESETS : DARK_CONTROL_TEXT_PRESETS}
+              onSelect={(c) => saveColor('controlTextColor', c)}
+            />
+          </div>
+        )}
+
+        {settingsTab === 'mapping' && (
+          <div className="flex flex-col gap-3">
+            <label className="flex flex-col gap-1">
+              <textarea
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                rows={10}
+                spellCheck={false}
+                placeholder={`// Map original filenames to custom names\n"actor1": "hero_sprite"\n"dungeon_a1": "cave_tileset"`}
+                className="text-sm font-mono px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)] resize-y"
+                style={{ backgroundColor: 'var(--control-bg)', color: 'var(--control-text)' }}
+              />
+            </label>
+
+            {parsedEntries.length > 0 ? (
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr style={{ backgroundColor: 'var(--thumb-bg)' }}>
+                      <th className="text-left px-3 py-1.5 font-medium text-[var(--text-muted)]">
+                        Original
+                      </th>
+                      <th className="text-left px-3 py-1.5 font-medium text-[var(--text-muted)]">
+                        Mapped To
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {parsedEntries.map(([key, value], i) => (
+                      <tr key={i} className="border-t border-gray-100">
+                        <td className="px-3 py-1 font-mono text-[var(--text)]">{key}</td>
+                        <td className="px-3 py-1 font-mono text-[var(--text)]">{value}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-xs text-[var(--text-muted)]">No valid mappings found</p>
+            )}
+
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => void handleSaveMapping()}
+                disabled={saving}
+                className="text-sm px-4 py-1.5 rounded-full bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] transition-colors cursor-pointer disabled:opacity-50"
+              >
+                {saving ? 'Saving...' : 'Save'}
+              </button>
+              {status && (
+                <span className={`text-xs ${status.ok ? 'text-green-600' : 'text-red-600'}`}>
+                  {status.message}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -998,9 +1296,10 @@ export const App = () => {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   const [mapping, setMapping] = useState<Record<string, string> | null>(null);
-  const [mappingText, setMappingText] = useState('const filenamesMapped = {\n\n};');
+  const [mappingText, setMappingText] = useState('"original_filename": "mapped_filename"');
   const [pathToMapped, setPathToMapped] = useState<Map<string, string>>(new Map());
 
+  const [mismatchWarning, setMismatchWarning] = useState<string | null>(null);
   const [style, setStyle] = useState<StyleConfig>({ ...DEFAULT_STYLE });
   const [isDark, setIsDark] = useState(
     () => window.matchMedia('(prefers-color-scheme: dark)').matches
@@ -1027,8 +1326,18 @@ export const App = () => {
         '--text': colors.textColor,
         '--text-muted': colors.textMuted,
         '--thumb-bg': colors.thumbBgColor,
+        '--control-bg': colors.controlBgColor,
+        '--control-text': colors.controlTextColor,
       }) as CSSProperties,
-    [colors.accentColor, colors.bgColor, colors.textColor, colors.textMuted, colors.thumbBgColor]
+    [
+      colors.accentColor,
+      colors.bgColor,
+      colors.textColor,
+      colors.textMuted,
+      colors.thumbBgColor,
+      colors.controlBgColor,
+      colors.controlTextColor,
+    ]
   );
 
   useEffect(() => {
@@ -1042,7 +1351,7 @@ export const App = () => {
         setConfig(data.config);
         setIsMod(data.isMod);
       } catch {
-        /* init failed */
+        //
       }
 
       const imported = await hasAssets();
@@ -1082,7 +1391,7 @@ export const App = () => {
           setStyle(data.style);
         }
       } catch {
-        /* non-critical */
+        //
       }
     };
     void load();
@@ -1168,11 +1477,15 @@ export const App = () => {
       abortRef.current = controller;
 
       try {
+        const progressRef: { current: ImportProgress | null } = { current: null };
         await importGameFiles({
           files,
           engineOverride: config?.engine,
           keyOverride: config?.encryptionKey || undefined,
-          onProgress: setProgress,
+          onProgress: (p) => {
+            progressRef.current = p;
+            setProgress(p);
+          },
           signal: controller.signal,
         });
         const m = await getMeta();
@@ -1188,6 +1501,16 @@ export const App = () => {
           const result = await applyMapping(mapping);
           setPathToMapped(result);
           setReverseMapping(result);
+        }
+
+        if (
+          config?.gameName &&
+          progressRef.current?.gameTitle &&
+          config.gameName.toLowerCase() !== progressRef.current.gameTitle.toLowerCase()
+        ) {
+          setMismatchWarning(
+            `Expected '${config.gameName}' but detected '${progressRef.current.gameTitle}'. You may have imported the wrong game.`
+          );
         }
 
         setAppState('ready');
@@ -1322,28 +1645,16 @@ export const App = () => {
             {username && <p className="text-sm text-[var(--text-muted)]">Hey {username}</p>}
           </div>
           <div className="flex flex-col items-center gap-4 max-w-md text-center">
-            <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center">
-              <svg
-                className="w-8 h-8 text-gray-400"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
-                />
-              </svg>
-            </div>
-            <p className="text-[var(--text-muted)] text-sm">
-              Select your game folder to import assets locally. Files are decrypted and stored in
-              your browser only: nothing is uploaded.
-            </p>
-            {config?.gameName && (
-              <p className="text-xs text-[var(--text-muted)]">
-                Configured game: <span className="font-medium">{config.gameName}</span>
+            {config?.gameName ? (
+              <p className="text-[var(--text-muted)] text-sm">
+                Please select the folder that contains the game{' '}
+                <div className="font-semibold text-[var(--text)]">{config.gameName}</div>
+                Those files will never leave your computer.
+              </p>
+            ) : (
+              <p className="text-[var(--text-muted)] text-sm">
+                Select your game folder to import assets locally. Files never leave your computer,
+                nothing is uploaded nor distributed anywhere.
               </p>
             )}
             <button
@@ -1352,6 +1663,25 @@ export const App = () => {
             >
               Import Game Folder
             </button>
+            {config?.gameName && config?.storeLink && (
+              <div className="flex flex-col items-center gap-2 mt-2">
+                <p className="text-xs text-[var(--text-muted)]">
+                  You must own the game to proceed.
+                </p>
+                <button
+                  onClick={() => {
+                    try {
+                      navigateTo({ url: config.storeLink });
+                    } catch {
+                      window.open(config.storeLink, '_blank');
+                    }
+                  }}
+                  className="flex items-center justify-center h-10 rounded-full cursor-pointer transition-colors px-6 font-medium text-sm border-2 border-[var(--accent)] text-[var(--accent)] hover:bg-[var(--accent)] hover:text-white"
+                >
+                  Purchase {config.gameName}
+                </button>
+              </div>
+            )}
             {error && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
                 {error}
@@ -1373,7 +1703,7 @@ export const App = () => {
                       {progress.phase === 'detecting'
                         ? 'Detecting engine...'
                         : progress.phase === 'decrypting'
-                          ? 'Decrypting...'
+                          ? 'Extracting...'
                           : progress.phase === 'storing'
                             ? 'Storing...'
                             : 'Processing...'}
@@ -1472,16 +1802,10 @@ export const App = () => {
                 </button>
               )}
               <button
-                className="text-xs text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer"
-                onClick={handleImport}
-              >
-                Re-import
-              </button>
-              <button
-                className="text-xs text-red-500 hover:text-red-700 transition-colors cursor-pointer"
+                className="text-xs px-3 py-1 rounded-full bg-red-600 text-white hover:bg-red-700 transition-colors cursor-pointer"
                 onClick={() => void handleWipe()}
               >
-                Clean
+                Exit
               </button>
             </div>
           </div>
@@ -1489,6 +1813,25 @@ export const App = () => {
           {error && (
             <div className="px-4 py-2 bg-red-50 border-b border-red-200 text-sm text-red-700">
               {error}
+            </div>
+          )}
+
+          {mismatchWarning && (
+            <div className="flex items-center justify-between px-4 py-2 bg-yellow-50 border-b border-yellow-200 text-sm text-yellow-800">
+              <span>{mismatchWarning}</span>
+              <button
+                onClick={() => setMismatchWarning(null)}
+                className="ml-3 flex-shrink-0 text-yellow-600 hover:text-yellow-800 cursor-pointer"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
             </div>
           )}
 
@@ -1519,6 +1862,7 @@ export const App = () => {
                     setVisibleCount(PAGE_SIZE);
                   }}
                   className="flex-1 text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)]"
+                  style={{ backgroundColor: 'var(--control-bg)', color: 'var(--control-text)' }}
                 />
               </div>
 
@@ -1573,12 +1917,14 @@ export const App = () => {
             </>
           )}
 
-          {activeTab === 'settings' && isMod && (
+          {activeTab === 'settings' && isMod && config && (
             <SettingsView
               mappingText={mappingText}
               style={style}
+              config={config}
               onMappingSaved={handleMappingSaved}
               onStyleChanged={handleStyleChanged}
+              onConfigChanged={setConfig}
             />
           )}
         </>

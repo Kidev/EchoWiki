@@ -12,6 +12,7 @@ export type EngineType =
 
 export type GameConfig = {
   gameName: string;
+  storeLink: string;
   engine: EngineType;
   encryptionKey: string;
 };
@@ -23,6 +24,7 @@ export type ConfigResponse = {
 
 export type ConfigUpdateRequest = {
   gameName?: string;
+  storeLink?: string;
   engine?: EngineType;
   encryptionKey?: string;
 };
@@ -59,6 +61,7 @@ export type MappingResponse = {
 
 export type MappingUpdateRequest = {
   text: string;
+  entries?: Array<[string, string]> | undefined;
 };
 
 export type CardSize = 'compact' | 'normal' | 'large';
@@ -73,6 +76,8 @@ export type ColorTheme = {
   textColor: string;
   textMuted: string;
   thumbBgColor: string;
+  controlBgColor: string;
+  controlTextColor: string;
 };
 
 export type StyleConfig = {
@@ -95,6 +100,8 @@ export type StyleUpdateRequest = {
   textColor?: string | undefined;
   textMuted?: string | undefined;
   thumbBgColor?: string | undefined;
+  controlBgColor?: string | undefined;
+  controlTextColor?: string | undefined;
   cardSize?: CardSize | undefined;
   wikiFontSize?: WikiFontSize | undefined;
   fontFamily?: FontFamily | undefined;
