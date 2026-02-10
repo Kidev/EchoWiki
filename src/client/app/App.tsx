@@ -11,7 +11,12 @@ import {
 } from "react";
 import Markdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { getWebViewMode, requestExpandedMode, navigateTo } from "@devvit/web/client";
+import {
+  getWebViewMode,
+  requestExpandedMode,
+  exitExpandedMode,
+  navigateTo,
+} from "@devvit/web/client";
 import type {
   CardSize,
   ColorTheme,
@@ -1675,6 +1680,19 @@ export const App = () => {
   }, []);
 
   const isInline = getWebViewMode() === "inline";
+  const poppedOutRef = useRef(false);
+
+  useEffect(() => {
+    if (!isInline) return;
+    const onFocus = () => {
+      if (poppedOutRef.current && appState === "ready") {
+        poppedOutRef.current = false;
+        void handleWipe();
+      }
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [isInline, appState, handleWipe]);
 
   return (
     <div
@@ -1882,7 +1900,10 @@ export const App = () => {
                 <button
                   className="text-gray-400 hover:text-[var(--text-muted)] transition-colors cursor-pointer"
                   title="Pop out"
-                  onClick={(e) => void requestExpandedMode(e.nativeEvent, "default")}
+                  onClick={(e) => {
+                    poppedOutRef.current = true;
+                    void requestExpandedMode(e.nativeEvent, "default");
+                  }}
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path
@@ -1896,7 +1917,14 @@ export const App = () => {
               )}
               <button
                 className="text-xs px-3 py-1 rounded-full bg-red-600 text-white hover:bg-red-700 transition-colors cursor-pointer"
-                onClick={() => void handleWipe()}
+                onClick={(e) => {
+                  if (isInline) {
+                    void handleWipe();
+                  } else {
+                    revokeAllBlobUrls();
+                    void exitExpandedMode(e.nativeEvent);
+                  }
+                }}
               >
                 Exit
               </button>

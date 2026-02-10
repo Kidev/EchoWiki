@@ -385,7 +385,8 @@ router.get<Record<string, never>, WikiPagesResponse | ErrorResponse>(
         return;
       }
       const allPages = await reddit.getWikiPages(subreddit);
-      const toCheck = allPages.slice(0, 50);
+      const filtered = allPages.filter((p) => !p.startsWith("config/"));
+      const toCheck = filtered.slice(0, 50);
       const results = await Promise.allSettled(
         toCheck.map((page) => reddit.getWikiPage(subreddit, page).then(() => page)),
       );
