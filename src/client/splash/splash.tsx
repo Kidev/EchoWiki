@@ -1,10 +1,10 @@
-import '../index.css';
+import "../index.css";
 
-import { context, requestExpandedMode } from '@devvit/web/client';
-import { StrictMode, useEffect, useState } from 'react';
-import { createRoot } from 'react-dom/client';
-import { hasAssets, getMeta } from '../lib/idb';
-import type { EchoMeta } from '../lib/idb';
+import { context, requestExpandedMode } from "@devvit/web/client";
+import { StrictMode, useEffect, useState } from "react";
+import { createRoot } from "react-dom/client";
+import { hasAssets, getMeta } from "../lib/idb";
+import type { EchoMeta } from "../lib/idb";
 
 export const Splash = () => {
   const [imported, setImported] = useState(false);
@@ -27,7 +27,7 @@ export const Splash = () => {
   return (
     <div
       className="flex relative flex-col justify-center items-center min-h-screen gap-4"
-      style={{ backgroundColor: '#1a1a2e', color: '#ffffff' }}
+      style={{ backgroundColor: "#1a1a2e", color: "#ffffff" }}
     >
       <div className="ripple-container">
         <div />
@@ -42,8 +42,8 @@ export const Splash = () => {
 
       {ready && (
         <>
-          <p className="text-sm" style={{ color: '#677db7' }}>
-            Hey {context.username ?? 'user'}
+          <p className="text-sm" style={{ color: "#677db7" }}>
+            Hey {context.username ?? "user"}
           </p>
 
           {imported && meta ? (
@@ -60,23 +60,23 @@ export const Splash = () => {
                 <span>{meta.assetCount.toLocaleString()} echoes loaded</span>
               </div>
               {meta.gameTitle && (
-                <p className="text-xs" style={{ color: '#677db7' }}>
+                <p className="text-xs" style={{ color: "#677db7" }}>
                   {meta.gameTitle}
                 </p>
               )}
             </div>
           ) : (
-            <p className="text-sm" style={{ color: '#677db7' }}>
+            <p className="text-sm" style={{ color: "#677db7" }}>
               No game assets imported yet
             </p>
           )}
 
           <button
             className="flex items-center justify-center text-white w-auto h-10 rounded-full cursor-pointer transition-all px-6 font-medium hover:scale-105 hover:font-bold hover:border-2 hover:border-white"
-            style={{ backgroundColor: '#6a5cff' }}
-            onClick={(e) => requestExpandedMode(e.nativeEvent, 'app')}
+            style={{ backgroundColor: "#6a5cff" }}
+            onClick={(e) => requestExpandedMode(e.nativeEvent, "app")}
           >
-            {imported ? 'Browse Echoes' : 'Import Game Files'}
+            {imported ? "Browse Echoes" : "Import Game Files"}
           </button>
         </>
       )}
@@ -84,8 +84,8 @@ export const Splash = () => {
   );
 };
 
-createRoot(document.getElementById('root')!).render(
+createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <Splash />
-  </StrictMode>
+  </StrictMode>,
 );

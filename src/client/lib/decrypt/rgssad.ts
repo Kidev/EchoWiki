@@ -1,27 +1,27 @@
-import { BinaryReader } from '../binary';
-import type { ProcessedAsset } from './rmmv';
+import { BinaryReader } from "../binary";
+import type { ProcessedAsset } from "./rmmv";
 
 const INITIAL_KEY = 0xdeadcafe;
 
 const MIME_MAP: Record<string, string> = {
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.bmp': 'image/bmp',
-  '.ogg': 'audio/ogg',
-  '.mid': 'audio/midi',
-  '.midi': 'audio/midi',
-  '.wav': 'audio/wav',
-  '.mp3': 'audio/mpeg',
-  '.wma': 'audio/x-ms-wma',
-  '.txt': 'text/plain',
-  '.rb': 'text/plain',
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".bmp": "image/bmp",
+  ".ogg": "audio/ogg",
+  ".mid": "audio/midi",
+  ".midi": "audio/midi",
+  ".wav": "audio/wav",
+  ".mp3": "audio/mpeg",
+  ".wma": "audio/x-ms-wma",
+  ".txt": "text/plain",
+  ".rb": "text/plain",
 };
 
 function getMimeType(filename: string): string {
-  const dotIdx = filename.lastIndexOf('.');
-  if (dotIdx < 0) return 'application/octet-stream';
+  const dotIdx = filename.lastIndexOf(".");
+  if (dotIdx < 0) return "application/octet-stream";
   const ext = filename.slice(dotIdx).toLowerCase();
-  return MIME_MAP[ext] ?? 'application/octet-stream';
+  return MIME_MAP[ext] ?? "application/octet-stream";
 }
 
 function advanceKey(key: number): number {
@@ -107,15 +107,15 @@ export async function* processRgssadArchive(archiveFile: File): AsyncGenerator<P
   const reader = new BinaryReader(buffer);
 
   const header = reader.peekString(7);
-  if (header !== 'RGSSAD\0') {
-    throw new Error('Not a valid RGSSAD archive');
+  if (header !== "RGSSAD\0") {
+    throw new Error("Not a valid RGSSAD archive");
   }
 
   const entries = readDirectory(reader);
 
   for (const entry of entries) {
     const data = decryptFileData(reader, entry);
-    const path = entry.filename.replace(/\\/g, '/').toLowerCase();
+    const path = entry.filename.replace(/\\/g, "/").toLowerCase();
     const mime = getMimeType(entry.filename);
     yield {
       path,

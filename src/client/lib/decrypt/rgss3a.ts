@@ -1,26 +1,26 @@
-import { BinaryReader } from '../binary';
-import type { ProcessedAsset } from './rmmv';
+import { BinaryReader } from "../binary";
+import type { ProcessedAsset } from "./rmmv";
 
 const MIME_MAP: Record<string, string> = {
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.bmp': 'image/bmp',
-  '.ogg': 'audio/ogg',
-  '.mid': 'audio/midi',
-  '.midi': 'audio/midi',
-  '.wav': 'audio/wav',
-  '.mp3': 'audio/mpeg',
-  '.wma': 'audio/x-ms-wma',
-  '.txt': 'text/plain',
-  '.rb': 'text/plain',
-  '.rvdata2': 'application/octet-stream',
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".bmp": "image/bmp",
+  ".ogg": "audio/ogg",
+  ".mid": "audio/midi",
+  ".midi": "audio/midi",
+  ".wav": "audio/wav",
+  ".mp3": "audio/mpeg",
+  ".wma": "audio/x-ms-wma",
+  ".txt": "text/plain",
+  ".rb": "text/plain",
+  ".rvdata2": "application/octet-stream",
 };
 
 function getMimeType(filename: string): string {
-  const dotIdx = filename.lastIndexOf('.');
-  if (dotIdx < 0) return 'application/octet-stream';
+  const dotIdx = filename.lastIndexOf(".");
+  if (dotIdx < 0) return "application/octet-stream";
   const ext = filename.slice(dotIdx).toLowerCase();
-  return MIME_MAP[ext] ?? 'application/octet-stream';
+  return MIME_MAP[ext] ?? "application/octet-stream";
 }
 
 function advanceKey(key: number): number {
@@ -72,7 +72,12 @@ function readDirectory(reader: BinaryReader): ArchiveEntry[] {
     }
     const filename = new TextDecoder().decode(nameBytes);
 
-    entries.push({ filename, size: fileSize, offset: fileOffset, key: fileKey });
+    entries.push({
+      filename,
+      size: fileSize,
+      offset: fileOffset,
+      key: fileKey,
+    });
   }
 
   return entries;
@@ -107,8 +112,8 @@ export async function* processRgss3aArchive(archiveFile: File): AsyncGenerator<P
   const reader = new BinaryReader(buffer);
 
   const header = reader.peekString(7);
-  if (header !== 'RGSSAD\0') {
-    throw new Error('Not a valid RGSS3A archive');
+  if (header !== "RGSSAD\0") {
+    throw new Error("Not a valid RGSS3A archive");
   }
 
   reader.seek(7);
@@ -121,7 +126,7 @@ export async function* processRgss3aArchive(archiveFile: File): AsyncGenerator<P
 
   for (const entry of entries) {
     const data = decryptFileData(reader, entry);
-    const path = entry.filename.replace(/\\/g, '/').toLowerCase();
+    const path = entry.filename.replace(/\\/g, "/").toLowerCase();
     const mime = getMimeType(entry.filename);
     yield {
       path,

@@ -1,14 +1,14 @@
 export type EngineType =
-  | 'rm2k3'
-  | 'rmxp'
-  | 'rmvx'
-  | 'rmvxace'
-  | 'rmmv'
-  | 'rmmv-encrypted'
-  | 'rmmz'
-  | 'rmmz-encrypted'
-  | 'tcoaal'
-  | 'auto';
+  | "rm2k3"
+  | "rmxp"
+  | "rmvx"
+  | "rmvxace"
+  | "rmmv"
+  | "rmmv-encrypted"
+  | "rmmz"
+  | "rmmz-encrypted"
+  | "tcoaal"
+  | "auto";
 
 export type GameConfig = {
   gameName: string;
@@ -18,7 +18,7 @@ export type GameConfig = {
 };
 
 export type ConfigResponse = {
-  type: 'config';
+  type: "config";
   config: GameConfig;
 };
 
@@ -30,12 +30,12 @@ export type ConfigUpdateRequest = {
 };
 
 export type ConfigUpdateResponse = {
-  type: 'config-updated';
+  type: "config-updated";
   config: GameConfig;
 };
 
 export type InitResponse = {
-  type: 'init';
+  type: "init";
   postId: string;
   subredditName: string;
   username: string;
@@ -44,17 +44,17 @@ export type InitResponse = {
 };
 
 export type WikiResponse = {
-  type: 'wiki';
+  type: "wiki";
   content: string | null;
 };
 
 export type WikiPagesResponse = {
-  type: 'wiki-pages';
+  type: "wiki-pages";
   pages: string[];
 };
 
 export type MappingResponse = {
-  type: 'mapping';
+  type: "mapping";
   mapping: Record<string, string> | null;
   text: string;
 };
@@ -64,11 +64,11 @@ export type MappingUpdateRequest = {
   entries?: Array<[string, string]> | undefined;
 };
 
-export type CardSize = 'compact' | 'normal' | 'large';
+export type CardSize = "compact" | "normal" | "large";
 
-export type WikiFontSize = 'small' | 'normal' | 'large';
+export type WikiFontSize = "small" | "normal" | "large";
 
-export type FontFamily = 'system' | 'serif' | 'mono';
+export type FontFamily = "system" | "serif" | "mono";
 
 export type ColorTheme = {
   accentColor: string;
@@ -89,12 +89,12 @@ export type StyleConfig = {
 };
 
 export type StyleResponse = {
-  type: 'style';
+  type: "style";
   style: StyleConfig;
 };
 
 export type StyleUpdateRequest = {
-  mode?: 'light' | 'dark' | undefined;
+  mode?: "light" | "dark" | undefined;
   accentColor?: string | undefined;
   bgColor?: string | undefined;
   textColor?: string | undefined;
@@ -108,6 +108,6 @@ export type StyleUpdateRequest = {
 };
 
 export type ErrorResponse = {
-  status: 'error';
+  status: "error";
   message: string;
 };

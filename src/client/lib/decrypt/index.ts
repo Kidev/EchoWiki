@@ -1,18 +1,18 @@
-import type { EngineType } from '../../../shared/types/api';
-import type { DetectionResult } from '../detect';
-import { detectEngine, detectGameTitle, getFileByNormalizedPath } from '../detect';
-import { storeAssetBatch, setMeta, getAssetCount } from '../idb';
-import type { ProcessedAsset } from './rmmv';
-import { processMvFiles } from './rmmv';
-import { processMzFiles } from './rmmz';
-import { processRm2k3Files } from './rm2k3';
-import { processRgssadArchive } from './rgssad';
-import { processRgss3aArchive } from './rgss3a';
-import { processTcoaalFiles } from './tcoaal';
-import { processZipArchive } from './zip';
+import type { EngineType } from "../../../shared/types/api";
+import type { DetectionResult } from "../detect";
+import { detectEngine, detectGameTitle, getFileByNormalizedPath } from "../detect";
+import { storeAssetBatch, setMeta, getAssetCount } from "../idb";
+import type { ProcessedAsset } from "./rmmv";
+import { processMvFiles } from "./rmmv";
+import { processMzFiles } from "./rmmz";
+import { processRm2k3Files } from "./rm2k3";
+import { processRgssadArchive } from "./rgssad";
+import { processRgss3aArchive } from "./rgss3a";
+import { processTcoaalFiles } from "./tcoaal";
+import { processZipArchive } from "./zip";
 
 export type ImportProgress = {
-  phase: 'detecting' | 'decrypting' | 'storing' | 'done' | 'error';
+  phase: "detecting" | "decrypting" | "storing" | "done" | "error";
   processed: number;
   total: number;
   engine: EngineType;
@@ -28,14 +28,14 @@ export type ImportOptions = {
 };
 
 async function getRtpDatNames(files: File[]): Promise<string[]> {
-  const confFile = getFileByNormalizedPath(files, 'mkxp.conf');
+  const confFile = getFileByNormalizedPath(files, "mkxp.conf");
   if (!confFile) return [];
   try {
     const text = await confFile.text();
     const names: string[] = [];
-    for (const line of text.split('\n')) {
+    for (const line of text.split("\n")) {
       const trimmed = line.trim();
-      if (trimmed.startsWith('#')) continue;
+      if (trimmed.startsWith("#")) continue;
       const match = /^RTP\s*=\s*(.+)$/i.exec(trimmed);
       if (match?.[1]) {
         const name = match[1].trim();
@@ -48,7 +48,7 @@ async function getRtpDatNames(files: File[]): Promise<string[]> {
   }
 }
 
-async function sniffDatFormat(file: File): Promise<'rgssad' | 'zip' | 'unknown'> {
+async function sniffDatFormat(file: File): Promise<"rgssad" | "zip" | "unknown"> {
   const header = new Uint8Array(await file.slice(0, 8).arrayBuffer());
   if (
     header.length >= 7 &&
@@ -60,7 +60,7 @@ async function sniffDatFormat(file: File): Promise<'rgssad' | 'zip' | 'unknown'>
     header[5] === 0x44 &&
     header[6] === 0x00
   ) {
-    return 'rgssad';
+    return "rgssad";
   }
   if (
     header.length >= 4 &&
@@ -69,13 +69,13 @@ async function sniffDatFormat(file: File): Promise<'rgssad' | 'zip' | 'unknown'>
     header[2] === 0x03 &&
     header[3] === 0x04
   ) {
-    return 'zip';
+    return "zip";
   }
-  return 'unknown';
+  return "unknown";
 }
 
 async function* chainGenerators(
-  generators: AsyncGenerator<ProcessedAsset>[]
+  generators: AsyncGenerator<ProcessedAsset>[],
 ): AsyncGenerator<ProcessedAsset> {
   for (const gen of generators) {
     yield* gen;
@@ -86,38 +86,38 @@ function getAssetGenerator(
   engine: EngineType,
   files: File[],
   detection: DetectionResult,
-  keyOverride?: string
+  keyOverride?: string,
 ): AsyncGenerator<ProcessedAsset> | null {
   switch (engine) {
-    case 'rmmv':
-    case 'rmmv-encrypted':
+    case "rmmv":
+    case "rmmv-encrypted":
       return processMvFiles(files, detection.dataRoot, keyOverride);
 
-    case 'rmmz':
-    case 'rmmz-encrypted':
+    case "rmmz":
+    case "rmmz-encrypted":
       return processMzFiles(files, keyOverride);
 
-    case 'rm2k3':
+    case "rm2k3":
       return processRm2k3Files(files);
 
-    case 'tcoaal':
+    case "tcoaal":
       return processTcoaalFiles(files, detection.dataRoot);
 
-    case 'rmxp':
-    case 'rmvx': {
-      const archiveName = engine === 'rmxp' ? 'Game.rgssad' : 'Game.rgss2a';
+    case "rmxp":
+    case "rmvx": {
+      const archiveName = engine === "rmxp" ? "Game.rgssad" : "Game.rgss2a";
       const archiveFile = getFileByNormalizedPath(files, archiveName);
       if (!archiveFile) return null;
       return processRgssadArchive(archiveFile);
     }
 
-    case 'rmvxace': {
-      const archiveFile = getFileByNormalizedPath(files, 'Game.rgss3a');
+    case "rmvxace": {
+      const archiveFile = getFileByNormalizedPath(files, "Game.rgss3a");
       if (!archiveFile) return null;
       return processRgss3aArchive(archiveFile);
     }
 
-    case 'auto':
+    case "auto":
       return null;
   }
 }
@@ -126,26 +126,26 @@ export async function importGameFiles(options: ImportOptions): Promise<void> {
   const { files, engineOverride, keyOverride, onProgress, signal } = options;
 
   onProgress({
-    phase: 'detecting',
+    phase: "detecting",
     processed: 0,
     total: 0,
-    engine: 'auto',
-    gameTitle: '',
+    engine: "auto",
+    gameTitle: "",
   });
 
   const detection = detectEngine(files);
-  const engine = engineOverride && engineOverride !== 'auto' ? engineOverride : detection.engine;
+  const engine = engineOverride && engineOverride !== "auto" ? engineOverride : detection.engine;
 
-  if (engine === 'auto') {
+  if (engine === "auto") {
     onProgress({
-      phase: 'error',
+      phase: "error",
       processed: 0,
       total: 0,
-      engine: 'auto',
-      gameTitle: '',
+      engine: "auto",
+      gameTitle: "",
     });
     throw new Error(
-      'Could not detect RPG Maker engine version. Please select the engine manually.'
+      "Could not detect RPG Maker engine version. Please select the engine manually.",
     );
   }
 
@@ -154,13 +154,13 @@ export async function importGameFiles(options: ImportOptions): Promise<void> {
   let generator = getAssetGenerator(
     engine,
     files,
-    engineOverride && engineOverride !== 'auto'
+    engineOverride && engineOverride !== "auto"
       ? { ...detection, engine: engineOverride }
       : detection,
-    keyOverride
+    keyOverride,
   );
 
-  if (engine === 'rmxp' || engine === 'rmvx' || engine === 'rmvxace') {
+  if (engine === "rmxp" || engine === "rmvx" || engine === "rmvxace") {
     const rtpNames = await getRtpDatNames(files);
     if (rtpNames.length > 0) {
       const rtpGenerators: AsyncGenerator<ProcessedAsset>[] = [];
@@ -170,10 +170,10 @@ export async function importGameFiles(options: ImportOptions): Promise<void> {
         const datFile = getFileByNormalizedPath(files, name);
         if (!datFile) continue;
         const format = await sniffDatFormat(datFile);
-        if (format === 'zip') {
+        if (format === "zip") {
           rtpGenerators.push(processZipArchive(datFile));
-        } else if (format === 'rgssad') {
-          if (engine === 'rmvxace') {
+        } else if (format === "rgssad") {
+          if (engine === "rmvxace") {
             rtpGenerators.push(processRgss3aArchive(datFile));
           } else {
             rtpGenerators.push(processRgssadArchive(datFile));
@@ -198,7 +198,7 @@ export async function importGameFiles(options: ImportOptions): Promise<void> {
 
   for await (const asset of generator) {
     if (signal?.aborted) {
-      throw new Error('Import cancelled');
+      throw new Error("Import cancelled");
     }
 
     if (DATA_EXT.test(asset.path)) continue;
@@ -208,7 +208,7 @@ export async function importGameFiles(options: ImportOptions): Promise<void> {
 
     if (extracted % 20 === 0) {
       onProgress({
-        phase: 'decrypting',
+        phase: "decrypting",
         processed: extracted,
         total: 0,
         engine,
@@ -223,7 +223,7 @@ export async function importGameFiles(options: ImportOptions): Promise<void> {
 
   for (let i = 0; i < total; i += BATCH_SIZE) {
     if (signal?.aborted) {
-      throw new Error('Import cancelled');
+      throw new Error("Import cancelled");
     }
 
     const batch = allAssets.slice(i, i + BATCH_SIZE);
@@ -231,7 +231,7 @@ export async function importGameFiles(options: ImportOptions): Promise<void> {
     stored += batch.length;
 
     onProgress({
-      phase: 'storing',
+      phase: "storing",
       processed: stored,
       total,
       engine,
@@ -248,7 +248,7 @@ export async function importGameFiles(options: ImportOptions): Promise<void> {
   });
 
   onProgress({
-    phase: 'done',
+    phase: "done",
     processed: total,
     total,
     engine,

@@ -1,27 +1,27 @@
-import { defineConfig } from 'vite';
-import { builtinModules } from 'node:module';
+import { defineConfig } from "vite";
+import { builtinModules } from "node:module";
 
 export default defineConfig({
   ssr: {
     noExternal: true,
   },
-  logLevel: 'warn',
+  logLevel: "warn",
   build: {
-    ssr: 'index.ts',
-    outDir: '../../dist/server',
+    ssr: "index.ts",
+    outDir: "../../dist/server",
     emptyOutDir: true,
-    target: 'node22',
+    target: "node22",
     sourcemap: true,
     rollupOptions: {
       external: [...builtinModules],
 
       output: {
-        format: 'cjs',
-        entryFileNames: 'index.cjs',
+        format: "cjs",
+        entryFileNames: "index.cjs",
         inlineDynamicImports: true,
       },
       onwarn(warning, warn) {
-        if (warning.code === 'EVAL') return;
+        if (warning.code === "EVAL") return;
         warn(warning);
       },
     },

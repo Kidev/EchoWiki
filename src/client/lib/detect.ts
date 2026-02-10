@@ -1,4 +1,4 @@
-import type { EngineType } from '../../shared/types/api';
+import type { EngineType } from "../../shared/types/api";
 
 export type DetectionResult = {
   engine: EngineType;
@@ -19,12 +19,12 @@ function buildIndex(files: File[]): FileIndex {
 
   for (const file of files) {
     const rel = file.webkitRelativePath;
-    const slashIdx = rel.indexOf('/');
+    const slashIdx = rel.indexOf("/");
     const normalized = slashIdx >= 0 ? rel.slice(slashIdx + 1).toLowerCase() : rel.toLowerCase();
     paths.add(normalized);
     byName.set(normalized, file);
 
-    const dotIdx = normalized.lastIndexOf('.');
+    const dotIdx = normalized.lastIndexOf(".");
     if (dotIdx >= 0) {
       const ext = normalized.slice(dotIdx);
       const list = byExt.get(ext);
@@ -59,66 +59,66 @@ function hasPathPrefix(idx: FileIndex, prefix: string): boolean {
 export function detectEngine(files: File[]): DetectionResult {
   const idx = buildIndex(files);
 
-  if (hasExt(idx, '.k9a')) {
-    return { engine: 'tcoaal', dataRoot: 'www/', hasEncryption: true };
+  if (hasExt(idx, ".k9a")) {
+    return { engine: "tcoaal", dataRoot: "www/", hasEncryption: true };
   }
 
-  if (hasPath(idx, 'www/img/system/e5230bf37c4fabb0')) {
-    return { engine: 'tcoaal', dataRoot: 'www/', hasEncryption: true };
+  if (hasPath(idx, "www/img/system/e5230bf37c4fabb0")) {
+    return { engine: "tcoaal", dataRoot: "www/", hasEncryption: true };
   }
 
-  if (hasPath(idx, 'Game.rgssad')) {
-    return { engine: 'rmxp', dataRoot: '', hasEncryption: true };
+  if (hasPath(idx, "Game.rgssad")) {
+    return { engine: "rmxp", dataRoot: "", hasEncryption: true };
   }
 
-  if (hasPath(idx, 'Game.rgss2a')) {
-    return { engine: 'rmvx', dataRoot: '', hasEncryption: true };
+  if (hasPath(idx, "Game.rgss2a")) {
+    return { engine: "rmvx", dataRoot: "", hasEncryption: true };
   }
 
-  if (hasPath(idx, 'Game.rgss3a')) {
-    return { engine: 'rmvxace', dataRoot: '', hasEncryption: true };
+  if (hasPath(idx, "Game.rgss3a")) {
+    return { engine: "rmvxace", dataRoot: "", hasEncryption: true };
   }
 
-  if (hasPathPrefix(idx, 'www/') && (hasExt(idx, '.rpgmvp') || hasExt(idx, '.rpgmvo'))) {
-    return { engine: 'rmmv-encrypted', dataRoot: 'www/', hasEncryption: true };
+  if (hasPathPrefix(idx, "www/") && (hasExt(idx, ".rpgmvp") || hasExt(idx, ".rpgmvo"))) {
+    return { engine: "rmmv-encrypted", dataRoot: "www/", hasEncryption: true };
   }
 
-  if (hasPathPrefix(idx, 'www/') && hasPath(idx, 'www/data/system.json')) {
-    return { engine: 'rmmv', dataRoot: 'www/', hasEncryption: false };
+  if (hasPathPrefix(idx, "www/") && hasPath(idx, "www/data/system.json")) {
+    return { engine: "rmmv", dataRoot: "www/", hasEncryption: false };
   }
 
-  if (hasExt(idx, '.png_') || hasExt(idx, '.ogg_')) {
-    return { engine: 'rmmz-encrypted', dataRoot: '', hasEncryption: true };
+  if (hasExt(idx, ".png_") || hasExt(idx, ".ogg_")) {
+    return { engine: "rmmz-encrypted", dataRoot: "", hasEncryption: true };
   }
 
-  if (hasPath(idx, 'data/system.json') && hasPath(idx, 'js/rmmz_core.js')) {
-    return { engine: 'rmmz', dataRoot: '', hasEncryption: false };
+  if (hasPath(idx, "data/system.json") && hasPath(idx, "js/rmmz_core.js")) {
+    return { engine: "rmmz", dataRoot: "", hasEncryption: false };
   }
 
-  if (hasPath(idx, 'rpg_rt.ldb') && hasPath(idx, 'rpg_rt.lmt')) {
-    return { engine: 'rm2k3', dataRoot: '', hasEncryption: false };
+  if (hasPath(idx, "rpg_rt.ldb") && hasPath(idx, "rpg_rt.lmt")) {
+    return { engine: "rm2k3", dataRoot: "", hasEncryption: false };
   }
 
-  if (hasPath(idx, 'www/data/system.json')) {
-    return { engine: 'rmmv', dataRoot: 'www/', hasEncryption: false };
+  if (hasPath(idx, "www/data/system.json")) {
+    return { engine: "rmmv", dataRoot: "www/", hasEncryption: false };
   }
-  if (hasPath(idx, 'data/system.json')) {
-    return { engine: 'rmmz', dataRoot: '', hasEncryption: false };
+  if (hasPath(idx, "data/system.json")) {
+    return { engine: "rmmz", dataRoot: "", hasEncryption: false };
   }
 
-  return { engine: 'auto', dataRoot: '', hasEncryption: false };
+  return { engine: "auto", dataRoot: "", hasEncryption: false };
 }
 
 export async function detectGameTitle(
   files: File[],
   engine: EngineType,
-  dataRoot: string
+  dataRoot: string,
 ): Promise<string> {
   const idx = buildIndex(files);
 
   switch (engine) {
-    case 'rmmv':
-    case 'rmmv-encrypted': {
+    case "rmmv":
+    case "rmmv-encrypted": {
       const systemFile = idx.byName.get(`${dataRoot}data/system.json`.toLowerCase());
       if (systemFile) {
         try {
@@ -129,9 +129,9 @@ export async function detectGameTitle(
       }
       break;
     }
-    case 'rmmz':
-    case 'rmmz-encrypted': {
-      const systemFile = idx.byName.get('data/system.json');
+    case "rmmz":
+    case "rmmz-encrypted": {
+      const systemFile = idx.byName.get("data/system.json");
       if (systemFile) {
         try {
           const text = await systemFile.text();
@@ -141,10 +141,10 @@ export async function detectGameTitle(
       }
       break;
     }
-    case 'rmxp':
-    case 'rmvx':
-    case 'rmvxace': {
-      const iniFile = idx.byName.get('game.ini');
+    case "rmxp":
+    case "rmvx":
+    case "rmvxace": {
+      const iniFile = idx.byName.get("game.ini");
       if (iniFile) {
         try {
           const text = await iniFile.text();
@@ -154,21 +154,21 @@ export async function detectGameTitle(
       }
       break;
     }
-    case 'tcoaal':
-      return 'The Coffin of Andy and Leyley';
-    case 'rm2k3':
-    case 'auto':
+    case "tcoaal":
+      return "The Coffin of Andy and Leyley";
+    case "rm2k3":
+    case "auto":
       break;
   }
 
-  return '';
+  return "";
 }
 
 export function getFileByNormalizedPath(files: File[], path: string): File | undefined {
   const lower = path.toLowerCase();
   for (const file of files) {
     const rel = file.webkitRelativePath;
-    const slashIdx = rel.indexOf('/');
+    const slashIdx = rel.indexOf("/");
     const normalized = slashIdx >= 0 ? rel.slice(slashIdx + 1).toLowerCase() : rel.toLowerCase();
     if (normalized === lower) return file;
   }

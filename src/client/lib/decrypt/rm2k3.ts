@@ -1,26 +1,26 @@
-import { BinaryReader } from '../binary';
-import type { ProcessedAsset } from './rmmv';
+import { BinaryReader } from "../binary";
+import type { ProcessedAsset } from "./rmmv";
 
 const MIME_MAP: Record<string, string> = {
-  '.png': 'image/png',
-  '.bmp': 'image/bmp',
-  '.xyz': 'image/png',
-  '.wav': 'audio/wav',
-  '.mid': 'audio/midi',
-  '.midi': 'audio/midi',
-  '.mp3': 'audio/mpeg',
-  '.ogg': 'audio/ogg',
+  ".png": "image/png",
+  ".bmp": "image/bmp",
+  ".xyz": "image/png",
+  ".wav": "audio/wav",
+  ".mid": "audio/midi",
+  ".midi": "audio/midi",
+  ".mp3": "audio/mpeg",
+  ".ogg": "audio/ogg",
 };
 
 function getMimeType(ext: string): string {
-  return MIME_MAP[ext.toLowerCase()] ?? 'application/octet-stream';
+  return MIME_MAP[ext.toLowerCase()] ?? "application/octet-stream";
 }
 
 async function convertXyzToPng(buffer: ArrayBuffer): Promise<Blob> {
   const reader = new BinaryReader(buffer);
   const magic = reader.readString(4);
-  if (magic !== 'XYZ1') {
-    throw new Error('Not an XYZ file');
+  if (magic !== "XYZ1") {
+    throw new Error("Not an XYZ file");
   }
 
   const width = reader.readUint16LE();
@@ -28,7 +28,7 @@ async function convertXyzToPng(buffer: ArrayBuffer): Promise<Blob> {
 
   const compressed = reader.readBytes(reader.remaining);
 
-  const ds = new DecompressionStream('deflate');
+  const ds = new DecompressionStream("deflate");
   const writer = ds.writable.getWriter();
   const writePromise = writer.write(compressed).then(() => writer.close());
 
@@ -53,7 +53,7 @@ async function convertXyzToPng(buffer: ArrayBuffer): Promise<Blob> {
   const pixels = decompressed.subarray(768);
 
   const canvas = new OffscreenCanvas(width, height);
-  const ctx = canvas.getContext('2d')!;
+  const ctx = canvas.getContext("2d")!;
   const imageData = ctx.createImageData(width, height);
   const data = imageData.data;
 
@@ -67,33 +67,33 @@ async function convertXyzToPng(buffer: ArrayBuffer): Promise<Blob> {
   }
 
   ctx.putImageData(imageData, 0, 0);
-  return await canvas.convertToBlob({ type: 'image/png' });
+  return await canvas.convertToBlob({ type: "image/png" });
 }
 
 const ASSET_DIRS = new Set([
-  'backdrop',
-  'battle',
-  'battle2',
-  'battlecharset',
-  'battleweapon',
-  'charset',
-  'chipset',
-  'faceset',
-  'frame',
-  'gameover',
-  'monster',
-  'movie',
-  'music',
-  'panorama',
-  'picture',
-  'sound',
-  'system',
-  'system2',
-  'title',
+  "backdrop",
+  "battle",
+  "battle2",
+  "battlecharset",
+  "battleweapon",
+  "charset",
+  "chipset",
+  "faceset",
+  "frame",
+  "gameover",
+  "monster",
+  "movie",
+  "music",
+  "panorama",
+  "picture",
+  "sound",
+  "system",
+  "system2",
+  "title",
 ]);
 
 function isAssetFile(path: string): boolean {
-  const parts = path.split('/');
+  const parts = path.split("/");
   if (parts.length < 2) return false;
   return ASSET_DIRS.has(parts[0]!);
 }
@@ -101,28 +101,28 @@ function isAssetFile(path: string): boolean {
 export async function* processRm2k3Files(files: File[]): AsyncGenerator<ProcessedAsset> {
   for (const file of files) {
     const rel = file.webkitRelativePath;
-    const slashIdx = rel.indexOf('/');
+    const slashIdx = rel.indexOf("/");
     const relativePath = slashIdx >= 0 ? rel.slice(slashIdx + 1) : rel;
     const canonical = relativePath.toLowerCase();
 
     if (
       !isAssetFile(canonical) &&
-      !canonical.startsWith('data/') &&
-      !canonical.endsWith('.ldb') &&
-      !canonical.endsWith('.lmt') &&
-      !canonical.endsWith('.lmu')
+      !canonical.startsWith("data/") &&
+      !canonical.endsWith(".ldb") &&
+      !canonical.endsWith(".lmt") &&
+      !canonical.endsWith(".lmu")
     ) {
       continue;
     }
 
-    const ext = canonical.slice(canonical.lastIndexOf('.'));
+    const ext = canonical.slice(canonical.lastIndexOf("."));
 
-    if (ext === '.xyz') {
+    if (ext === ".xyz") {
       try {
         const buf = await file.arrayBuffer();
         const pngBlob = await convertXyzToPng(buf);
-        const path = canonical.slice(0, canonical.lastIndexOf('.')) + '.png';
-        yield { path, blob: pngBlob, mimeType: 'image/png' };
+        const path = canonical.slice(0, canonical.lastIndexOf(".")) + ".png";
+        yield { path, blob: pngBlob, mimeType: "image/png" };
       } catch {}
     } else {
       const mime = getMimeType(ext);

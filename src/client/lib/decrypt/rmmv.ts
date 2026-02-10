@@ -1,17 +1,17 @@
-import { getFileByNormalizedPath } from '../detect';
+import { getFileByNormalizedPath } from "../detect";
 
 const RPGMV_HEADER_LEN = 16;
 
 const EXT_MAP: Record<string, string> = {
-  '.rpgmvp': '.png',
-  '.rpgmvo': '.ogg',
-  '.rpgmvm': '.m4a',
+  ".rpgmvp": ".png",
+  ".rpgmvo": ".ogg",
+  ".rpgmvm": ".m4a",
 };
 
 const MIME_MAP: Record<string, string> = {
-  '.png': 'image/png',
-  '.ogg': 'audio/ogg',
-  '.m4a': 'audio/mp4',
+  ".png": "image/png",
+  ".ogg": "audio/ogg",
+  ".m4a": "audio/mp4",
 };
 
 const PNG_HEADER = new Uint8Array([
@@ -52,7 +52,7 @@ export function recoverKeyFromPng(encryptedBuffer: ArrayBuffer): Uint8Array | nu
 
 export async function extractKeyFromSystem(
   files: File[],
-  dataRoot: string
+  dataRoot: string,
 ): Promise<string | null> {
   const systemFile = getFileByNormalizedPath(files, `${dataRoot}data/System.json`);
   if (!systemFile) return null;
@@ -71,16 +71,16 @@ export function getMvDecryptedExtension(filename: string): string {
   for (const [enc, dec] of Object.entries(EXT_MAP)) {
     if (lower.endsWith(enc)) return dec;
   }
-  return '';
+  return "";
 }
 
 export function getMimeType(ext: string): string {
-  return MIME_MAP[ext] ?? 'application/octet-stream';
+  return MIME_MAP[ext] ?? "application/octet-stream";
 }
 
 export function isEncryptedMvFile(filename: string): boolean {
   const lower = filename.toLowerCase();
-  return lower.endsWith('.rpgmvp') || lower.endsWith('.rpgmvo') || lower.endsWith('.rpgmvm');
+  return lower.endsWith(".rpgmvp") || lower.endsWith(".rpgmvo") || lower.endsWith(".rpgmvm");
 }
 
 export type ProcessedAsset = {
@@ -92,7 +92,7 @@ export type ProcessedAsset = {
 export async function* processMvFiles(
   files: File[],
   dataRoot: string,
-  keyOverride?: string
+  keyOverride?: string,
 ): AsyncGenerator<ProcessedAsset> {
   let key: Uint8Array | null = null;
 
@@ -107,7 +107,7 @@ export async function* processMvFiles(
 
   for (const file of files) {
     const rel = file.webkitRelativePath;
-    const slashIdx = rel.indexOf('/');
+    const slashIdx = rel.indexOf("/");
     const relativePath = slashIdx >= 0 ? rel.slice(slashIdx + 1) : rel;
 
     let canonical = relativePath;
@@ -118,16 +118,20 @@ export async function* processMvFiles(
 
     if (isEncryptedMvFile(file.name)) {
       if (!key) {
-        if (file.name.toLowerCase().endsWith('.rpgmvp')) {
+        if (file.name.toLowerCase().endsWith(".rpgmvp")) {
           const buf = await file.arrayBuffer();
           key = recoverKeyFromPng(buf);
           if (key) {
             const decExt = getMvDecryptedExtension(file.name);
             const mime = getMimeType(decExt);
             const decrypted = decryptMvBuffer(buf, key);
-            const extIdx = canonical.lastIndexOf('.');
+            const extIdx = canonical.lastIndexOf(".");
             const path = extIdx >= 0 ? canonical.slice(0, extIdx) + decExt : canonical;
-            yield { path, blob: new Blob([decrypted], { type: mime }), mimeType: mime };
+            yield {
+              path,
+              blob: new Blob([decrypted], { type: mime }),
+              mimeType: mime,
+            };
             continue;
           }
         }
@@ -138,11 +142,15 @@ export async function* processMvFiles(
       const decExt = getMvDecryptedExtension(file.name);
       const mime = getMimeType(decExt);
       const decrypted = decryptMvBuffer(buf, key);
-      const extIdx = canonical.lastIndexOf('.');
+      const extIdx = canonical.lastIndexOf(".");
       const path = extIdx >= 0 ? canonical.slice(0, extIdx) + decExt : canonical;
-      yield { path, blob: new Blob([decrypted], { type: mime }), mimeType: mime };
+      yield {
+        path,
+        blob: new Blob([decrypted], { type: mime }),
+        mimeType: mime,
+      };
     } else {
-      const ext = canonical.slice(canonical.lastIndexOf('.'));
+      const ext = canonical.slice(canonical.lastIndexOf("."));
       const mime = getMimeType(ext);
       yield {
         path: canonical,

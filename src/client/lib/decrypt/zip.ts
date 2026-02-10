@@ -1,27 +1,27 @@
-import { BinaryReader } from '../binary';
-import type { ProcessedAsset } from './rmmv';
+import { BinaryReader } from "../binary";
+import type { ProcessedAsset } from "./rmmv";
 
 const LOCAL_FILE_HEADER_SIG = 0x04034b50;
 
 const MIME_MAP: Record<string, string> = {
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.bmp': 'image/bmp',
-  '.ogg': 'audio/ogg',
-  '.mid': 'audio/midi',
-  '.midi': 'audio/midi',
-  '.wav': 'audio/wav',
-  '.mp3': 'audio/mpeg',
-  '.wma': 'audio/x-ms-wma',
-  '.txt': 'text/plain',
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".bmp": "image/bmp",
+  ".ogg": "audio/ogg",
+  ".mid": "audio/midi",
+  ".midi": "audio/midi",
+  ".wav": "audio/wav",
+  ".mp3": "audio/mpeg",
+  ".wma": "audio/x-ms-wma",
+  ".txt": "text/plain",
 };
 
 function getMimeType(filename: string): string {
-  const dotIdx = filename.lastIndexOf('.');
-  if (dotIdx < 0) return 'application/octet-stream';
+  const dotIdx = filename.lastIndexOf(".");
+  if (dotIdx < 0) return "application/octet-stream";
   const ext = filename.slice(dotIdx).toLowerCase();
-  return MIME_MAP[ext] ?? 'application/octet-stream';
+  return MIME_MAP[ext] ?? "application/octet-stream";
 }
 
 export async function* processZipArchive(archiveFile: File): AsyncGenerator<ProcessedAsset> {
@@ -46,7 +46,7 @@ export async function* processZipArchive(archiveFile: File): AsyncGenerator<Proc
     const fileName = reader.readString(fileNameLen);
     reader.skip(extraFieldLen);
 
-    if (compressedSize === 0 || fileName.endsWith('/')) {
+    if (compressedSize === 0 || fileName.endsWith("/")) {
       reader.skip(compressedSize);
       continue;
     }
@@ -57,7 +57,7 @@ export async function* processZipArchive(archiveFile: File): AsyncGenerator<Proc
     }
 
     const data = reader.readBytes(compressedSize);
-    const path = fileName.replace(/\\/g, '/').toLowerCase();
+    const path = fileName.replace(/\\/g, "/").toLowerCase();
     const mime = getMimeType(fileName);
 
     yield {

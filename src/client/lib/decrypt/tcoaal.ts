@@ -1,54 +1,54 @@
-import type { ProcessedAsset } from './rmmv';
+import type { ProcessedAsset } from "./rmmv";
 
-const SIGNATURE = 'TCOAAL';
+const SIGNATURE = "TCOAAL";
 const SIGNATURE_BYTES = new Uint8Array([0x54, 0x43, 0x4f, 0x41, 0x41, 0x4c]);
 
 const TCOAAL_ASSET_DIRS = [
-  'data',
-  'audio/bgm',
-  'audio/bgs',
-  'audio/me',
-  'audio/se',
-  'img/characters',
-  'img/faces',
-  'img/parallaxes',
-  'img/pictures',
-  'img/system',
-  'img/tilesets',
-  'img/titles1',
+  "data",
+  "audio/bgm",
+  "audio/bgs",
+  "audio/me",
+  "audio/se",
+  "img/characters",
+  "img/faces",
+  "img/parallaxes",
+  "img/pictures",
+  "img/system",
+  "img/tilesets",
+  "img/titles1",
 ];
 
 const MIME_MAP: Record<string, string> = {
-  '.json': 'application/json',
-  '.ogg': 'audio/ogg',
-  '.png': 'image/png',
+  ".json": "application/json",
+  ".ogg": "audio/ogg",
+  ".png": "image/png",
 };
 
 function getExtensionForPath(relativePath: string): string {
-  const topDir = relativePath.split('/')[0]!.toLowerCase();
+  const topDir = relativePath.split("/")[0]!.toLowerCase();
   switch (topDir) {
-    case 'data':
-      return '.json';
-    case 'audio':
-      return '.ogg';
-    case 'img':
-      return '.png';
+    case "data":
+      return ".json";
+    case "audio":
+      return ".ogg";
+    case "img":
+      return ".png";
     default:
-      return '';
+      return "";
   }
 }
 
 function isInAssetDir(relativePath: string): boolean {
   const lower = relativePath.toLowerCase();
   for (const dir of TCOAAL_ASSET_DIRS) {
-    if (lower.startsWith(dir + '/')) return true;
+    if (lower.startsWith(dir + "/")) return true;
   }
   return false;
 }
 
 function getMask(idFilePath: string): number {
   let mask = 0;
-  const parts = idFilePath.split('/');
+  const parts = idFilePath.split("/");
   const basename = parts[parts.length - 1]!.toUpperCase();
   for (let i = 0; i < basename.length; i++) {
     mask = (mask * 2) ^ basename.charCodeAt(i);
@@ -90,16 +90,16 @@ function decryptTcoaal(rawBytes: Uint8Array, idFilePath: string): Uint8Array {
 
 export async function* processTcoaalFiles(
   files: File[],
-  dataRoot: string
+  dataRoot: string,
 ): AsyncGenerator<ProcessedAsset> {
-  const hasK9a = files.some((f) => f.name.toLowerCase().endsWith('.k9a'));
+  const hasK9a = files.some((f) => f.name.toLowerCase().endsWith(".k9a"));
   if (hasK9a && !dataRoot) {
     return;
   }
 
   for (const file of files) {
     const rel = file.webkitRelativePath;
-    const slashIdx = rel.indexOf('/');
+    const slashIdx = rel.indexOf("/");
     const relativePath = slashIdx >= 0 ? rel.slice(slashIdx + 1) : rel;
 
     let inner = relativePath;
@@ -120,7 +120,7 @@ export async function* processTcoaalFiles(
 
     const decrypted = decryptTcoaal(rawBytes, inner);
 
-    const mime = MIME_MAP[extension] ?? 'application/octet-stream';
+    const mime = MIME_MAP[extension] ?? "application/octet-stream";
     const canonical = (inner + extension).toLowerCase();
 
     yield {

@@ -8,10 +8,10 @@ import {
   useMemo,
   useRef,
   useState,
-} from 'react';
-import Markdown, { defaultUrlTransform } from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { getWebViewMode, requestExpandedMode, navigateTo } from '@devvit/web/client';
+} from "react";
+import Markdown, { defaultUrlTransform } from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { getWebViewMode, requestExpandedMode, navigateTo } from "@devvit/web/client";
 import type {
   CardSize,
   ColorTheme,
@@ -24,92 +24,92 @@ import type {
   WikiFontSize,
   WikiResponse,
   WikiPagesResponse,
-} from '../../shared/types/api';
-import { hasAssets, getMeta, wipeAll, listAssetPaths, applyMapping } from '../lib/idb';
-import { importGameFiles } from '../lib/decrypt/index';
-import type { ImportProgress } from '../lib/decrypt/index';
-import { revokeAllBlobUrls, useEchoUrl, setReverseMapping, preloadPaths } from '../lib/echo';
-import type { EchoMeta } from '../lib/idb';
+} from "../../shared/types/api";
+import { hasAssets, getMeta, wipeAll, listAssetPaths, applyMapping } from "../lib/idb";
+import { importGameFiles } from "../lib/decrypt/index";
+import type { ImportProgress } from "../lib/decrypt/index";
+import { revokeAllBlobUrls, useEchoUrl, setReverseMapping, preloadPaths } from "../lib/echo";
+import type { EchoMeta } from "../lib/idb";
 
-type AppState = 'loading' | 'no-assets' | 'importing' | 'ready';
+type AppState = "loading" | "no-assets" | "importing" | "ready";
 
-type ActiveTab = 'wiki' | 'assets' | 'settings';
+type ActiveTab = "wiki" | "assets" | "settings";
 
-type FilterType = 'images' | 'audio';
+type FilterType = "images" | "audio";
 
 const PAGE_SIZE = 60;
 
 const DEFAULT_STYLE: StyleConfig = {
-  cardSize: 'normal',
-  wikiFontSize: 'normal',
-  fontFamily: 'system',
+  cardSize: "normal",
+  wikiFontSize: "normal",
+  fontFamily: "system",
   light: {
-    accentColor: '#d93900',
-    bgColor: '#ffffff',
-    textColor: '#111827',
-    textMuted: '#6b7280',
-    thumbBgColor: '#e5e7eb',
-    controlBgColor: '#ffffff',
-    controlTextColor: '#111827',
+    accentColor: "#d93900",
+    bgColor: "#ffffff",
+    textColor: "#111827",
+    textMuted: "#6b7280",
+    thumbBgColor: "#e5e7eb",
+    controlBgColor: "#ffffff",
+    controlTextColor: "#111827",
   },
   dark: {
-    accentColor: '#ff6b3d',
-    bgColor: '#1a1a1b',
-    textColor: '#d7dadc',
-    textMuted: '#818384',
-    thumbBgColor: '#343536',
-    controlBgColor: '#343536',
-    controlTextColor: '#d7dadc',
+    accentColor: "#ff6b3d",
+    bgColor: "#1a1a1b",
+    textColor: "#d7dadc",
+    textMuted: "#818384",
+    thumbBgColor: "#343536",
+    controlBgColor: "#343536",
+    controlTextColor: "#d7dadc",
   },
 };
 
-const ACCENT_PRESETS = ['#d93900', '#2563eb', '#16a34a', '#7c3aed', '#db2777', '#0d9488'] as const;
+const ACCENT_PRESETS = ["#d93900", "#2563eb", "#16a34a", "#7c3aed", "#db2777", "#0d9488"] as const;
 
-const BG_PRESETS = ['#ffffff', '#f9fafb', '#1f2937', '#111827'] as const;
+const BG_PRESETS = ["#ffffff", "#f9fafb", "#1f2937", "#111827"] as const;
 
-const TEXT_PRESETS = ['#111827', '#1f2937', '#f9fafb', '#ffffff'] as const;
+const TEXT_PRESETS = ["#111827", "#1f2937", "#f9fafb", "#ffffff"] as const;
 
-const MUTED_PRESETS = ['#6b7280', '#9ca3af', '#4b5563', '#d1d5db'] as const;
+const MUTED_PRESETS = ["#6b7280", "#9ca3af", "#4b5563", "#d1d5db"] as const;
 
-const THUMB_BG_PRESETS = ['#e5e7eb', '#d1d5db', '#f3f4f6', '#1f2937'] as const;
+const THUMB_BG_PRESETS = ["#e5e7eb", "#d1d5db", "#f3f4f6", "#1f2937"] as const;
 
-const DARK_BG_PRESETS = ['#1a1a1b', '#111827', '#1f2937', '#0f172a'] as const;
+const DARK_BG_PRESETS = ["#1a1a1b", "#111827", "#1f2937", "#0f172a"] as const;
 
-const DARK_TEXT_PRESETS = ['#d7dadc', '#f9fafb', '#e5e7eb', '#ffffff'] as const;
+const DARK_TEXT_PRESETS = ["#d7dadc", "#f9fafb", "#e5e7eb", "#ffffff"] as const;
 
-const DARK_THUMB_BG_PRESETS = ['#343536', '#374151', '#1f2937', '#4b5563'] as const;
+const DARK_THUMB_BG_PRESETS = ["#343536", "#374151", "#1f2937", "#4b5563"] as const;
 
-const CONTROL_BG_PRESETS = ['#ffffff', '#f9fafb', '#f3f4f6', '#e5e7eb'] as const;
+const CONTROL_BG_PRESETS = ["#ffffff", "#f9fafb", "#f3f4f6", "#e5e7eb"] as const;
 
-const CONTROL_TEXT_PRESETS = ['#111827', '#1f2937', '#374151', '#4b5563'] as const;
+const CONTROL_TEXT_PRESETS = ["#111827", "#1f2937", "#374151", "#4b5563"] as const;
 
-const DARK_CONTROL_BG_PRESETS = ['#343536', '#374151', '#1f2937', '#4b5563'] as const;
+const DARK_CONTROL_BG_PRESETS = ["#343536", "#374151", "#1f2937", "#4b5563"] as const;
 
-const DARK_CONTROL_TEXT_PRESETS = ['#d7dadc', '#e5e7eb', '#f9fafb', '#ffffff'] as const;
+const DARK_CONTROL_TEXT_PRESETS = ["#d7dadc", "#e5e7eb", "#f9fafb", "#ffffff"] as const;
 
 const PRE_IMPORT_VARS: CSSProperties = {
-  '--accent': '#6a5cff',
-  '--accent-hover': '#5a4ee6',
-  '--accent-ring': 'rgba(106, 92, 255, 0.2)',
-  '--bg': '#1a1a2e',
-  '--text': '#ffffff',
-  '--text-muted': '#677db7',
-  '--thumb-bg': '#16213e',
-  '--control-bg': '#16213e',
-  '--control-text': '#ffffff',
+  "--accent": "#6a5cff",
+  "--accent-hover": "#5a4ee6",
+  "--accent-ring": "rgba(106, 92, 255, 0.2)",
+  "--bg": "#1a1a2e",
+  "--text": "#ffffff",
+  "--text-muted": "#677db7",
+  "--thumb-bg": "#16213e",
+  "--control-bg": "#16213e",
+  "--control-text": "#ffffff",
 } as CSSProperties;
 
 const FONT_MAP: Record<FontFamily, string> = {
-  system: 'ui-sans-serif, system-ui, -apple-system, sans-serif',
+  system: "ui-sans-serif, system-ui, -apple-system, sans-serif",
   serif: 'ui-serif, Georgia, Cambria, "Times New Roman", serif',
-  mono: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+  mono: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
 };
 
 function darkenHex(hex: string, amount: number): string {
   const r = Math.max(0, parseInt(hex.slice(1, 3), 16) - Math.round(255 * amount));
   const g = Math.max(0, parseInt(hex.slice(3, 5), 16) - Math.round(255 * amount));
   const b = Math.max(0, parseInt(hex.slice(5, 7), 16) - Math.round(255 * amount));
-  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+  return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
 }
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -128,30 +128,30 @@ function isAudioPath(p: string): boolean {
 }
 
 function getFileName(p: string): string {
-  const parts = p.split('/');
+  const parts = p.split("/");
   return parts[parts.length - 1] ?? p;
 }
 
 function getStem(p: string): string {
   const fileName = getFileName(p);
-  const dot = fileName.lastIndexOf('.');
+  const dot = fileName.lastIndexOf(".");
   return dot > 0 ? fileName.slice(0, dot) : fileName;
 }
 
 function getExt(p: string): string {
   const fileName = getFileName(p);
-  const dot = fileName.lastIndexOf('.');
-  return dot > 0 ? fileName.slice(dot) : '';
+  const dot = fileName.lastIndexOf(".");
+  return dot > 0 ? fileName.slice(dot) : "";
 }
 
-function getCategory(p: string): 'images' | 'audio' | 'data' {
-  if (isImagePath(p)) return 'images';
-  if (isAudioPath(p)) return 'audio';
-  return 'data';
+function getCategory(p: string): "images" | "audio" | "data" {
+  if (isImagePath(p)) return "images";
+  if (isAudioPath(p)) return "audio";
+  return "data";
 }
 
 function getSubfolder(p: string): string | null {
-  const parts = p.split('/');
+  const parts = p.split("/");
   if (parts.length < 2) return null;
   const folder = parts[parts.length - 2];
   return folder && folder.length > 0 ? folder : null;
@@ -171,7 +171,7 @@ function getFirstVisibleImagePaths(allPaths: string[]): string[] {
   }
   const firstFolder =
     [...folderCounts.entries()]
-      .sort(([a], [b]) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+      .sort(([a], [b]) => a.localeCompare(b, undefined, { sensitivity: "base" }))
       .map(([name]) => name)[0] ?? null;
   const filtered = firstFolder ? images.filter((p) => getSubfolder(p) === firstFolder) : images;
   const empty = new Map<string, string>();
@@ -179,8 +179,8 @@ function getFirstVisibleImagePaths(allPaths: string[]): string[] {
     .sort((a, b) =>
       naturalSortKey(a, empty).localeCompare(naturalSortKey(b, empty), undefined, {
         numeric: true,
-        sensitivity: 'base',
-      })
+        sensitivity: "base",
+      }),
     )
     .slice(0, PAGE_SIZE);
 }
@@ -188,28 +188,28 @@ function getFirstVisibleImagePaths(allPaths: string[]): string[] {
 function toDisplayName(path: string): string {
   const stem = getStem(path);
   const ext = getExt(path);
-  return stem.replace(/[_-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) + ext;
+  return stem.replace(/[_-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) + ext;
 }
 
 function slugify(text: string): string {
   return text
     .toLowerCase()
-    .replace(/[^\w\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
+    .replace(/[^\w\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
 }
 
 function extractWikiPage(href: string, subredditName: string): string | null {
   const sub = subredditName.toLowerCase();
 
   try {
-    const url = new URL(href, 'https://www.reddit.com');
+    const url = new URL(href, "https://www.reddit.com");
     if (
-      url.hostname === 'www.reddit.com' ||
-      url.hostname === 'reddit.com' ||
-      url.hostname === 'old.reddit.com' ||
-      url.hostname === 'new.reddit.com'
+      url.hostname === "www.reddit.com" ||
+      url.hostname === "reddit.com" ||
+      url.hostname === "old.reddit.com" ||
+      url.hostname === "new.reddit.com"
     ) {
       const match = /^\/r\/([^/]+)\/wiki\/(.+?)(?:\/?#.*)?$/.exec(url.pathname);
       if (match && match[1]!.toLowerCase() === sub) {
@@ -227,10 +227,10 @@ function extractWikiPage(href: string, subredditName: string): string | null {
 }
 
 function formatPageName(page: string): string {
-  const parts = page.split('/');
-  const prefix = parts.slice(0, -1).join(' > ');
+  const parts = page.split("/");
+  const prefix = parts.slice(0, -1).join(" > ");
   const last = parts[parts.length - 1] ?? page;
-  const display = last.replace(/[_-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  const display = last.replace(/[_-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   return prefix ? `${prefix} > ${display}` : display;
 }
 
@@ -288,7 +288,7 @@ function AudioPreview({ url }: { url: string }) {
     source.connect(analyser);
     analyser.connect(audioCtx.destination);
 
-    const canvasCtx = canvas.getContext('2d')!;
+    const canvasCtx = canvas.getContext("2d")!;
     const bufferLength = analyser.frequencyBinCount;
     const dataArray = new Uint8Array(bufferLength);
 
@@ -296,7 +296,7 @@ function AudioPreview({ url }: { url: string }) {
       rafRef.current = requestAnimationFrame(draw);
       analyser.getByteFrequencyData(dataArray);
 
-      canvasCtx.fillStyle = '#1f2937';
+      canvasCtx.fillStyle = "#1f2937";
       canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
 
       const barWidth = (canvas.width / bufferLength) * 2.5;
@@ -356,15 +356,15 @@ function AssetPreview({
       const text = e && (e.ctrlKey || e.metaKey) ? originalMarkdown : echoMarkdown;
       void navigator.clipboard.writeText(text).then(() => onCopied(path));
     },
-    [echoMarkdown, originalMarkdown, onCopied, path]
+    [echoMarkdown, originalMarkdown, onCopied, path],
   );
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === "Escape") onClose();
     };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
   }, [onClose]);
 
   return (
@@ -384,7 +384,7 @@ function AssetPreview({
       >
         <button
           onClick={handleCopy}
-          className={`absolute top-2 right-2 z-10 p-2 rounded-lg bg-black/50 text-white transition-opacity cursor-pointer ${hovered ? 'opacity-100' : 'opacity-0'}`}
+          className={`absolute top-2 right-2 z-10 p-2 rounded-lg bg-black/50 text-white transition-opacity cursor-pointer ${hovered ? "opacity-100" : "opacity-0"}`}
           title="Copy echo link (Ctrl+click for original name)"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -399,10 +399,10 @@ function AssetPreview({
 
         {loading ? (
           <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-        ) : category === 'images' && url ? (
+        ) : category === "images" && url ? (
           <div
             className="rounded border border-white/20 p-1"
-            style={{ backgroundColor: 'var(--thumb-bg)' }}
+            style={{ backgroundColor: "var(--thumb-bg)" }}
           >
             <img
               src={url}
@@ -410,7 +410,7 @@ function AssetPreview({
               className="max-w-full max-h-[80vh] object-contain rounded"
             />
           </div>
-        ) : category === 'audio' && url ? (
+        ) : category === "audio" && url ? (
           <AudioPreview url={url} />
         ) : (
           <div className="flex items-center justify-center w-32 h-32 rounded bg-gray-800 text-gray-400 text-sm">
@@ -434,15 +434,15 @@ function WikiView({
   const [content, setContent] = useState<string | null | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [pages, setPages] = useState<string[]>([]);
-  const [currentPage, setCurrentPage] = useState('index');
+  const [currentPage, setCurrentPage] = useState("index");
   const wikiContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const load = async () => {
       try {
         const [wikiRes, pagesRes] = await Promise.all([
-          fetch('/api/wiki'),
-          fetch('/api/wiki/pages'),
+          fetch("/api/wiki"),
+          fetch("/api/wiki/pages"),
         ]);
         if (wikiRes.ok) {
           const data: WikiResponse = await wikiRes.json();
@@ -482,11 +482,13 @@ function WikiView({
   }, []);
 
   const handleLinkClick = useCallback(() => {
-    navigateTo({ url: `https://www.reddit.com/r/${subredditName}/wiki/${currentPage}` });
+    navigateTo({
+      url: `https://www.reddit.com/r/${subredditName}/wiki/${currentPage}`,
+    });
   }, [subredditName, currentPage]);
 
   const proseSize =
-    wikiFontSize === 'small' ? 'prose-sm' : wikiFontSize === 'large' ? 'prose-lg' : '';
+    wikiFontSize === "small" ? "prose-sm" : wikiFontSize === "large" ? "prose-lg" : "";
 
   if (loading) {
     return (
@@ -520,7 +522,10 @@ function WikiView({
             value={currentPage}
             onChange={(e) => void handlePageChange(e.target.value)}
             className="text-sm px-2 py-1 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)]"
-            style={{ backgroundColor: 'var(--control-bg)', color: 'var(--control-text)' }}
+            style={{
+              backgroundColor: "var(--control-bg)",
+              color: "var(--control-text)",
+            }}
           >
             {pages.map((p) => (
               <option key={p} value={p}>
@@ -551,52 +556,52 @@ function WikiView({
         className={`prose ${proseSize} max-w-none`}
         style={
           {
-            '--tw-prose-body': 'var(--text)',
-            '--tw-prose-headings': 'var(--text)',
-            '--tw-prose-bold': 'var(--text)',
-            '--tw-prose-links': 'var(--accent)',
-            '--tw-prose-quotes': 'var(--text-muted)',
-            '--tw-prose-quote-borders': 'var(--accent)',
-            '--tw-prose-code': 'var(--text)',
-            '--tw-prose-counters': 'var(--text-muted)',
-            '--tw-prose-bullets': 'var(--text-muted)',
-            '--tw-prose-hr': 'var(--text-muted)',
-            '--tw-prose-th-borders': 'var(--text-muted)',
-            '--tw-prose-td-borders': 'var(--text-muted)',
+            "--tw-prose-body": "var(--text)",
+            "--tw-prose-headings": "var(--text)",
+            "--tw-prose-bold": "var(--text)",
+            "--tw-prose-links": "var(--accent)",
+            "--tw-prose-quotes": "var(--text-muted)",
+            "--tw-prose-quote-borders": "var(--accent)",
+            "--tw-prose-code": "var(--text)",
+            "--tw-prose-counters": "var(--text-muted)",
+            "--tw-prose-bullets": "var(--text-muted)",
+            "--tw-prose-hr": "var(--text-muted)",
+            "--tw-prose-th-borders": "var(--text-muted)",
+            "--tw-prose-td-borders": "var(--text-muted)",
           } as CSSProperties
         }
       >
         <Markdown
           remarkPlugins={[remarkGfm]}
-          urlTransform={(url) => (url.startsWith('echo://') ? url : defaultUrlTransform(url))}
+          urlTransform={(url) => (url.startsWith("echo://") ? url : defaultUrlTransform(url))}
           components={{
             h1: ({ children: c }: { children?: ReactNode }) => {
-              const text = typeof c === 'string' ? c : '';
+              const text = typeof c === "string" ? c : "";
               return <h1 id={slugify(text)}>{c}</h1>;
             },
             h2: ({ children: c }: { children?: ReactNode }) => {
-              const text = typeof c === 'string' ? c : '';
+              const text = typeof c === "string" ? c : "";
               return <h2 id={slugify(text)}>{c}</h2>;
             },
             h3: ({ children: c }: { children?: ReactNode }) => {
-              const text = typeof c === 'string' ? c : '';
+              const text = typeof c === "string" ? c : "";
               return <h3 id={slugify(text)}>{c}</h3>;
             },
             h4: ({ children: c }: { children?: ReactNode }) => {
-              const text = typeof c === 'string' ? c : '';
+              const text = typeof c === "string" ? c : "";
               return <h4 id={slugify(text)}>{c}</h4>;
             },
             h5: ({ children: c }: { children?: ReactNode }) => {
-              const text = typeof c === 'string' ? c : '';
+              const text = typeof c === "string" ? c : "";
               return <h5 id={slugify(text)}>{c}</h5>;
             },
             h6: ({ children: c }: { children?: ReactNode }) => {
-              const text = typeof c === 'string' ? c : '';
+              const text = typeof c === "string" ? c : "";
               return <h6 id={slugify(text)}>{c}</h6>;
             },
             img: ({ src, alt }: { src?: string | undefined; alt?: string | undefined }) => {
-              if (src?.startsWith('echo://')) {
-                const echoPath = src.slice('echo://'.length).toLowerCase();
+              if (src?.startsWith("echo://")) {
+                const echoPath = src.slice("echo://".length).toLowerCase();
                 return (
                   <EchoInlineAsset path={echoPath}>{alt ?? getFileName(echoPath)}</EchoInlineAsset>
                 );
@@ -614,8 +619,8 @@ function WikiView({
                 return <span>{linkChildren}</span>;
               }
 
-              if (href.startsWith('echo://')) {
-                const echoPath = href.slice('echo://'.length).toLowerCase();
+              if (href.startsWith("echo://")) {
+                const echoPath = href.slice("echo://".length).toLowerCase();
                 return <EchoInlineAsset path={echoPath}>{linkChildren}</EchoInlineAsset>;
               }
 
@@ -635,7 +640,7 @@ function WikiView({
                 );
               }
 
-              if (href.startsWith('#')) {
+              if (href.startsWith("#")) {
                 return (
                   <a
                     href={href}
@@ -645,10 +650,13 @@ function WikiView({
                       const target =
                         wikiContainerRef.current?.querySelector(`[id="${CSS.escape(id)}"]`) ??
                         wikiContainerRef.current?.querySelector(
-                          `[id="${CSS.escape(id.toLowerCase())}"]`
+                          `[id="${CSS.escape(id.toLowerCase())}"]`,
                         );
                       if (target) {
-                        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        target.scrollIntoView({
+                          behavior: "smooth",
+                          block: "start",
+                        });
                       }
                     }}
                     className="text-[var(--accent)] hover:underline cursor-pointer"
@@ -659,9 +667,9 @@ function WikiView({
               }
 
               const externalUrl =
-                href.startsWith('http://') || href.startsWith('https://')
+                href.startsWith("http://") || href.startsWith("https://")
                   ? href
-                  : `https://www.reddit.com${href.startsWith('/') ? href : `/${href}`}`;
+                  : `https://www.reddit.com${href.startsWith("/") ? href : `/${href}`}`;
               return (
                 <a
                   href={externalUrl}
@@ -670,7 +678,7 @@ function WikiView({
                     try {
                       navigateTo({ url: externalUrl });
                     } catch {
-                      window.open(externalUrl, '_blank');
+                      window.open(externalUrl, "_blank");
                     }
                   }}
                   className="text-[var(--accent)] hover:underline cursor-pointer"
@@ -702,7 +710,7 @@ function AssetCard({
   onCopied: (path: string) => void;
 }) {
   const category = getCategory(path);
-  const { url, loading } = useEchoUrl(category === 'images' ? path : null);
+  const { url, loading } = useEchoUrl(category === "images" ? path : null);
   const displayName = toDisplayName(mappedPath ?? path);
   const echoPath = mappedPath ?? path;
   const name = getFileName(path);
@@ -725,15 +733,15 @@ function AssetCard({
       const text = e.ctrlKey || e.metaKey ? originalMarkdown : echoMarkdown;
       void navigator.clipboard.writeText(text).then(() => onCopied(path));
     },
-    [echoMarkdown, originalMarkdown, onCopied, path]
+    [echoMarkdown, originalMarkdown, onCopied, path],
   );
 
   const thumbClass =
-    cardSize === 'compact' ? 'w-12 h-12' : cardSize === 'large' ? 'w-24 h-24' : 'w-16 h-16';
+    cardSize === "compact" ? "w-12 h-12" : cardSize === "large" ? "w-24 h-24" : "w-16 h-16";
   const labelClass =
-    cardSize === 'compact' ? 'text-[9px]' : cardSize === 'large' ? 'text-[11px]' : 'text-[10px]';
+    cardSize === "compact" ? "text-[9px]" : cardSize === "large" ? "text-[11px]" : "text-[10px]";
   const copyIconClass =
-    cardSize === 'compact' ? 'w-2.5 h-2.5' : cardSize === 'large' ? 'w-3.5 h-3.5' : 'w-3 h-3';
+    cardSize === "compact" ? "w-2.5 h-2.5" : cardSize === "large" ? "w-3.5 h-3.5" : "w-3 h-3";
 
   return (
     <div
@@ -744,10 +752,10 @@ function AssetCard({
       <div
         className={`${thumbClass} rounded border border-gray-200 flex items-center justify-center overflow-hidden flex-shrink-0`}
         style={{
-          backgroundColor: category === 'data' ? '#f9fafb' : 'var(--thumb-bg)',
+          backgroundColor: category === "data" ? "#f9fafb" : "var(--thumb-bg)",
         }}
       >
-        {category === 'images' ? (
+        {category === "images" ? (
           loading ? (
             <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
           ) : url ? (
@@ -767,7 +775,7 @@ function AssetCard({
               />
             </svg>
           )
-        ) : category === 'audio' ? (
+        ) : category === "audio" ? (
           <svg
             className="w-6 h-6 text-blue-400"
             fill="none"
@@ -820,7 +828,7 @@ function AssetCard({
   );
 }
 
-const FILTERS: readonly FilterType[] = ['images', 'audio'] as const;
+const FILTERS: readonly FilterType[] = ["images", "audio"] as const;
 
 function FilterTabs({
   active,
@@ -838,8 +846,8 @@ function FilterTabs({
           key={f}
           className={`text-xs px-2.5 py-1 rounded-full transition-colors cursor-pointer ${
             active === f
-              ? 'bg-[var(--accent)] text-white'
-              : 'bg-gray-100 text-[var(--text-muted)] hover:bg-gray-200'
+              ? "bg-[var(--accent)] text-white"
+              : "bg-gray-100 text-[var(--text-muted)] hover:bg-gray-200"
           }`}
           onClick={() => onChange(f)}
         >
@@ -868,8 +876,8 @@ function SubFilterTabs({
           key={s.name}
           className={`text-[10px] px-2 py-0.5 rounded-full transition-colors cursor-pointer ${
             active === s.name
-              ? 'bg-[var(--accent)]/20 text-[var(--accent)]'
-              : 'bg-gray-50 text-[var(--text-muted)] hover:bg-gray-100'
+              ? "bg-[var(--accent)]/20 text-[var(--accent)]"
+              : "bg-gray-50 text-[var(--text-muted)] hover:bg-gray-100"
           }`}
           onClick={() => onChange(s.name)}
         >
@@ -897,8 +905,8 @@ function SegmentedControl<T extends string>({
           key={opt.value}
           className={`text-xs px-3 py-1.5 transition-colors cursor-pointer ${
             value === opt.value
-              ? 'bg-[var(--accent)] text-white'
-              : 'bg-white text-[var(--text-muted)] hover:bg-gray-50'
+              ? "bg-[var(--accent)] text-white"
+              : "bg-white text-[var(--text-muted)] hover:bg-gray-50"
           }`}
           onClick={() => onChange(opt.value)}
         >
@@ -920,7 +928,7 @@ function ColorPickerRow({
   presets: readonly string[];
   onSelect: (color: string) => void;
 }) {
-  const [customHex, setCustomHex] = useState(presets.includes(value) ? '' : value);
+  const [customHex, setCustomHex] = useState(presets.includes(value) ? "" : value);
 
   const handleCustom = useCallback(
     (hex: string) => {
@@ -929,7 +937,7 @@ function ColorPickerRow({
         onSelect(hex);
       }
     },
-    [onSelect]
+    [onSelect],
   );
 
   return (
@@ -941,12 +949,12 @@ function ColorPickerRow({
             key={color}
             className={`w-7 h-7 rounded-full cursor-pointer transition-shadow border border-gray-200 ${
               value === color && !customHex
-                ? 'ring-2 ring-offset-2 ring-gray-400'
-                : 'hover:ring-2 hover:ring-offset-1 hover:ring-gray-300'
+                ? "ring-2 ring-offset-2 ring-gray-400"
+                : "hover:ring-2 hover:ring-offset-1 hover:ring-gray-300"
             }`}
             style={{ backgroundColor: color }}
             onClick={() => {
-              setCustomHex('');
+              setCustomHex("");
               onSelect(color);
             }}
             title={color}
@@ -966,7 +974,7 @@ function ColorPickerRow({
 }
 
 function parseMappingText(text: string): Array<[string, string]> {
-  const cleaned = text.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+  const cleaned = text.replace(/\/\/[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
   const pairRegex = /"([^"]+)"\s*:\s*"([^"]+)"/g;
   const results: Array<[string, string]> = [];
   let match;
@@ -976,7 +984,7 @@ function parseMappingText(text: string): Array<[string, string]> {
   return results;
 }
 
-type SettingsTab = 'general' | 'style' | 'mapping';
+type SettingsTab = "general" | "style" | "mapping";
 
 function SettingsView({
   mappingText,
@@ -993,16 +1001,16 @@ function SettingsView({
   onStyleChanged: (style: StyleConfig) => void;
   onConfigChanged: (config: GameConfig) => void;
 }) {
-  const [settingsTab, setSettingsTab] = useState<SettingsTab>('general');
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
   const [text, setText] = useState(mappingText);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<{ ok: boolean; message: string } | null>(null);
-  const [editingMode, setEditingMode] = useState<'light' | 'dark'>('light');
+  const [editingMode, setEditingMode] = useState<"light" | "dark">("light");
   const [gameTitle, setGameTitle] = useState(config.gameName);
   const [storeLink, setStoreLink] = useState(config.storeLink);
   const [savingConfig, setSavingConfig] = useState(false);
 
-  const editingColors = editingMode === 'light' ? style.light : style.dark;
+  const editingColors = editingMode === "light" ? style.light : style.dark;
 
   const parsedEntries = useMemo(() => parseMappingText(text), [text]);
 
@@ -1011,9 +1019,9 @@ function SettingsView({
   const handleSaveConfig = useCallback(async () => {
     setSavingConfig(true);
     try {
-      const res = await fetch('/api/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ gameName: gameTitle, storeLink }),
       });
       if (res.ok) {
@@ -1031,24 +1039,27 @@ function SettingsView({
     setStatus(null);
     try {
       const entries = parseMappingText(text);
-      const res = await fetch('/api/mapping', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, entries: entries.length > 0 ? entries : undefined }),
+      const res = await fetch("/api/mapping", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text,
+          entries: entries.length > 0 ? entries : undefined,
+        }),
       });
       if (res.ok) {
         const data: MappingResponse = await res.json();
         onMappingSaved(data.text, data.mapping);
-        setStatus({ ok: true, message: 'Mapping saved' });
+        setStatus({ ok: true, message: "Mapping saved" });
       } else {
         const err = await res.json();
         setStatus({
           ok: false,
-          message: (err as { message?: string }).message ?? 'Save failed',
+          message: (err as { message?: string }).message ?? "Save failed",
         });
       }
     } catch {
-      setStatus({ ok: false, message: 'Network error' });
+      setStatus({ ok: false, message: "Network error" });
     } finally {
       setSaving(false);
     }
@@ -1057,9 +1068,9 @@ function SettingsView({
   const saveStyle = useCallback(
     async (update: Record<string, string>) => {
       try {
-        const res = await fetch('/api/style', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+        const res = await fetch("/api/style", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(update),
         });
         if (res.ok) {
@@ -1068,20 +1079,20 @@ function SettingsView({
         }
       } catch {}
     },
-    [onStyleChanged]
+    [onStyleChanged],
   );
 
   const saveColor = useCallback(
     (field: string, value: string) => {
       void saveStyle({ mode: editingMode, [field]: value });
     },
-    [saveStyle, editingMode]
+    [saveStyle, editingMode],
   );
 
   const SETTINGS_TABS: readonly { value: SettingsTab; label: string }[] = [
-    { value: 'general', label: 'General' },
-    { value: 'style', label: 'Style' },
-    { value: 'mapping', label: 'Mapping' },
+    { value: "general", label: "General" },
+    { value: "style", label: "Style" },
+    { value: "mapping", label: "Mapping" },
   ] as const;
 
   return (
@@ -1092,8 +1103,8 @@ function SettingsView({
             key={tab.value}
             className={`text-xs px-3 py-1.5 rounded-full transition-colors cursor-pointer ${
               settingsTab === tab.value
-                ? 'bg-[var(--accent)] text-white'
-                : 'text-[var(--text-muted)] hover:bg-gray-100'
+                ? "bg-[var(--accent)] text-white"
+                : "text-[var(--text-muted)] hover:bg-gray-100"
             }`}
             onClick={() => setSettingsTab(tab.value)}
           >
@@ -1103,7 +1114,7 @@ function SettingsView({
       </div>
 
       <div className="px-4 py-4 max-w-lg">
-        {settingsTab === 'general' && (
+        {settingsTab === "general" && (
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
               <span className="text-xs font-medium">Game Title</span>
@@ -1112,7 +1123,10 @@ function SettingsView({
                 value={gameTitle}
                 onChange={(e) => setGameTitle(e.target.value)}
                 className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)]"
-                style={{ backgroundColor: 'var(--control-bg)', color: 'var(--control-text)' }}
+                style={{
+                  backgroundColor: "var(--control-bg)",
+                  color: "var(--control-text)",
+                }}
               />
               <span className="text-[10px] text-[var(--text-muted)]">
                 Shown to users on import. Warns if imported game doesn't match.
@@ -1128,7 +1142,10 @@ function SettingsView({
                   onChange={(e) => setStoreLink(e.target.value)}
                   placeholder="https://store.steampowered.com/app/..."
                   className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)]"
-                  style={{ backgroundColor: 'var(--control-bg)', color: 'var(--control-text)' }}
+                  style={{
+                    backgroundColor: "var(--control-bg)",
+                    color: "var(--control-text)",
+                  }}
                 />
                 <span className="text-[10px] text-[var(--text-muted)]">
                   If set, a purchase link is shown on the import screen.
@@ -1141,21 +1158,21 @@ function SettingsView({
               disabled={savingConfig || !configDirty}
               className="self-start text-sm px-4 py-1.5 rounded-full bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] transition-colors cursor-pointer disabled:opacity-50"
             >
-              {savingConfig ? 'Saving...' : 'Save'}
+              {savingConfig ? "Saving..." : "Save"}
             </button>
           </div>
         )}
 
-        {settingsTab === 'style' && (
+        {settingsTab === "style" && (
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
               <span className="text-xs font-medium">Font</span>
               <SegmentedControl
                 value={style.fontFamily}
                 options={[
-                  { value: 'system' as FontFamily, label: 'System' },
-                  { value: 'serif' as FontFamily, label: 'Serif' },
-                  { value: 'mono' as FontFamily, label: 'Mono' },
+                  { value: "system" as FontFamily, label: "System" },
+                  { value: "serif" as FontFamily, label: "Serif" },
+                  { value: "mono" as FontFamily, label: "Mono" },
                 ]}
                 onChange={(v) => void saveStyle({ fontFamily: v })}
               />
@@ -1166,9 +1183,9 @@ function SettingsView({
               <SegmentedControl
                 value={style.cardSize}
                 options={[
-                  { value: 'compact' as CardSize, label: 'Compact' },
-                  { value: 'normal' as CardSize, label: 'Normal' },
-                  { value: 'large' as CardSize, label: 'Large' },
+                  { value: "compact" as CardSize, label: "Compact" },
+                  { value: "normal" as CardSize, label: "Normal" },
+                  { value: "large" as CardSize, label: "Large" },
                 ]}
                 onChange={(v) => void saveStyle({ cardSize: v })}
               />
@@ -1179,9 +1196,9 @@ function SettingsView({
               <SegmentedControl
                 value={style.wikiFontSize}
                 options={[
-                  { value: 'small' as WikiFontSize, label: 'Small' },
-                  { value: 'normal' as WikiFontSize, label: 'Normal' },
-                  { value: 'large' as WikiFontSize, label: 'Large' },
+                  { value: "small" as WikiFontSize, label: "Small" },
+                  { value: "normal" as WikiFontSize, label: "Normal" },
+                  { value: "large" as WikiFontSize, label: "Large" },
                 ]}
                 onChange={(v) => void saveStyle({ wikiFontSize: v })}
               />
@@ -1192,8 +1209,8 @@ function SettingsView({
             <SegmentedControl
               value={editingMode}
               options={[
-                { value: 'light' as const, label: 'Light' },
-                { value: 'dark' as const, label: 'Dark' },
+                { value: "light" as const, label: "Light" },
+                { value: "dark" as const, label: "Dark" },
               ]}
               onChange={setEditingMode}
             />
@@ -1203,23 +1220,23 @@ function SettingsView({
               label="Accent Color"
               value={editingColors.accentColor}
               presets={ACCENT_PRESETS}
-              onSelect={(c) => saveColor('accentColor', c)}
+              onSelect={(c) => saveColor("accentColor", c)}
             />
 
             <ColorPickerRow
               key={`bg-${editingMode}`}
               label="Background"
               value={editingColors.bgColor}
-              presets={editingMode === 'light' ? BG_PRESETS : DARK_BG_PRESETS}
-              onSelect={(c) => saveColor('bgColor', c)}
+              presets={editingMode === "light" ? BG_PRESETS : DARK_BG_PRESETS}
+              onSelect={(c) => saveColor("bgColor", c)}
             />
 
             <ColorPickerRow
               key={`text-${editingMode}`}
               label="Text Color"
               value={editingColors.textColor}
-              presets={editingMode === 'light' ? TEXT_PRESETS : DARK_TEXT_PRESETS}
-              onSelect={(c) => saveColor('textColor', c)}
+              presets={editingMode === "light" ? TEXT_PRESETS : DARK_TEXT_PRESETS}
+              onSelect={(c) => saveColor("textColor", c)}
             />
 
             <ColorPickerRow
@@ -1227,36 +1244,36 @@ function SettingsView({
               label="Muted Text"
               value={editingColors.textMuted}
               presets={MUTED_PRESETS}
-              onSelect={(c) => saveColor('textMuted', c)}
+              onSelect={(c) => saveColor("textMuted", c)}
             />
 
             <ColorPickerRow
               key={`thumb-${editingMode}`}
               label="Thumbnail Background"
               value={editingColors.thumbBgColor}
-              presets={editingMode === 'light' ? THUMB_BG_PRESETS : DARK_THUMB_BG_PRESETS}
-              onSelect={(c) => saveColor('thumbBgColor', c)}
+              presets={editingMode === "light" ? THUMB_BG_PRESETS : DARK_THUMB_BG_PRESETS}
+              onSelect={(c) => saveColor("thumbBgColor", c)}
             />
 
             <ColorPickerRow
               key={`control-bg-${editingMode}`}
               label="Control Background"
               value={editingColors.controlBgColor}
-              presets={editingMode === 'light' ? CONTROL_BG_PRESETS : DARK_CONTROL_BG_PRESETS}
-              onSelect={(c) => saveColor('controlBgColor', c)}
+              presets={editingMode === "light" ? CONTROL_BG_PRESETS : DARK_CONTROL_BG_PRESETS}
+              onSelect={(c) => saveColor("controlBgColor", c)}
             />
 
             <ColorPickerRow
               key={`control-text-${editingMode}`}
               label="Control Text"
               value={editingColors.controlTextColor}
-              presets={editingMode === 'light' ? CONTROL_TEXT_PRESETS : DARK_CONTROL_TEXT_PRESETS}
-              onSelect={(c) => saveColor('controlTextColor', c)}
+              presets={editingMode === "light" ? CONTROL_TEXT_PRESETS : DARK_CONTROL_TEXT_PRESETS}
+              onSelect={(c) => saveColor("controlTextColor", c)}
             />
           </div>
         )}
 
-        {settingsTab === 'mapping' && (
+        {settingsTab === "mapping" && (
           <div className="flex flex-col gap-3">
             <label className="flex flex-col gap-1">
               <textarea
@@ -1266,7 +1283,10 @@ function SettingsView({
                 spellCheck={false}
                 placeholder={`// Map original filenames to custom names\n"actor1": "hero_sprite"\n"dungeon_a1": "cave_tileset"`}
                 className="text-sm font-mono px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)] resize-y"
-                style={{ backgroundColor: 'var(--control-bg)', color: 'var(--control-text)' }}
+                style={{
+                  backgroundColor: "var(--control-bg)",
+                  color: "var(--control-text)",
+                }}
               />
             </label>
 
@@ -1274,7 +1294,7 @@ function SettingsView({
               <div className="border border-gray-200 rounded-lg overflow-hidden">
                 <table className="w-full text-xs">
                   <thead>
-                    <tr style={{ backgroundColor: 'var(--thumb-bg)' }}>
+                    <tr style={{ backgroundColor: "var(--thumb-bg)" }}>
                       <th className="text-left px-3 py-1.5 font-medium text-[var(--text-muted)]">
                         Original
                       </th>
@@ -1303,10 +1323,10 @@ function SettingsView({
                 disabled={saving}
                 className="text-sm px-4 py-1.5 rounded-full bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] transition-colors cursor-pointer disabled:opacity-50"
               >
-                {saving ? 'Saving...' : 'Save'}
+                {saving ? "Saving..." : "Save"}
               </button>
               {status && (
-                <span className={`text-xs ${status.ok ? 'text-green-600' : 'text-red-600'}`}>
+                <span className={`text-xs ${status.ok ? "text-green-600" : "text-red-600"}`}>
                   {status.message}
                 </span>
               )}
@@ -1319,9 +1339,9 @@ function SettingsView({
 }
 
 export const App = () => {
-  const [appState, setAppState] = useState<AppState>('loading');
-  const [activeTab, setActiveTab] = useState<ActiveTab>('wiki');
-  const [subredditName, setSubredditName] = useState('');
+  const [appState, setAppState] = useState<AppState>("loading");
+  const [activeTab, setActiveTab] = useState<ActiveTab>("wiki");
+  const [subredditName, setSubredditName] = useState("");
   const [config, setConfig] = useState<GameConfig | null>(null);
   const [isMod, setIsMod] = useState(false);
   const [meta, setMeta] = useState<EchoMeta | null>(null);
@@ -1331,9 +1351,9 @@ export const App = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [paths, setPaths] = useState<string[]>([]);
-  const [filter, setFilter] = useState<FilterType>('images');
+  const [filter, setFilter] = useState<FilterType>("images");
   const [subFilter, setSubFilter] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState("");
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
@@ -1344,14 +1364,14 @@ export const App = () => {
   const [mismatchWarning, setMismatchWarning] = useState<string | null>(null);
   const [style, setStyle] = useState<StyleConfig>({ ...DEFAULT_STYLE });
   const [isDark, setIsDark] = useState(
-    () => window.matchMedia('(prefers-color-scheme: dark)').matches
+    () => window.matchMedia("(prefers-color-scheme: dark)").matches,
   );
 
   useEffect(() => {
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
     const handler = (e: MediaQueryListEvent) => setIsDark(e.matches);
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
   }, []);
 
   const [previewPath, setPreviewPath] = useState<string | null>(null);
@@ -1361,15 +1381,15 @@ export const App = () => {
   const cssVars = useMemo(
     () =>
       ({
-        '--accent': colors.accentColor,
-        '--accent-hover': darkenHex(colors.accentColor, 0.05),
-        '--accent-ring': hexToRgba(colors.accentColor, 0.2),
-        '--bg': colors.bgColor,
-        '--text': colors.textColor,
-        '--text-muted': colors.textMuted,
-        '--thumb-bg': colors.thumbBgColor,
-        '--control-bg': colors.controlBgColor,
-        '--control-text': colors.controlTextColor,
+        "--accent": colors.accentColor,
+        "--accent-hover": darkenHex(colors.accentColor, 0.05),
+        "--accent-ring": hexToRgba(colors.accentColor, 0.2),
+        "--bg": colors.bgColor,
+        "--text": colors.textColor,
+        "--text-muted": colors.textMuted,
+        "--thumb-bg": colors.thumbBgColor,
+        "--control-bg": colors.controlBgColor,
+        "--control-text": colors.controlTextColor,
       }) as CSSProperties,
     [
       colors.accentColor,
@@ -1379,15 +1399,15 @@ export const App = () => {
       colors.thumbBgColor,
       colors.controlBgColor,
       colors.controlTextColor,
-    ]
+    ],
   );
 
   useEffect(() => {
     const init = async () => {
-      const wikiPromise = fetch('/api/wiki').catch(() => null);
+      const wikiPromise = fetch("/api/wiki").catch(() => null);
 
       try {
-        const res = await fetch('/api/init');
+        const res = await fetch("/api/init");
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data: InitResponse = await res.json();
         setSubredditName(data.subredditName);
@@ -1420,21 +1440,21 @@ export const App = () => {
         } catch {}
 
         await preloadPaths([...new Set([...imagePaths, ...wikiEchoPaths])]);
-        setAppState('ready');
+        setAppState("ready");
       } else {
-        setAppState('no-assets');
+        setAppState("no-assets");
       }
     };
     void init();
   }, []);
 
   useEffect(() => {
-    if (appState !== 'ready') return;
+    if (appState !== "ready") return;
     const load = async () => {
       try {
         const [mappingRes, styleRes] = await Promise.all([
-          fetch('/api/mapping'),
-          fetch('/api/style'),
+          fetch("/api/mapping"),
+          fetch("/api/style"),
         ]);
         if (mappingRes.ok) {
           const data: MappingResponse = await mappingRes.json();
@@ -1456,7 +1476,7 @@ export const App = () => {
   }, [appState]);
 
   const filteredPaths = useMemo(() => {
-    let result = filter === 'images' ? paths.filter(isImagePath) : paths.filter(isAudioPath);
+    let result = filter === "images" ? paths.filter(isImagePath) : paths.filter(isAudioPath);
     if (subFilter) {
       result = result.filter((p) => getSubfolder(p) === subFilter);
     }
@@ -1472,14 +1492,14 @@ export const App = () => {
     return [...result].sort((a, b) =>
       naturalSortKey(a, pathToMapped).localeCompare(naturalSortKey(b, pathToMapped), undefined, {
         numeric: true,
-        sensitivity: 'base',
-      })
+        sensitivity: "base",
+      }),
     );
   }, [paths, filter, subFilter, search, pathToMapped]);
 
   const subcategories = useMemo(() => {
     const categoryPaths =
-      filter === 'images' ? paths.filter(isImagePath) : paths.filter(isAudioPath);
+      filter === "images" ? paths.filter(isImagePath) : paths.filter(isAudioPath);
 
     const folderCounts = new Map<string, number>();
     for (const p of categoryPaths) {
@@ -1489,7 +1509,7 @@ export const App = () => {
       }
     }
     return [...folderCounts.entries()]
-      .sort(([a], [b]) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+      .sort(([a], [b]) => a.localeCompare(b, undefined, { sensitivity: "base" }))
       .map(([name, count]) => ({ name, count }));
   }, [paths, filter]);
 
@@ -1507,15 +1527,15 @@ export const App = () => {
       images: paths.filter(isImagePath).length,
       audio: paths.filter(isAudioPath).length,
     }),
-    [paths]
+    [paths],
   );
 
   const gridClass =
-    style.cardSize === 'compact'
-      ? 'grid-cols-[repeat(auto-fill,minmax(64px,1fr))]'
-      : style.cardSize === 'large'
-        ? 'grid-cols-[repeat(auto-fill,minmax(120px,1fr))]'
-        : 'grid-cols-[repeat(auto-fill,minmax(80px,1fr))]';
+    style.cardSize === "compact"
+      ? "grid-cols-[repeat(auto-fill,minmax(64px,1fr))]"
+      : style.cardSize === "large"
+        ? "grid-cols-[repeat(auto-fill,minmax(120px,1fr))]"
+        : "grid-cols-[repeat(auto-fill,minmax(80px,1fr))]";
 
   const handleImport = useCallback(() => {
     fileInputRef.current?.click();
@@ -1527,7 +1547,7 @@ export const App = () => {
       if (!fileList || fileList.length === 0) return;
 
       const files = Array.from(fileList);
-      setAppState('importing');
+      setAppState("importing");
       setError(null);
       setProgress(null);
 
@@ -1535,7 +1555,9 @@ export const App = () => {
       abortRef.current = controller;
 
       try {
-        const progressRef: { current: ImportProgress | null } = { current: null };
+        const progressRef: { current: ImportProgress | null } = {
+          current: null,
+        };
         await importGameFiles({
           files,
           engineOverride: config?.engine,
@@ -1550,9 +1572,9 @@ export const App = () => {
         setMeta(m ?? null);
         const allPaths = await listAssetPaths();
         setPaths(allPaths);
-        setFilter('images');
+        setFilter("images");
         setSubFilter(null);
-        setSearch('');
+        setSearch("");
         setVisibleCount(PAGE_SIZE);
 
         if (mapping) {
@@ -1567,42 +1589,42 @@ export const App = () => {
           config.gameName.toLowerCase() !== progressRef.current.gameTitle.toLowerCase()
         ) {
           setMismatchWarning(
-            `Expected '${config.gameName}' but detected '${progressRef.current.gameTitle}'. You may have imported the wrong game.`
+            `Expected '${config.gameName}' but detected '${progressRef.current.gameTitle}'. You may have imported the wrong game.`,
           );
         }
 
         await preloadPaths(getFirstVisibleImagePaths(allPaths));
 
-        setAppState('ready');
+        setAppState("ready");
       } catch (err) {
-        if (err instanceof Error && err.message === 'Import cancelled') {
+        if (err instanceof Error && err.message === "Import cancelled") {
           const still = await hasAssets();
           if (still) {
             const allPaths = await listAssetPaths();
             setPaths(allPaths);
-            setAppState('ready');
+            setAppState("ready");
           } else {
-            setAppState('no-assets');
+            setAppState("no-assets");
           }
         } else {
-          setError(err instanceof Error ? err.message : 'Import failed');
+          setError(err instanceof Error ? err.message : "Import failed");
           const still = await hasAssets();
           if (still) {
             const allPaths = await listAssetPaths();
             setPaths(allPaths);
-            setAppState('ready');
+            setAppState("ready");
           } else {
-            setAppState('no-assets');
+            setAppState("no-assets");
           }
         }
       } finally {
         abortRef.current = null;
         if (fileInputRef.current) {
-          fileInputRef.current.value = '';
+          fileInputRef.current.value = "";
         }
       }
     },
-    [config, mapping]
+    [config, mapping],
   );
 
   const handleCancel = useCallback(() => {
@@ -1619,16 +1641,16 @@ export const App = () => {
     await wipeAll();
     setMeta(null);
     setPaths([]);
-    setFilter('images');
+    setFilter("images");
     setSubFilter(null);
-    setSearch('');
+    setSearch("");
     setCopiedPath(null);
     setVisibleCount(PAGE_SIZE);
     setMapping(null);
     setPathToMapped(new Map());
     setReverseMapping(null);
     setPreviewPath(null);
-    setAppState('no-assets');
+    setAppState("no-assets");
   }, []);
 
   const handleMappingSaved = useCallback(
@@ -1645,23 +1667,23 @@ export const App = () => {
         setReverseMapping(null);
       }
     },
-    []
+    [],
   );
 
   const handleStyleChanged = useCallback((newStyle: StyleConfig) => {
     setStyle(newStyle);
   }, []);
 
-  const isInline = getWebViewMode() === 'inline';
+  const isInline = getWebViewMode() === "inline";
 
   return (
     <div
       className="flex flex-col min-h-screen"
       style={{
-        ...(appState === 'ready' ? cssVars : PRE_IMPORT_VARS),
-        backgroundColor: 'var(--bg)',
-        color: 'var(--text)',
-        fontFamily: appState === 'ready' ? FONT_MAP[style.fontFamily] : FONT_MAP.system,
+        ...(appState === "ready" ? cssVars : PRE_IMPORT_VARS),
+        backgroundColor: "var(--bg)",
+        color: "var(--text)",
+        fontFamily: appState === "ready" ? FONT_MAP[style.fontFamily] : FONT_MAP.system,
       }}
     >
       <input
@@ -1690,14 +1712,14 @@ export const App = () => {
         />
       )}
 
-      {appState !== 'ready' && (
+      {appState !== "ready" && (
         <div className="flex-1 relative flex flex-col items-center">
           <div
             className="ripple-container"
             style={{
-              position: 'absolute',
-              top: appState === 'loading' ? 'calc(50% - 150px)' : '-5%',
-              transition: 'top 0.7s ease-in-out',
+              position: "absolute",
+              top: appState === "loading" ? "calc(50% - 150px)" : "-5%",
+              transition: "top 0.7s ease-in-out",
             }}
           >
             <div />
@@ -1711,21 +1733,21 @@ export const App = () => {
             {subredditName && (
               <p
                 className="absolute left-1/2 -translate-x-1/2 text-base text-[var(--text)] whitespace-nowrap pointer-events-none z-1"
-                style={{ top: '70%' }}
+                style={{ top: "70%" }}
               >
                 r/{subredditName}
               </p>
             )}
           </div>
 
-          {appState === 'no-assets' && (
+          {appState === "no-assets" && (
             <div
               className="content-fade-in flex flex-col items-center gap-6 max-w-md text-center"
-              style={{ position: 'absolute', top: '50%' }}
+              style={{ position: "absolute", top: "50%" }}
             >
               {config?.gameName ? (
                 <p className="text-[var(--text-muted)] text-sm">
-                  Please select the folder that contains the game{' '}
+                  Please select the folder that contains the game{" "}
                   <div className="font-semibold text-[var(--text)]">{config.gameName}</div>
                   Those files will never leave your device.
                 </p>
@@ -1747,7 +1769,7 @@ export const App = () => {
                       try {
                         navigateTo({ url: config.storeLink });
                       } catch {
-                        window.open(config.storeLink, '_blank');
+                        window.open(config.storeLink, "_blank");
                       }
                     }}
                     className="flex items-center justify-center h-10 rounded-full cursor-pointer transition-all px-6 font-medium text-xs border-2 border-[var(--accent)] text-[var(--accent)] hover:bg-[var(--accent)] hover:text-white hover:scale-105 hover:border-white"
@@ -1764,10 +1786,10 @@ export const App = () => {
             </div>
           )}
 
-          {appState === 'importing' && (
+          {appState === "importing" && (
             <div
               className="content-fade-in flex flex-col items-center gap-4 max-w-md w-full"
-              style={{ position: 'absolute', top: '50%' }}
+              style={{ position: "absolute", top: "50%" }}
             >
               {progress ? (
                 <>
@@ -1782,20 +1804,20 @@ export const App = () => {
                         </div>
                         <div
                           className="w-full rounded-full h-1.5"
-                          style={{ backgroundColor: 'var(--thumb-bg)' }}
+                          style={{ backgroundColor: "var(--thumb-bg)" }}
                         >
                           <div
                             className="h-1.5 rounded-full transition-all duration-300 ease-linear"
                             style={{
                               width: `${Math.min((progress.processed / progress.total) * 100, 100)}%`,
-                              backgroundColor: 'var(--accent)',
+                              backgroundColor: "var(--accent)",
                             }}
                           />
                         </div>
                       </>
                     ) : (
                       <p className="text-xs text-[var(--text-muted)] text-center">
-                        {progress.phase === 'detecting' ? 'Detecting engine...' : 'Extracting...'}
+                        {progress.phase === "detecting" ? "Detecting engine..." : "Extracting..."}
                       </p>
                     )}
                   </div>
@@ -1814,28 +1836,28 @@ export const App = () => {
         </div>
       )}
 
-      {appState === 'ready' && (
+      {appState === "ready" && (
         <>
           <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100">
             <div className="flex items-center gap-1">
               <h1 className="text-lg font-bold mr-2">EchoWiki</h1>
               <button
                 className={`text-sm px-3 py-1 rounded-full transition-colors cursor-pointer ${
-                  activeTab === 'wiki'
-                    ? 'bg-[var(--accent)] text-white'
-                    : 'text-[var(--text-muted)] hover:bg-gray-100'
+                  activeTab === "wiki"
+                    ? "bg-[var(--accent)] text-white"
+                    : "text-[var(--text-muted)] hover:bg-gray-100"
                 }`}
-                onClick={() => setActiveTab('wiki')}
+                onClick={() => setActiveTab("wiki")}
               >
                 Wiki
               </button>
               <button
                 className={`text-sm px-3 py-1 rounded-full transition-colors cursor-pointer ${
-                  activeTab === 'assets'
-                    ? 'bg-[var(--accent)] text-white'
-                    : 'text-[var(--text-muted)] hover:bg-gray-100'
+                  activeTab === "assets"
+                    ? "bg-[var(--accent)] text-white"
+                    : "text-[var(--text-muted)] hover:bg-gray-100"
                 }`}
-                onClick={() => setActiveTab('assets')}
+                onClick={() => setActiveTab("assets")}
               >
                 Assets
                 {meta && (
@@ -1845,11 +1867,11 @@ export const App = () => {
               {isMod && (
                 <button
                   className={`text-sm px-3 py-1 rounded-full transition-colors cursor-pointer ${
-                    activeTab === 'settings'
-                      ? 'bg-[var(--accent)] text-white'
-                      : 'text-[var(--text-muted)] hover:bg-gray-100'
+                    activeTab === "settings"
+                      ? "bg-[var(--accent)] text-white"
+                      : "text-[var(--text-muted)] hover:bg-gray-100"
                   }`}
-                  onClick={() => setActiveTab('settings')}
+                  onClick={() => setActiveTab("settings")}
                 >
                   Settings
                 </button>
@@ -1860,7 +1882,7 @@ export const App = () => {
                 <button
                   className="text-gray-400 hover:text-[var(--text-muted)] transition-colors cursor-pointer"
                   title="Pop out"
-                  onClick={(e) => void requestExpandedMode(e.nativeEvent, 'default')}
+                  onClick={(e) => void requestExpandedMode(e.nativeEvent, "default")}
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path
@@ -1906,13 +1928,13 @@ export const App = () => {
             </div>
           )}
 
-          {activeTab === 'wiki' && (
+          {activeTab === "wiki" && (
             <div className="flex-1 overflow-auto">
               <WikiView subredditName={subredditName} wikiFontSize={style.wikiFontSize} />
             </div>
           )}
 
-          {activeTab === 'assets' && (
+          {activeTab === "assets" && (
             <>
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 px-4 py-2 border-b border-gray-50">
                 <FilterTabs
@@ -1933,7 +1955,10 @@ export const App = () => {
                     setVisibleCount(PAGE_SIZE);
                   }}
                   className="flex-1 text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)]"
-                  style={{ backgroundColor: 'var(--control-bg)', color: 'var(--control-text)' }}
+                  style={{
+                    backgroundColor: "var(--control-bg)",
+                    color: "var(--control-text)",
+                  }}
                 />
               </div>
 
@@ -1954,7 +1979,7 @@ export const App = () => {
                 {filteredPaths.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 text-gray-400">
                     <p className="text-sm">
-                      {search ? 'No matching assets' : 'No assets in this category'}
+                      {search ? "No matching assets" : "No assets in this category"}
                     </p>
                   </div>
                 ) : (
@@ -1977,7 +2002,7 @@ export const App = () => {
                           className="text-sm px-4 py-1.5 rounded-full bg-gray-100 text-[var(--text-muted)] hover:bg-gray-200 transition-colors cursor-pointer"
                           onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
                         >
-                          Load more ({(filteredPaths.length - visibleCount).toLocaleString()}{' '}
+                          Load more ({(filteredPaths.length - visibleCount).toLocaleString()}{" "}
                           remaining)
                         </button>
                       </div>
@@ -1988,7 +2013,7 @@ export const App = () => {
             </>
           )}
 
-          {activeTab === 'settings' && isMod && config && (
+          {activeTab === "settings" && isMod && config && (
             <SettingsView
               mappingText={mappingText}
               style={style}

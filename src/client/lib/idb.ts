@@ -1,7 +1,7 @@
-const DB_NAME = 'echowiki';
+const DB_NAME = "echowiki";
 const DB_VERSION = 1;
-const ASSETS_STORE = 'assets';
-const META_STORE = 'meta';
+const ASSETS_STORE = "assets";
+const META_STORE = "meta";
 
 export type EchoAsset = {
   path: string;
@@ -25,10 +25,10 @@ function openDB(): Promise<IDBDatabase> {
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains(ASSETS_STORE)) {
-        db.createObjectStore(ASSETS_STORE, { keyPath: 'path' });
+        db.createObjectStore(ASSETS_STORE, { keyPath: "path" });
       }
       if (!db.objectStoreNames.contains(META_STORE)) {
-        db.createObjectStore(META_STORE, { keyPath: 'key' });
+        db.createObjectStore(META_STORE, { keyPath: "key" });
       }
     };
 
@@ -40,7 +40,7 @@ function openDB(): Promise<IDBDatabase> {
 export async function storeAsset(path: string, blob: Blob, mimeType: string): Promise<void> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(ASSETS_STORE, 'readwrite');
+    const tx = db.transaction(ASSETS_STORE, "readwrite");
     const store = tx.objectStore(ASSETS_STORE);
     const asset: EchoAsset = { path, blob, mimeType };
     const request = store.put(asset);
@@ -51,14 +51,18 @@ export async function storeAsset(path: string, blob: Blob, mimeType: string): Pr
 }
 
 export async function storeAssetBatch(
-  assets: ReadonlyArray<{ path: string; blob: Blob; mimeType: string }>
+  assets: ReadonlyArray<{ path: string; blob: Blob; mimeType: string }>,
 ): Promise<void> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(ASSETS_STORE, 'readwrite');
+    const tx = db.transaction(ASSETS_STORE, "readwrite");
     const store = tx.objectStore(ASSETS_STORE);
     for (const a of assets) {
-      store.put({ path: a.path, blob: a.blob, mimeType: a.mimeType } satisfies EchoAsset);
+      store.put({
+        path: a.path,
+        blob: a.blob,
+        mimeType: a.mimeType,
+      } satisfies EchoAsset);
     }
     tx.oncomplete = () => {
       db.close();
@@ -74,7 +78,7 @@ export async function storeAssetBatch(
 export async function getAsset(path: string): Promise<EchoAsset | undefined> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(ASSETS_STORE, 'readonly');
+    const tx = db.transaction(ASSETS_STORE, "readonly");
     const store = tx.objectStore(ASSETS_STORE);
     const request = store.get(path);
     request.onsuccess = () => resolve(request.result as EchoAsset | undefined);
@@ -86,7 +90,7 @@ export async function getAsset(path: string): Promise<EchoAsset | undefined> {
 export async function hasAssets(): Promise<boolean> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(ASSETS_STORE, 'readonly');
+    const tx = db.transaction(ASSETS_STORE, "readonly");
     const store = tx.objectStore(ASSETS_STORE);
     const request = store.count();
     request.onsuccess = () => resolve(request.result > 0);
@@ -98,7 +102,7 @@ export async function hasAssets(): Promise<boolean> {
 export async function getAssetCount(): Promise<number> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(ASSETS_STORE, 'readonly');
+    const tx = db.transaction(ASSETS_STORE, "readonly");
     const store = tx.objectStore(ASSETS_STORE);
     const request = store.count();
     request.onsuccess = () => resolve(request.result);
@@ -110,7 +114,7 @@ export async function getAssetCount(): Promise<number> {
 export async function wipeAll(): Promise<void> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction([ASSETS_STORE, META_STORE], 'readwrite');
+    const tx = db.transaction([ASSETS_STORE, META_STORE], "readwrite");
     tx.objectStore(ASSETS_STORE).clear();
     tx.objectStore(META_STORE).clear();
     tx.oncomplete = () => {
@@ -127,7 +131,7 @@ export async function wipeAll(): Promise<void> {
 export async function listAssetPaths(): Promise<string[]> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(ASSETS_STORE, 'readonly');
+    const tx = db.transaction(ASSETS_STORE, "readonly");
     const store = tx.objectStore(ASSETS_STORE);
     const request = store.getAllKeys();
     request.onsuccess = () => resolve(request.result as string[]);
@@ -139,21 +143,21 @@ export async function listAssetPaths(): Promise<string[]> {
 export async function getMeta(): Promise<EchoMeta | undefined> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(META_STORE, 'readonly');
+    const tx = db.transaction(META_STORE, "readonly");
     const store = tx.objectStore(META_STORE);
-    const request = store.get('config');
+    const request = store.get("config");
     request.onsuccess = () => resolve(request.result as EchoMeta | undefined);
     request.onerror = () => reject(request.error);
     tx.oncomplete = () => db.close();
   });
 }
 
-export async function setMeta(meta: Omit<EchoMeta, 'key'>): Promise<void> {
+export async function setMeta(meta: Omit<EchoMeta, "key">): Promise<void> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(META_STORE, 'readwrite');
+    const tx = db.transaction(META_STORE, "readwrite");
     const store = tx.objectStore(META_STORE);
-    const record: EchoMeta = { key: 'config', ...meta };
+    const record: EchoMeta = { key: "config", ...meta };
     const request = store.put(record);
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error);
@@ -167,7 +171,7 @@ export async function applyMapping(mapping: Record<string, string>): Promise<Map
   const result = new Map<string, string>();
 
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(ASSETS_STORE, 'readwrite');
+    const tx = db.transaction(ASSETS_STORE, "readwrite");
     const store = tx.objectStore(ASSETS_STORE);
     const request = store.openCursor();
 

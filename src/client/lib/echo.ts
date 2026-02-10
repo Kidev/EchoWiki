@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { getAsset } from './idb';
+import { useEffect, useRef, useState } from "react";
+import { getAsset } from "./idb";
 
 export function parseEchoUrl(url: string): string | null {
   const match = /^echo:\/\/(.+)$/.exec(url);
@@ -55,7 +55,10 @@ export async function preloadPaths(paths: string[]): Promise<void> {
   await Promise.all(paths.map((p) => resolveEchoPath(p)));
 }
 
-export function useEchoUrl(echoPath: string | null): { url: string | null; loading: boolean } {
+export function useEchoUrl(echoPath: string | null): {
+  url: string | null;
+  loading: boolean;
+} {
   const [url, setUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(echoPath !== null);
   const mountedRef = useRef(true);
