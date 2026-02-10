@@ -1753,7 +1753,7 @@ export const App = () => {
                 </p>
               ) : (
                 <p className="text-[var(--text-muted)] text-sm">
-                  Select your game folder to import assets locally. Files never leave your device..
+                  Select your game folder to import assets locally. Files never leave your device.
                 </p>
               )}
               <button
