@@ -29,8 +29,10 @@ export const Splash = () => {
       className="flex relative flex-col justify-center items-center min-h-screen gap-4"
       style={{ backgroundColor: '#1a1a2e', color: '#ffffff' }}
     >
-      <div className="relative flex flex-col items-center">
-        <img src="/loading.webp" alt="" width={300} height={300} />
+      <div className="ripple-container">
+        <div />
+        <div />
+        <div />
         <img
           src="/title.png"
           alt="EchoWiki"

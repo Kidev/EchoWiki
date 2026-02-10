@@ -91,9 +91,7 @@ router.get<Record<string, never>, InitResponse | ErrorResponse>(
           });
           const modList = await mods.all();
           isMod = modList.length > 0;
-        } catch {
-          //
-        }
+        } catch {}
       }
 
       res.json({

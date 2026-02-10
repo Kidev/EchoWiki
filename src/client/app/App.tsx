@@ -216,9 +216,7 @@ function extractWikiPage(href: string, subredditName: string): string | null {
         return match[2]!;
       }
     }
-  } catch {
-    //
-  }
+  } catch {}
 
   const pathMatch = /^\/r\/([^/]+)\/wiki\/(.+?)(?:\/?#.*)?$/.exec(href);
   if (pathMatch && pathMatch[1]!.toLowerCase() === sub) {
@@ -1023,7 +1021,6 @@ function SettingsView({
         onConfigChanged(data.config);
       }
     } catch {
-      //
     } finally {
       setSavingConfig(false);
     }
@@ -1069,9 +1066,7 @@ function SettingsView({
           const data: StyleResponse = await res.json();
           onStyleChanged(data.style);
         }
-      } catch {
-        //
-      }
+      } catch {}
     },
     [onStyleChanged]
   );
@@ -1398,9 +1393,7 @@ export const App = () => {
         setSubredditName(data.subredditName);
         setConfig(data.config);
         setIsMod(data.isMod);
-      } catch {
-        //
-      }
+      } catch {}
 
       const imported = await hasAssets();
       if (imported) {
@@ -1424,9 +1417,7 @@ export const App = () => {
               }
             }
           }
-        } catch {
-          //
-        }
+        } catch {}
 
         await preloadPaths([...new Set([...imagePaths, ...wikiEchoPaths])]);
         setAppState('ready');
@@ -1459,9 +1450,7 @@ export const App = () => {
           const data: StyleResponse = await styleRes.json();
           setStyle(data.style);
         }
-      } catch {
-        //
-      }
+      } catch {}
     };
     void load();
   }, [appState]);
@@ -1665,32 +1654,6 @@ export const App = () => {
 
   const isInline = getWebViewMode() === 'inline';
 
-  if (appState === 'loading') {
-    return (
-      <div
-        className="flex flex-col justify-center items-center min-h-screen"
-        style={{ ...PRE_IMPORT_VARS, backgroundColor: 'var(--bg)', color: 'var(--text)' }}
-      >
-        <div className="relative flex flex-col items-center">
-          <img src="/loading.webp" alt="" width={300} height={300} />
-          <img
-            src="/title.png"
-            alt="EchoWiki"
-            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-50 object-contain z-1"
-          />
-          {subredditName && (
-            <p
-              className="absolute left-1/2 -translate-x-1/2 text-base text-[var(--text)] whitespace-nowrap pointer-events-none"
-              style={{ bottom: 'calc(var(--spacing) * 4)', zIndex: 0 }}
-            >
-              r/{subredditName}
-            </p>
-          )}
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div
       className="flex flex-col min-h-screen"
@@ -1727,77 +1690,19 @@ export const App = () => {
         />
       )}
 
-      {appState === 'no-assets' && (
-        <div className="flex-1 flex flex-col justify-center items-center gap-6 p-6">
-          <div className="flex flex-col items-center gap-3">
-            <div className="relative flex flex-col items-center">
-              <img src="/loading.webp" alt="" width={300} height={300} />
-              <img
-                src="/title.png"
-                alt="EchoWiki"
-                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-50 object-contain z-1"
-              />
-              {subredditName && (
-                <p
-                  className="absolute left-1/2 -translate-x-1/2 text-base text-[var(--text)] whitespace-nowrap pointer-events-none"
-                  style={{ bottom: 'calc(var(--spacing) * 4)', zIndex: 0 }}
-                >
-                  r/{subredditName}
-                </p>
-              )}
-            </div>
-          </div>
-          <div className="flex flex-col items-center gap-4 max-w-md text-center">
-            {config?.gameName ? (
-              <p className="text-[var(--text-muted)] text-sm">
-                Please select the folder that contains the game{' '}
-                <div className="font-semibold text-[var(--text)]">{config.gameName}</div>
-                Those files will never leave your computer.
-              </p>
-            ) : (
-              <p className="text-[var(--text-muted)] text-sm">
-                Select your game folder to import assets locally. Files never leave your computer,
-                nothing is uploaded nor distributed anywhere.
-              </p>
-            )}
-            <button
-              className="flex items-center justify-center bg-[var(--accent)] text-white h-10 rounded-full cursor-pointer transition-all px-6 font-medium hover:scale-105 hover:font-bold hover:border-2 hover:border-white"
-              onClick={handleImport}
-            >
-              Import Game Folder
-            </button>
-            {config?.gameName && config?.storeLink && (
-              <div className="flex flex-col items-center gap-2 mt-2">
-                <p className="text-xs text-[var(--text-muted)]">
-                  You must own the game to proceed.
-                </p>
-                <button
-                  onClick={() => {
-                    try {
-                      navigateTo({ url: config.storeLink });
-                    } catch {
-                      window.open(config.storeLink, '_blank');
-                    }
-                  }}
-                  className="flex items-center justify-center h-10 rounded-full cursor-pointer transition-all px-6 font-medium text-sm border-2 border-[var(--accent)] text-[var(--accent)] hover:bg-[var(--accent)] hover:text-white hover:scale-105 hover:font-bold hover:border-white"
-                >
-                  Purchase {config.gameName}
-                </button>
-              </div>
-            )}
-            {error && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
-                {error}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {appState === 'importing' && (
-        <div className="flex-1 flex flex-col justify-center items-center gap-6 p-6">
-          <div className="relative flex flex-col items-center">
-            <img src="/loading.webp" alt="" width={300} height={300} />
+      {appState !== 'ready' && (
+        <div className="flex-1 relative flex flex-col items-center">
+          <div
+            className="ripple-container"
+            style={{
+              position: 'absolute',
+              top: appState === 'loading' ? 'calc(50% - 150px)' : '-5%',
+              transition: 'top 0.7s ease-in-out',
+            }}
+          >
+            <div />
+            <div />
+            <div />
             <img
               src="/title.png"
               alt="EchoWiki"
@@ -1805,54 +1710,107 @@ export const App = () => {
             />
             {subredditName && (
               <p
-                className="absolute left-1/2 -translate-x-1/2 text-base text-[var(--text)] whitespace-nowrap pointer-events-none"
-                style={{ bottom: 'calc(var(--spacing) * 4)', zIndex: 0 }}
+                className="absolute left-1/2 -translate-x-1/2 text-base text-[var(--text)] whitespace-nowrap pointer-events-none z-1"
+                style={{ top: '70%' }}
               >
                 r/{subredditName}
               </p>
             )}
           </div>
-          <div className="flex flex-col items-center gap-4 max-w-md w-full">
-            {progress ? (
-              <>
-                <div className="w-full">
-                  {progress.total > 0 ? (
-                    <>
-                      <div className="flex justify-end text-xs text-[var(--text-muted)] mb-1">
-                        <span>
-                          {Math.min(Math.round((progress.processed / progress.total) * 100), 100)}%
-                        </span>
-                      </div>
-                      <div
-                        className="w-full rounded-full h-1.5"
-                        style={{ backgroundColor: 'var(--thumb-bg)' }}
-                      >
-                        <div
-                          className="h-1.5 rounded-full transition-all duration-300 ease-linear"
-                          style={{
-                            width: `${Math.min((progress.processed / progress.total) * 100, 100)}%`,
-                            backgroundColor: 'var(--accent)',
-                          }}
-                        />
-                      </div>
-                    </>
-                  ) : (
-                    <p className="text-xs text-[var(--text-muted)] text-center">
-                      {progress.phase === 'detecting' ? 'Detecting engine...' : 'Extracting...'}
-                    </p>
-                  )}
-                </div>
-              </>
-            ) : (
-              <p className="text-sm text-[var(--text-muted)]">Starting import...</p>
-            )}
-            <button
-              className="text-xs px-3 py-1 rounded-full bg-red-600 text-white hover:bg-red-700 transition-colors cursor-pointer"
-              onClick={handleCancel}
+
+          {appState === 'no-assets' && (
+            <div
+              className="content-fade-in flex flex-col items-center gap-6 max-w-md text-center"
+              style={{ position: 'absolute', top: '50%' }}
             >
-              Cancel
-            </button>
-          </div>
+              {config?.gameName ? (
+                <p className="text-[var(--text-muted)] text-sm">
+                  Please select the folder that contains the game{' '}
+                  <div className="font-semibold text-[var(--text)]">{config.gameName}</div>
+                  Those files will never leave your device.
+                </p>
+              ) : (
+                <p className="text-[var(--text-muted)] text-sm">
+                  Select your game folder to import assets locally. Files never leave your device..
+                </p>
+              )}
+              <button
+                className="flex items-center justify-center bg-[var(--accent)] text-white h-10 rounded-full cursor-pointer transition-all px-6 font-medium hover:scale-105 hover:font-bold hover:border-2 hover:border-white"
+                onClick={handleImport}
+              >
+                Import Game Folder
+              </button>
+              {config?.gameName && config?.storeLink && (
+                <div className="flex flex-col items-center gap-4 mt-2">
+                  <button
+                    onClick={() => {
+                      try {
+                        navigateTo({ url: config.storeLink });
+                      } catch {
+                        window.open(config.storeLink, '_blank');
+                      }
+                    }}
+                    className="flex items-center justify-center h-10 rounded-full cursor-pointer transition-all px-6 font-medium text-xs border-2 border-[var(--accent)] text-[var(--accent)] hover:bg-[var(--accent)] hover:text-white hover:scale-105 hover:border-white"
+                  >
+                    Purchase {config.gameName}
+                  </button>
+                </div>
+              )}
+              {error && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
+                  {error}
+                </div>
+              )}
+            </div>
+          )}
+
+          {appState === 'importing' && (
+            <div
+              className="content-fade-in flex flex-col items-center gap-4 max-w-md w-full"
+              style={{ position: 'absolute', top: '50%' }}
+            >
+              {progress ? (
+                <>
+                  <div className="w-full">
+                    {progress.total > 0 ? (
+                      <>
+                        <div className="flex justify-end text-xs text-[var(--text-muted)] mb-1">
+                          <span>
+                            {Math.min(Math.round((progress.processed / progress.total) * 100), 100)}
+                            %
+                          </span>
+                        </div>
+                        <div
+                          className="w-full rounded-full h-1.5"
+                          style={{ backgroundColor: 'var(--thumb-bg)' }}
+                        >
+                          <div
+                            className="h-1.5 rounded-full transition-all duration-300 ease-linear"
+                            style={{
+                              width: `${Math.min((progress.processed / progress.total) * 100, 100)}%`,
+                              backgroundColor: 'var(--accent)',
+                            }}
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <p className="text-xs text-[var(--text-muted)] text-center">
+                        {progress.phase === 'detecting' ? 'Detecting engine...' : 'Extracting...'}
+                      </p>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <p className="text-sm text-[var(--text-muted)]">Starting import...</p>
+              )}
+              <button
+                className="text-xs px-3 py-1 rounded-full bg-red-600 text-white hover:bg-red-700 transition-colors cursor-pointer"
+                onClick={handleCancel}
+              >
+                Cancel
+              </button>
+            </div>
+          )}
         </div>
       )}
 

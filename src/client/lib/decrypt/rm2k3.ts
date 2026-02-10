@@ -123,9 +123,7 @@ export async function* processRm2k3Files(files: File[]): AsyncGenerator<Processe
         const pngBlob = await convertXyzToPng(buf);
         const path = canonical.slice(0, canonical.lastIndexOf('.')) + '.png';
         yield { path, blob: pngBlob, mimeType: 'image/png' };
-      } catch {
-        //
-      }
+      } catch {}
     } else {
       const mime = getMimeType(ext);
       yield {
