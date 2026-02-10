@@ -33,7 +33,21 @@ import type {
 import { hasAssets, getMeta, wipeAll, listAssetPaths, applyMapping } from "../lib/idb";
 import { importGameFiles } from "../lib/decrypt/index";
 import type { ImportProgress } from "../lib/decrypt/index";
-import { revokeAllBlobUrls, useEchoUrl, setReverseMapping, preloadPaths } from "../lib/echo";
+import {
+  revokeAllBlobUrls,
+  useEchoUrl,
+  setReverseMapping,
+  preloadPaths,
+  getAudioEditionParamsForPath,
+} from "../lib/echo";
+import {
+  parseEditions,
+  serializeEditions,
+  applyImageEditions,
+  getAudioEditionParams as computeAudioEditionParams,
+  type Edition,
+} from "../lib/editions";
+import { getAsset } from "../lib/idb";
 import type { EchoMeta } from "../lib/idb";
 
 type AppState = "loading" | "no-assets" | "importing" | "ready";
@@ -241,7 +255,17 @@ function formatPageName(page: string): string {
 
 function EchoInlineAsset({ path, children }: { path: string; children: ReactNode }) {
   const { url, loading } = useEchoUrl(path);
-  const name = getFileName(path);
+  const { basePath } = parseEditions(path);
+  const name = getFileName(basePath);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const audioParams = getAudioEditionParamsForPath(path);
+
+  useEffect(() => {
+    if (audioRef.current && audioParams && audioParams.playbackRate !== 1) {
+      audioRef.current.playbackRate = audioParams.playbackRate;
+      audioRef.current.preservesPitch = false;
+    }
+  }, [url, audioParams]);
 
   if (loading) {
     return (
@@ -252,17 +276,17 @@ function EchoInlineAsset({ path, children }: { path: string; children: ReactNode
     );
   }
 
-  if (isImagePath(path) && url) {
+  if (isImagePath(basePath) && url) {
     return (
       <img src={url} alt={name} className="inline-block max-w-full rounded my-1" loading="lazy" />
     );
   }
 
-  if (isAudioPath(path) && url) {
+  if (isAudioPath(basePath) && url) {
     return (
       <span className="inline-flex flex-col gap-1 my-1">
         <span className="text-xs text-[var(--text-muted)]">{children}</span>
-        <audio controls src={url} className="max-w-xs h-8" />
+        <audio ref={audioRef} controls src={url} className="max-w-xs h-8" />
       </span>
     );
   }
@@ -274,7 +298,13 @@ function EchoInlineAsset({ path, children }: { path: string; children: ReactNode
   );
 }
 
-function AudioPreview({ url }: { url: string }) {
+function AudioPreview({
+  url,
+  playbackRate = 1,
+}: {
+  url: string;
+  playbackRate?: number | undefined;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const rafRef = useRef<number>(0);
@@ -323,6 +353,13 @@ function AudioPreview({ url }: { url: string }) {
     };
   }, [url]);
 
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.playbackRate = playbackRate;
+      audioRef.current.preservesPitch = false;
+    }
+  }, [playbackRate]);
+
   return (
     <div className="flex flex-col items-center gap-3 w-full max-w-sm">
       <canvas ref={canvasRef} width={320} height={100} className="w-full rounded bg-gray-800" />
@@ -346,11 +383,93 @@ function AssetPreview({
   const { url, loading } = useEchoUrl(path);
   const displayName = toDisplayName(mappedPath ?? path);
   const echoPath = mappedPath ?? path;
-  const [hovered, setHovered] = useState(false);
+
+  const [editions, setEditions] = useState<Edition[]>([]);
+  const [editedUrl, setEditedUrl] = useState<string | null>(null);
+  const [spriteRows, setSpriteRows] = useState(0);
+  const [spriteCols, setSpriteCols] = useState(0);
+  const [spriteOpen, setSpriteOpen] = useState(false);
+  const [spriteHover, setSpriteHover] = useState<number | null>(null);
+  const [speed, setSpeed] = useState(1.0);
+  const [pitch, setPitch] = useState(0);
+  const [imgSize, setImgSize] = useState<{ w: number; h: number } | null>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  const hasCrop = editions.some((e) => e.type === "crop");
+  const spriteEd = editions.find((e) => e.type === "sprite");
+  const selectedSpriteIndex = spriteEd?.type === "sprite" ? spriteEd.index : null;
+
+  useEffect(() => {
+    if (category !== "images" || !url) {
+      setEditedUrl(null);
+      return;
+    }
+    if (editions.length === 0) {
+      setEditedUrl(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const blob = await resolveOriginalBlob(path);
+      if (!blob || cancelled) return;
+      const result = await applyImageEditions(blob, editions);
+      if (cancelled) return;
+      const blobUrl = URL.createObjectURL(result);
+      setEditedUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return blobUrl;
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [editions, category, url, path]);
+
+  useEffect(() => {
+    return () => {
+      if (editedUrl) URL.revokeObjectURL(editedUrl);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const audioEditionParams = useMemo(() => {
+    if (category !== "audio") return null;
+    return computeAudioEditionParams(editions);
+  }, [editions, category]);
+
+  const fullEchoPath = useMemo(() => {
+    if (editions.length === 0) return echoPath;
+    return serializeEditions(echoPath, editions);
+  }, [echoPath, editions]);
+
+  const editedDisplayName = useMemo(() => {
+    if (editions.length === 0) return displayName;
+    const parts: string[] = [];
+    const crop = editions.find((e) => e.type === "crop");
+    const sprite = editions.find((e) => e.type === "sprite");
+    const speedEd = editions.find((e) => e.type === "speed");
+    const pitchEd = editions.find((e) => e.type === "pitch");
+    if (crop) parts.push("cropped");
+    if (sprite && sprite.type === "sprite") {
+      parts.push(`${sprite.cols}x${sprite.rows}, sprite ${sprite.index}`);
+    }
+    const audioParts: string[] = [];
+    if (pitchEd && pitchEd.type === "pitch") {
+      const v = pitchEd.value;
+      audioParts.push(`pitch ${v >= 0 ? `+${v}` : String(v)}`);
+    }
+    if (speedEd && speedEd.type === "speed") {
+      audioParts.push(`${Math.round(speedEd.value * 100)}% speed`);
+    }
+    if (audioParts.length > 0) {
+      parts.push(audioParts.join(" at "));
+    }
+    return parts.length > 0 ? `${displayName} ${parts.join(", ")}` : displayName;
+  }, [displayName, editions]);
 
   const echoMarkdown = isImagePath(path)
-    ? `![${displayName}](echo://${echoPath})`
-    : `[${displayName}](echo://${echoPath})`;
+    ? `![${editedDisplayName}](echo://${fullEchoPath})`
+    : `[${editedDisplayName}](echo://${fullEchoPath})`;
 
   const originalMarkdown = isImagePath(path)
     ? `![${toDisplayName(path)}](echo://${path})`
@@ -372,61 +491,288 @@ function AssetPreview({
     return () => window.removeEventListener("keydown", handler);
   }, [onClose]);
 
+  const toggleCrop = useCallback(() => {
+    setEditions((prev) =>
+      prev.some((e) => e.type === "crop")
+        ? prev.filter((e) => e.type !== "crop")
+        : [{ type: "crop" as const }, ...prev],
+    );
+  }, []);
+
+  const handleSpriteClick = useCallback(
+    (index: number) => {
+      if (spriteRows <= 0 || spriteCols <= 0) return;
+      setEditions((prev) => {
+        const without = prev.filter((e) => e.type !== "sprite");
+        return [...without, { type: "sprite" as const, rows: spriteRows, cols: spriteCols, index }];
+      });
+    },
+    [spriteRows, spriteCols],
+  );
+
+  const clearSprite = useCallback(() => {
+    setEditions((prev) => prev.filter((e) => e.type !== "sprite"));
+    setSpriteRows(0);
+    setSpriteCols(0);
+    setSpriteOpen(false);
+  }, []);
+
+  const toggleSprite = useCallback(() => {
+    setSpriteOpen((prev) => {
+      if (prev) {
+        setEditions((eds) => eds.filter((e) => e.type !== "sprite"));
+        setSpriteRows(0);
+        setSpriteCols(0);
+        return false;
+      }
+      const fileName = getFileName(mappedPath ?? path);
+      const m = /(\d+)x(\d+)/i.exec(fileName);
+      if (m) {
+        const c = parseInt(m[1]!, 10);
+        const r = parseInt(m[2]!, 10);
+        if (c > 0 && r > 0) {
+          setSpriteCols(c);
+          setSpriteRows(r);
+        }
+      }
+      return true;
+    });
+  }, [path, mappedPath]);
+
+  const handleSpeedChange = useCallback((v: number) => {
+    setSpeed(v);
+    setEditions((prev) => {
+      const without = prev.filter((e) => e.type !== "speed");
+      if (v === 1.0) return without;
+      return [...without, { type: "speed" as const, value: v }];
+    });
+  }, []);
+
+  const handlePitchChange = useCallback((v: number) => {
+    setPitch(v);
+    setEditions((prev) => {
+      const without = prev.filter((e) => e.type !== "pitch");
+      if (v === 0) return without;
+      return [...without, { type: "pitch" as const, value: v }];
+    });
+  }, []);
+
+  const handleImgLoad = useCallback(() => {
+    if (imgRef.current) {
+      setImgSize({ w: imgRef.current.naturalWidth, h: imgRef.current.naturalHeight });
+    }
+  }, []);
+
+  const showUrl = editedUrl ?? url;
+
+  const showSpriteGrid =
+    category === "images" &&
+    spriteOpen &&
+    spriteRows > 0 &&
+    spriteCols > 0 &&
+    imgSize &&
+    !hasCrop &&
+    selectedSpriteIndex === null;
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
       onClick={onClose}
     >
       <div
-        className="relative flex flex-col items-center gap-4 max-w-[90vw] max-h-[90vh]"
+        className="relative flex flex-col items-center max-w-[90vw] max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
         onContextMenu={(e) => {
           e.preventDefault();
           handleCopy();
         }}
       >
-        <button
-          onClick={handleCopy}
-          className={`absolute top-2 right-2 z-10 p-2 rounded-lg bg-black/50 text-white transition-opacity cursor-pointer ${hovered ? "opacity-100" : "opacity-0"}`}
-          title="Copy echo link (Ctrl+click for original name)"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-            />
-          </svg>
-        </button>
-
         {loading ? (
           <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-        ) : category === "images" && url ? (
+        ) : category === "images" && showUrl ? (
           <div
-            className="rounded border border-white/20 p-1"
+            className="relative rounded-t border border-white/20 border-b-0 p-1 overflow-hidden"
             style={{ backgroundColor: "var(--thumb-bg)" }}
           >
             <img
-              src={url}
+              ref={imgRef}
+              src={showUrl}
               alt={displayName}
-              className="max-w-full max-h-[80vh] object-contain rounded"
+              className="max-w-full max-h-[60vh] object-contain rounded"
+              onLoad={handleImgLoad}
             />
+            {showSpriteGrid && imgRef.current && (
+              <div
+                className="absolute pointer-events-auto"
+                style={{
+                  top: imgRef.current.offsetTop,
+                  left: imgRef.current.offsetLeft,
+                  width: imgRef.current.clientWidth,
+                  height: imgRef.current.clientHeight,
+                  display: "grid",
+                  gridTemplateRows: `repeat(${spriteRows}, 1fr)`,
+                  gridTemplateColumns: `repeat(${spriteCols}, 1fr)`,
+                }}
+              >
+                {Array.from({ length: spriteRows * spriteCols }, (_, i) => (
+                  <div
+                    key={i}
+                    className="border border-white/30 cursor-pointer transition-colors"
+                    style={{
+                      backgroundColor: spriteHover === i ? "rgba(255,255,255,0.25)" : "transparent",
+                    }}
+                    onMouseEnter={() => setSpriteHover(i)}
+                    onMouseLeave={() => setSpriteHover(null)}
+                    onClick={() => handleSpriteClick(i)}
+                  />
+                ))}
+              </div>
+            )}
           </div>
-        ) : category === "audio" && url ? (
-          <AudioPreview url={url} />
+        ) : category === "audio" && showUrl ? (
+          <AudioPreview url={showUrl} playbackRate={audioEditionParams?.playbackRate} />
         ) : (
           <div className="flex items-center justify-center w-32 h-32 rounded bg-gray-800 text-gray-400 text-sm">
             No preview
           </div>
         )}
 
-        <span className="text-white text-sm bg-black/40 px-3 py-1 rounded">{displayName}</span>
+        <div
+          className="flex flex-col w-full px-3 py-1.5 rounded-b gap-1"
+          style={{ backgroundColor: "var(--accent)" }}
+        >
+          <div className="text-white text-xs truncate w-full text-left">
+            {displayName}
+            {editions.length > 0 && (
+              <span className="text-white/70 ml-1">{serializeEditions("", editions)}</span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 w-full">
+            {category === "images" && url && (
+              <>
+                <button
+                  onClick={toggleCrop}
+                  className={`text-[10px] px-2 py-0.5 rounded-full cursor-pointer transition-colors flex-shrink-0 ${
+                    hasCrop
+                      ? "bg-white text-[var(--accent)] font-medium"
+                      : "bg-white/20 text-white hover:bg-white/30"
+                  }`}
+                >
+                  Crop
+                </button>
+                <div className="w-px h-4 bg-white/30 flex-shrink-0" />
+                {selectedSpriteIndex !== null ? (
+                  <button
+                    onClick={clearSprite}
+                    className="text-[10px] px-2 py-0.5 rounded-full cursor-pointer bg-white text-[var(--accent)] font-medium flex-shrink-0"
+                  >
+                    Sprite #{selectedSpriteIndex} &times;
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <button
+                      onClick={toggleSprite}
+                      className={`text-[10px] px-2 py-0.5 rounded-full cursor-pointer transition-colors ${
+                        spriteOpen
+                          ? "bg-white text-[var(--accent)] font-medium"
+                          : "bg-white/20 text-white hover:bg-white/30"
+                      }`}
+                    >
+                      Sprite
+                    </button>
+                    {spriteOpen && (
+                      <>
+                        <input
+                          type="number"
+                          min={0}
+                          max={64}
+                          placeholder="C"
+                          value={spriteCols || ""}
+                          onChange={(e) =>
+                            setSpriteCols(Math.max(0, parseInt(e.target.value) || 0))
+                          }
+                          className="w-8 text-[10px] text-center px-0.5 py-0.5 rounded bg-white/20 text-white border border-white/30 focus:outline-none"
+                        />
+                        <span className="text-white/50 text-[10px]">&times;</span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={64}
+                          placeholder="R"
+                          value={spriteRows || ""}
+                          onChange={(e) =>
+                            setSpriteRows(Math.max(0, parseInt(e.target.value) || 0))
+                          }
+                          className="w-8 text-[10px] text-center px-0.5 py-0.5 rounded bg-white/20 text-white border border-white/30 focus:outline-none"
+                        />
+                      </>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+
+            {category === "audio" && url && (
+              <>
+                <label className="flex items-center gap-1 text-white/80 text-[10px] flex-1 min-w-0">
+                  <span className="flex-shrink-0">Spd</span>
+                  <input
+                    type="range"
+                    min={0.25}
+                    max={4}
+                    step={0.05}
+                    value={speed}
+                    onChange={(e) => handleSpeedChange(parseFloat(e.target.value))}
+                    className="flex-1 min-w-0"
+                  />
+                  <span className="w-7 text-right font-mono flex-shrink-0">{speed.toFixed(1)}</span>
+                </label>
+                <div className="w-px h-4 bg-white/30 flex-shrink-0" />
+                <label className="flex items-center gap-1 text-white/80 text-[10px] flex-1 min-w-0">
+                  <span className="flex-shrink-0">Pit</span>
+                  <input
+                    type="range"
+                    min={-12}
+                    max={12}
+                    step={0.5}
+                    value={pitch}
+                    onChange={(e) => handlePitchChange(parseFloat(e.target.value))}
+                    className="flex-1 min-w-0"
+                  />
+                  <span className="w-7 text-right font-mono flex-shrink-0">
+                    {pitch >= 0 ? `+${pitch.toFixed(0)}` : pitch.toFixed(0)}
+                  </span>
+                </label>
+              </>
+            )}
+
+            <div className="flex-1" />
+            <button
+              onClick={handleCopy}
+              className="flex items-center gap-1 text-white text-[10px] font-medium cursor-pointer hover:opacity-80 transition-opacity flex-shrink-0 bg-white/20 px-2 py-0.5 rounded-full"
+              title="Copy echo link (Ctrl+click for original name)"
+            >
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                />
+              </svg>
+              Copy ECHO
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
+}
+
+async function resolveOriginalBlob(path: string): Promise<Blob | null> {
+  const asset = await getAsset(path.toLowerCase());
+  return asset?.blob ?? null;
 }
 
 function WikiView({
@@ -1367,6 +1713,8 @@ export const App = () => {
   const [pathToMapped, setPathToMapped] = useState<Map<string, string>>(new Map());
 
   const [mismatchWarning, setMismatchWarning] = useState<string | null>(null);
+  const [mappingUpdateInfo, setMappingUpdateInfo] = useState<string | null>(null);
+  const mappingRef = useRef<Record<string, string> | null>(null);
   const [style, setStyle] = useState<StyleConfig>({ ...DEFAULT_STYLE });
   const [isDark, setIsDark] = useState(
     () => window.matchMedia("(prefers-color-scheme: dark)").matches,
@@ -1378,6 +1726,10 @@ export const App = () => {
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
   }, []);
+
+  useEffect(() => {
+    mappingRef.current = mapping;
+  }, [mapping]);
 
   const [previewPath, setPreviewPath] = useState<string | null>(null);
 
@@ -1435,7 +1787,7 @@ export const App = () => {
           if (wikiRes?.ok) {
             const data: WikiResponse = await wikiRes.json();
             if (data.content) {
-              const re = /echo:\/\/([^\s)"\]]+)/g;
+              const re = /echo:\/\/([^\s)"]+)/g;
               let em;
               while ((em = re.exec(data.content)) !== null) {
                 if (em[1]) wikiEchoPaths.push(em[1].toLowerCase());
@@ -1660,6 +2012,8 @@ export const App = () => {
 
   const handleMappingSaved = useCallback(
     (newText: string, newMapping: Record<string, string> | null) => {
+      const oldMapping = mappingRef.current;
+
       setMappingText(newText);
       setMapping(newMapping);
       if (newMapping) {
@@ -1670,6 +2024,72 @@ export const App = () => {
       } else {
         setPathToMapped(new Map());
         setReverseMapping(null);
+      }
+
+      const lostNames = new Map<string, string>();
+      if (oldMapping) {
+        for (const [originalKey, oldMappedValue] of Object.entries(oldMapping)) {
+          if (newMapping?.[originalKey] !== oldMappedValue) {
+            lostNames.set(oldMappedValue, originalKey);
+          }
+        }
+      }
+
+      if (lostNames.size > 0) {
+        void (async () => {
+          try {
+            const pagesRes = await fetch("/api/wiki/pages");
+            if (!pagesRes.ok) return;
+            const pagesData: WikiPagesResponse = await pagesRes.json();
+            let totalReplacements = 0;
+            const updatedPages: string[] = [];
+
+            for (const page of pagesData.pages) {
+              const wikiRes = await fetch(`/api/wiki?page=${encodeURIComponent(page)}`);
+              if (!wikiRes.ok) continue;
+              const wikiData: WikiResponse = await wikiRes.json();
+              if (!wikiData.content) continue;
+
+              let content = wikiData.content;
+              let changed = false;
+              for (const [lostName, originalKey] of lostNames) {
+                const escaped = lostName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                const re = new RegExp(
+                  `(echo://[^\\s)"]*?)${escaped}(\\.[a-zA-Z0-9]+(?:\\?[^\\s)"]*)?)`,
+                  "gi",
+                );
+                const newContent = content.replace(re, `$1${originalKey}$2`);
+                if (newContent !== content) {
+                  const matches = content.match(re);
+                  totalReplacements += matches?.length ?? 0;
+                  content = newContent;
+                  changed = true;
+                }
+              }
+
+              if (changed) {
+                const updateRes = await fetch("/api/wiki/update", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    page,
+                    content,
+                    reason: "EchoWiki: auto-replace stale mapped names",
+                  }),
+                });
+                if (updateRes.ok) {
+                  updatedPages.push(page);
+                }
+              }
+            }
+
+            if (updatedPages.length > 0) {
+              setMappingUpdateInfo(
+                `Updated ${totalReplacements} echo link${totalReplacements !== 1 ? "s" : ""} in ${updatedPages.join(", ")}`,
+              );
+            }
+          } catch {}
+        })();
       }
     },
     [],
@@ -1943,6 +2363,25 @@ export const App = () => {
               <button
                 onClick={() => setMismatchWarning(null)}
                 className="ml-3 flex-shrink-0 text-yellow-600 hover:text-yellow-800 cursor-pointer"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+          )}
+
+          {mappingUpdateInfo && (
+            <div className="flex items-center justify-between px-4 py-2 bg-green-50 border-b border-green-200 text-sm text-green-800">
+              <span>{mappingUpdateInfo}</span>
+              <button
+                onClick={() => setMappingUpdateInfo(null)}
+                className="ml-3 flex-shrink-0 text-green-600 hover:text-green-800 cursor-pointer"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path

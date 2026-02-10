@@ -107,6 +107,17 @@ export type StyleUpdateRequest = {
   fontFamily?: FontFamily | undefined;
 };
 
+export type WikiUpdateRequest = {
+  page: string;
+  content: string;
+  reason: string;
+};
+
+export type WikiUpdateResponse = {
+  type: "wiki-updated";
+  page: string;
+};
+
 export type ErrorResponse = {
   status: "error";
   message: string;

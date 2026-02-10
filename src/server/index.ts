@@ -18,6 +18,8 @@ import type {
   WikiFontSize,
   WikiPagesResponse,
   WikiResponse,
+  WikiUpdateRequest,
+  WikiUpdateResponse,
 } from "../shared/types/api";
 import type { UiResponse } from "@devvit/web/shared";
 import { redis, reddit, createServer, context, getServerPort } from "@devvit/web/server";
@@ -25,7 +27,7 @@ import { createPost } from "./core/post";
 
 const app = express();
 
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.text());
 
@@ -417,6 +419,34 @@ router.get<Record<string, never>, WikiResponse | ErrorResponse>(
       res.json({ type: "wiki", content: page.content });
     } catch {
       res.json({ type: "wiki", content: null });
+    }
+  },
+);
+
+router.post<Record<string, never>, WikiUpdateResponse | ErrorResponse, WikiUpdateRequest>(
+  "/api/wiki/update",
+  async (req, res): Promise<void> => {
+    try {
+      const subreddit = context.subredditName;
+      if (!subreddit) {
+        res.status(400).json({
+          status: "error",
+          message: "Subreddit context not available",
+        });
+        return;
+      }
+      const body = req.body as WikiUpdateRequest;
+      await reddit.updateWikiPage({
+        subredditName: subreddit,
+        page: body.page,
+        content: body.content,
+        reason: body.reason,
+      });
+      res.json({ type: "wiki-updated", page: body.page });
+    } catch (error) {
+      const message =
+        error instanceof Error ? `Failed to update wiki: ${error.message}` : "Unknown error";
+      res.status(400).json({ status: "error", message });
     }
   },
 );

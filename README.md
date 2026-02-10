@@ -2,6 +2,8 @@
 
 For all the communities sharing their passion for an RPG Maker game, this app turns your subreddit wiki into an interactive and rich experience. Users owning the same game bring their own files from their own copy, those assets are processed and stored locally in their browser, and are displayed when they encounter echo links in the wiki. Nothing is uploaded to any server.
 
+[EchoWiki is available on GitHub](https://github.com/Kidev/EchoWiki)
+
 ## How It Works
 
 **Import**: Users select their game folder. The app auto-detects the engine and extracts assets entirely in the browser. Nothing is uploaded.
@@ -20,6 +22,28 @@ Standard markdown with the `echo://` scheme:
 ```
 
 Users who have imported the game see resolved assets inline. Everyone else (and those reading the raw wiki on Reddit) sees the alt text only.
+
+## Asset Editions
+
+Echo links support edition parameters that transform how assets are displayed. Editions use URL query-parameter syntax (`?` and `&`) appended to the path and are applied client-side in real-time.
+
+Available editions:
+
+| Edition    | Syntax                    | Description                                             |
+| ---------- | ------------------------- | ------------------------------------------------------- |
+| **Crop**   | `?crop`                   | Trims transparent pixels from all edges of the image    |
+| **Sprite** | `?sprite=cols,rows,index` | Extracts a single cell from a sprite sheet grid         |
+| **Speed**  | `?speed=value`            | Sets audio playback speed (0.25 to 4.0, default 1.0)    |
+| **Pitch**  | `?pitch=value`            | Shifts audio pitch in semitones (-12 to +12, default 0) |
+
+Editions can be combined with `&`:
+
+```markdown
+![Hero walking](echo://img/characters/actor1.png?crop&sprite=12,8,3)
+[Battle theme fast](echo://audio/bgm/battle.ogg?speed=2.0&pitch=-3)
+```
+
+The asset preview lightbox includes interactive controls for applying editions. The generated echo link (copied via the "Copy ECHO" button) automatically includes the active edition suffixes.
 
 ## Supported Engines
 
@@ -68,6 +92,8 @@ Moderators see a Settings tab with three sections:
 ### Filename Mapping
 
 A textarea where mods define `"original": "mapped"` pairs (one per line, comments supported). A live preview table shows the parsed mappings below the editor. Mapped names replace raw filenames in the asset browser and echo links. No code execution: parsing uses a simple regex to extract key-value pairs from the text.
+
+When a mapping is changed or removed, any wiki echo links that referenced the old mapped name are automatically replaced with the original hash name. The moderator is shown a notification with the number of replacements and which pages were updated. This prevents stale mapped names from breaking wiki content.
 
 Example:
 

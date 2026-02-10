@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { getAsset } from "./idb";
+import {
+  parseEditions,
+  applyImageEditions,
+  getAudioEditionParams as computeAudioEditionParams,
+  getEditionBlobUrl,
+  setEditionBlobUrl,
+  revokeAllEditionBlobUrls,
+  type AudioEditionParams,
+} from "./editions";
 
 export function parseEchoUrl(url: string): string | null {
   const match = /^echo:\/\/(.+)$/.exec(url);
@@ -8,6 +17,7 @@ export function parseEchoUrl(url: string): string | null {
 }
 
 const blobUrlCache = new Map<string, string>();
+const audioEditionParamsCache = new Map<string, AudioEditionParams>();
 
 let reverseMapping: Map<string, string> | null = null;
 
@@ -22,26 +32,72 @@ export function setReverseMapping(pathToMapped: Map<string, string> | null): voi
   }
 }
 
-export async function resolveEchoPath(path: string): Promise<string | null> {
-  const normalized = path.toLowerCase();
+function isImagePath(p: string): boolean {
+  return /\.(png|jpg|jpeg|gif|bmp|webp)$/i.test(p);
+}
 
-  const cached = blobUrlCache.get(normalized);
-  if (cached) return cached;
+function isAudioPath(p: string): boolean {
+  return /\.(ogg|mp3|m4a|wav|mid|midi)$/i.test(p);
+}
 
+async function resolveBaseAsset(normalized: string): Promise<Blob | null> {
   let asset = await getAsset(normalized);
-
   if (!asset && reverseMapping) {
     const originalPath = reverseMapping.get(normalized);
     if (originalPath) {
       asset = await getAsset(originalPath);
     }
   }
+  return asset?.blob ?? null;
+}
 
-  if (!asset) return null;
+export async function resolveEchoPath(path: string): Promise<string | null> {
+  const normalized = path.toLowerCase();
+  const { basePath, editions } = parseEditions(normalized);
 
-  const url = URL.createObjectURL(asset.blob);
-  blobUrlCache.set(normalized, url);
+  if (editions.length === 0) {
+    const cached = blobUrlCache.get(normalized);
+    if (cached) return cached;
+
+    const blob = await resolveBaseAsset(normalized);
+    if (!blob) return null;
+
+    const url = URL.createObjectURL(blob);
+    blobUrlCache.set(normalized, url);
+    return url;
+  }
+
+  const editionCached = getEditionBlobUrl(normalized);
+  if (editionCached) return editionCached;
+
+  const blob = await resolveBaseAsset(basePath);
+  if (!blob) return null;
+
+  if (isImagePath(basePath)) {
+    const editedBlob = await applyImageEditions(blob, editions);
+    const url = URL.createObjectURL(editedBlob);
+    setEditionBlobUrl(normalized, url);
+    return url;
+  }
+
+  if (isAudioPath(basePath)) {
+    const params = computeAudioEditionParams(editions);
+    const baseUrl = blobUrlCache.get(basePath) ?? URL.createObjectURL(blob);
+    if (!blobUrlCache.has(basePath)) {
+      blobUrlCache.set(basePath, baseUrl);
+    }
+    audioEditionParamsCache.set(normalized, params);
+    setEditionBlobUrl(normalized, baseUrl);
+    return baseUrl;
+  }
+
+  const url = URL.createObjectURL(blob);
+  setEditionBlobUrl(normalized, url);
   return url;
+}
+
+export function getAudioEditionParamsForPath(echoPath: string): AudioEditionParams | null {
+  return audioEditionParamsCache.get(echoPath.toLowerCase()) ?? null;
 }
 
 export function revokeAllBlobUrls(): void {
@@ -49,6 +105,8 @@ export function revokeAllBlobUrls(): void {
     URL.revokeObjectURL(url);
   }
   blobUrlCache.clear();
+  revokeAllEditionBlobUrls();
+  audioEditionParamsCache.clear();
 }
 
 export async function preloadPaths(paths: string[]): Promise<void> {

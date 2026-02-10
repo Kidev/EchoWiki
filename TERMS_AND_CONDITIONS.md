@@ -52,7 +52,7 @@ EchoWiki runs on Reddit's Devvit platform and is subject to Reddit's own Terms o
 
 ## 8. Data Handling
 
-See the [Privacy Policy](PRIVACY_POLICY.md) for details on how EchoWiki handles data. In summary: no personal data is collected, no game files are uploaded, and subreddit configuration is stored only within Reddit's infrastructure.
+See the [PRIVACY_POLICY.md](https://raw.githubusercontent.com/Kidev/EchoWiki/refs/heads/main/PRIVACY_POLICY.md) for details on how EchoWiki handles data. In summary: no personal data is collected, no game files are uploaded, and subreddit configuration is stored only within Reddit's infrastructure.
 
 ## 9. Changes to These Terms
 
