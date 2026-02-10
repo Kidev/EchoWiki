@@ -23,7 +23,7 @@
   "menu": {
     "items": [
       {
-        "label": "Create an EchoWiki post",
+        "label": "Create EchoWiki",
         "forUserType": "moderator",
         "location": "subreddit",
         "endpoint": "/internal/menu/post-create"
@@ -32,5 +32,8 @@
   },
   "dev": {
     "subreddit": "echo_wiki_dev"
+  },
+  "marketingAssets": {
+    "icon": "assets/icon.png"
   }
 }

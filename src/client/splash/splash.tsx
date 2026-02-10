@@ -30,11 +30,11 @@ export const Splash = () => {
       style={{ backgroundColor: '#1a1a2e', color: '#ffffff' }}
     >
       <div className="relative flex flex-col items-center">
-        <img src="/loading.webp" alt="" className="w-32 h-32 object-contain" />
+        <img src="/loading.webp" alt="" width={300} height={300} />
         <img
           src="/title.png"
           alt="EchoWiki"
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-32 object-contain"
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-50 object-contain z-1"
         />
       </div>
 

@@ -1672,7 +1672,7 @@ export const App = () => {
         style={{ ...PRE_IMPORT_VARS, backgroundColor: 'var(--bg)', color: 'var(--text)' }}
       >
         <div className="relative flex flex-col items-center">
-          <img src="/loading.webp" alt="" className="w-50 h-50 object-contain" />
+          <img src="/loading.webp" alt="" width={300} height={300} />
           <img
             src="/title.png"
             alt="EchoWiki"
@@ -1731,7 +1731,7 @@ export const App = () => {
         <div className="flex-1 flex flex-col justify-center items-center gap-6 p-6">
           <div className="flex flex-col items-center gap-3">
             <div className="relative flex flex-col items-center">
-              <img src="/loading.webp" alt="" className="w-50 h-50 object-contain" />
+              <img src="/loading.webp" alt="" width={300} height={300} />
               <img
                 src="/title.png"
                 alt="EchoWiki"
@@ -1797,7 +1797,7 @@ export const App = () => {
       {appState === 'importing' && (
         <div className="flex-1 flex flex-col justify-center items-center gap-6 p-6">
           <div className="relative flex flex-col items-center">
-            <img src="/loading.webp" alt="" className="w-50 h-50 object-contain" />
+            <img src="/loading.webp" alt="" width={300} height={300} />
             <img
               src="/title.png"
               alt="EchoWiki"

@@ -15,12 +15,9 @@ EchoWiki is a Reddit Devvit app that lets subreddit communities browse and refer
 
 ### 1. Reddit Account Information
 
-When you open EchoWiki, the app reads your **Reddit username** and **moderator status** for the current subreddit through Reddit's own platform APIs. This is used solely to:
+When you open EchoWiki, the app reads your **moderator status** for the current subreddit through Reddit's own platform APIs. This is used solely to determine whether to show moderator-only settings.
 
-- Display your username in the interface.
-- Determine whether to show moderator-only settings.
-
-This information is provided by Reddit's Devvit platform as part of the app's execution context. EchoWiki does not store your username or moderator status anywhere. It is read on each page load and discarded when you leave.
+This information is provided by Reddit's Devvit platform as part of the app's execution context. EchoWiki does not store your moderator status anywhere. It is read on each page load and discarded when you leave.
 
 ### 2. Game Files (Client-Side Only)
 
