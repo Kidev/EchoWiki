@@ -28,7 +28,7 @@ import type {
 import { hasAssets, getMeta, wipeAll, listAssetPaths, applyMapping } from '../lib/idb';
 import { importGameFiles } from '../lib/decrypt/index';
 import type { ImportProgress } from '../lib/decrypt/index';
-import { revokeAllBlobUrls, useEchoUrl, setReverseMapping } from '../lib/echo';
+import { revokeAllBlobUrls, useEchoUrl, setReverseMapping, preloadPaths } from '../lib/echo';
 import type { EchoMeta } from '../lib/idb';
 
 type AppState = 'loading' | 'no-assets' | 'importing' | 'ready';
@@ -86,6 +86,18 @@ const CONTROL_TEXT_PRESETS = ['#111827', '#1f2937', '#374151', '#4b5563'] as con
 const DARK_CONTROL_BG_PRESETS = ['#343536', '#374151', '#1f2937', '#4b5563'] as const;
 
 const DARK_CONTROL_TEXT_PRESETS = ['#d7dadc', '#e5e7eb', '#f9fafb', '#ffffff'] as const;
+
+const PRE_IMPORT_VARS: CSSProperties = {
+  '--accent': '#6a5cff',
+  '--accent-hover': '#5a4ee6',
+  '--accent-ring': 'rgba(106, 92, 255, 0.2)',
+  '--bg': '#1a1a2e',
+  '--text': '#ffffff',
+  '--text-muted': '#677db7',
+  '--thumb-bg': '#16213e',
+  '--control-bg': '#16213e',
+  '--control-text': '#ffffff',
+} as CSSProperties;
 
 const FONT_MAP: Record<FontFamily, string> = {
   system: 'ui-sans-serif, system-ui, -apple-system, sans-serif',
@@ -148,6 +160,29 @@ function getSubfolder(p: string): string | null {
 function naturalSortKey(p: string, pathToMapped: Map<string, string>): string {
   const mapped = pathToMapped.get(p);
   return getFileName(mapped ?? p).toLowerCase();
+}
+
+function getFirstVisibleImagePaths(allPaths: string[]): string[] {
+  const images = allPaths.filter(isImagePath);
+  const folderCounts = new Map<string, number>();
+  for (const p of images) {
+    const folder = getSubfolder(p);
+    if (folder) folderCounts.set(folder, (folderCounts.get(folder) ?? 0) + 1);
+  }
+  const firstFolder =
+    [...folderCounts.entries()]
+      .sort(([a], [b]) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+      .map(([name]) => name)[0] ?? null;
+  const filtered = firstFolder ? images.filter((p) => getSubfolder(p) === firstFolder) : images;
+  const empty = new Map<string, string>();
+  return [...filtered]
+    .sort((a, b) =>
+      naturalSortKey(a, empty).localeCompare(naturalSortKey(b, empty), undefined, {
+        numeric: true,
+        sensitivity: 'base',
+      })
+    )
+    .slice(0, PAGE_SIZE);
 }
 
 function toDisplayName(path: string): string {
@@ -314,9 +349,17 @@ function AssetPreview({
     ? `![${displayName}](echo://${echoPath})`
     : `[${displayName}](echo://${echoPath})`;
 
-  const handleCopy = useCallback(() => {
-    void navigator.clipboard.writeText(echoMarkdown).then(() => onCopied(path));
-  }, [echoMarkdown, onCopied, path]);
+  const originalMarkdown = isImagePath(path)
+    ? `![${toDisplayName(path)}](echo://${path})`
+    : `[${toDisplayName(path)}](echo://${path})`;
+
+  const handleCopy = useCallback(
+    (e?: ReactMouseEvent) => {
+      const text = e && (e.ctrlKey || e.metaKey) ? originalMarkdown : echoMarkdown;
+      void navigator.clipboard.writeText(text).then(() => onCopied(path));
+    },
+    [echoMarkdown, originalMarkdown, onCopied, path]
+  );
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -344,7 +387,7 @@ function AssetPreview({
         <button
           onClick={handleCopy}
           className={`absolute top-2 right-2 z-10 p-2 rounded-lg bg-black/50 text-white transition-opacity cursor-pointer ${hovered ? 'opacity-100' : 'opacity-0'}`}
-          title="Copy echo link"
+          title="Copy echo link (Ctrl+click for original name)"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path
@@ -670,6 +713,10 @@ function AssetCard({
     ? `![${displayName}](echo://${echoPath})`
     : `[${displayName}](echo://${echoPath})`;
 
+  const originalMarkdown = isImagePath(path)
+    ? `![${toDisplayName(path)}](echo://${path})`
+    : `[${toDisplayName(path)}](echo://${path})`;
+
   const handleClick = useCallback(() => {
     onPreview(path);
   }, [onPreview, path]);
@@ -677,9 +724,10 @@ function AssetCard({
   const handleCopy = useCallback(
     (e: ReactMouseEvent) => {
       e.stopPropagation();
-      void navigator.clipboard.writeText(echoMarkdown).then(() => onCopied(path));
+      const text = e.ctrlKey || e.metaKey ? originalMarkdown : echoMarkdown;
+      void navigator.clipboard.writeText(text).then(() => onCopied(path));
     },
-    [echoMarkdown, onCopied, path]
+    [echoMarkdown, originalMarkdown, onCopied, path]
   );
 
   const thumbClass =
@@ -758,7 +806,7 @@ function AssetCard({
         <button
           className="flex-shrink-0 text-gray-300 hover:text-[var(--accent)] transition-colors cursor-pointer p-0.5"
           onClick={handleCopy}
-          title="Copy echo link"
+          title="Copy echo link (Ctrl+click for original name)"
         >
           <svg className={copyIconClass} fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path
@@ -1278,7 +1326,6 @@ function SettingsView({
 export const App = () => {
   const [appState, setAppState] = useState<AppState>('loading');
   const [activeTab, setActiveTab] = useState<ActiveTab>('wiki');
-  const [username, setUsername] = useState('');
   const [subredditName, setSubredditName] = useState('');
   const [config, setConfig] = useState<GameConfig | null>(null);
   const [isMod, setIsMod] = useState(false);
@@ -1342,11 +1389,12 @@ export const App = () => {
 
   useEffect(() => {
     const init = async () => {
+      const wikiPromise = fetch('/api/wiki').catch(() => null);
+
       try {
         const res = await fetch('/api/init');
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data: InitResponse = await res.json();
-        setUsername(data.username);
         setSubredditName(data.subredditName);
         setConfig(data.config);
         setIsMod(data.isMod);
@@ -1360,6 +1408,27 @@ export const App = () => {
         setMeta(m ?? null);
         const allPaths = await listAssetPaths();
         setPaths(allPaths);
+
+        const imagePaths = getFirstVisibleImagePaths(allPaths);
+        const wikiEchoPaths: string[] = [];
+
+        try {
+          const wikiRes = await wikiPromise;
+          if (wikiRes?.ok) {
+            const data: WikiResponse = await wikiRes.json();
+            if (data.content) {
+              const re = /echo:\/\/([^\s)"\]]+)/g;
+              let em;
+              while ((em = re.exec(data.content)) !== null) {
+                if (em[1]) wikiEchoPaths.push(em[1].toLowerCase());
+              }
+            }
+          }
+        } catch {
+          //
+        }
+
+        await preloadPaths([...new Set([...imagePaths, ...wikiEchoPaths])]);
         setAppState('ready');
       } else {
         setAppState('no-assets');
@@ -1513,6 +1582,8 @@ export const App = () => {
           );
         }
 
+        await preloadPaths(getFirstVisibleImagePaths(allPaths));
+
         setAppState('ready');
       } catch (err) {
         if (err instanceof Error && err.message === 'Import cancelled') {
@@ -1596,8 +1667,26 @@ export const App = () => {
 
   if (appState === 'loading') {
     return (
-      <div className="flex flex-col justify-center items-center min-h-screen">
-        <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+      <div
+        className="flex flex-col justify-center items-center min-h-screen"
+        style={{ ...PRE_IMPORT_VARS, backgroundColor: 'var(--bg)', color: 'var(--text)' }}
+      >
+        <div className="relative flex flex-col items-center">
+          <img src="/loading.webp" alt="" className="w-50 h-50 object-contain" />
+          <img
+            src="/title.png"
+            alt="EchoWiki"
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-50 object-contain z-1"
+          />
+          {subredditName && (
+            <p
+              className="absolute left-1/2 -translate-x-1/2 text-base text-[var(--text)] whitespace-nowrap pointer-events-none"
+              style={{ bottom: 'calc(var(--spacing) * 4)', zIndex: 0 }}
+            >
+              r/{subredditName}
+            </p>
+          )}
+        </div>
       </div>
     );
   }
@@ -1606,10 +1695,10 @@ export const App = () => {
     <div
       className="flex flex-col min-h-screen"
       style={{
-        ...cssVars,
+        ...(appState === 'ready' ? cssVars : PRE_IMPORT_VARS),
         backgroundColor: 'var(--bg)',
         color: 'var(--text)',
-        fontFamily: FONT_MAP[style.fontFamily],
+        fontFamily: appState === 'ready' ? FONT_MAP[style.fontFamily] : FONT_MAP.system,
       }}
     >
       <input
@@ -1640,9 +1729,23 @@ export const App = () => {
 
       {appState === 'no-assets' && (
         <div className="flex-1 flex flex-col justify-center items-center gap-6 p-6">
-          <div className="flex flex-col items-center gap-2">
-            <h1 className="text-2xl font-bold">EchoWiki</h1>
-            {username && <p className="text-sm text-[var(--text-muted)]">Hey {username}</p>}
+          <div className="flex flex-col items-center gap-3">
+            <div className="relative flex flex-col items-center">
+              <img src="/loading.webp" alt="" className="w-50 h-50 object-contain" />
+              <img
+                src="/title.png"
+                alt="EchoWiki"
+                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-50 object-contain z-1"
+              />
+              {subredditName && (
+                <p
+                  className="absolute left-1/2 -translate-x-1/2 text-base text-[var(--text)] whitespace-nowrap pointer-events-none"
+                  style={{ bottom: 'calc(var(--spacing) * 4)', zIndex: 0 }}
+                >
+                  r/{subredditName}
+                </p>
+              )}
+            </div>
           </div>
           <div className="flex flex-col items-center gap-4 max-w-md text-center">
             {config?.gameName ? (
@@ -1658,7 +1761,7 @@ export const App = () => {
               </p>
             )}
             <button
-              className="flex items-center justify-center bg-[var(--accent)] text-white h-10 rounded-full cursor-pointer transition-colors px-6 font-medium"
+              className="flex items-center justify-center bg-[var(--accent)] text-white h-10 rounded-full cursor-pointer transition-all px-6 font-medium hover:scale-105 hover:font-bold hover:border-2 hover:border-white"
               onClick={handleImport}
             >
               Import Game Folder
@@ -1676,7 +1779,7 @@ export const App = () => {
                       window.open(config.storeLink, '_blank');
                     }
                   }}
-                  className="flex items-center justify-center h-10 rounded-full cursor-pointer transition-colors px-6 font-medium text-sm border-2 border-[var(--accent)] text-[var(--accent)] hover:bg-[var(--accent)] hover:text-white"
+                  className="flex items-center justify-center h-10 rounded-full cursor-pointer transition-all px-6 font-medium text-sm border-2 border-[var(--accent)] text-[var(--accent)] hover:bg-[var(--accent)] hover:text-white hover:scale-105 hover:font-bold hover:border-white"
                 >
                   Purchase {config.gameName}
                 </button>
@@ -1693,48 +1796,58 @@ export const App = () => {
 
       {appState === 'importing' && (
         <div className="flex-1 flex flex-col justify-center items-center gap-6 p-6">
-          <h1 className="text-2xl font-bold">EchoWiki</h1>
+          <div className="relative flex flex-col items-center">
+            <img src="/loading.webp" alt="" className="w-50 h-50 object-contain" />
+            <img
+              src="/title.png"
+              alt="EchoWiki"
+              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-50 object-contain z-1"
+            />
+            {subredditName && (
+              <p
+                className="absolute left-1/2 -translate-x-1/2 text-base text-[var(--text)] whitespace-nowrap pointer-events-none"
+                style={{ bottom: 'calc(var(--spacing) * 4)', zIndex: 0 }}
+              >
+                r/{subredditName}
+              </p>
+            )}
+          </div>
           <div className="flex flex-col items-center gap-4 max-w-md w-full">
             {progress ? (
               <>
                 <div className="w-full">
-                  <div className="flex justify-between text-xs text-[var(--text-muted)] mb-1">
-                    <span>
-                      {progress.phase === 'detecting'
-                        ? 'Detecting engine...'
-                        : progress.phase === 'decrypting'
-                          ? 'Extracting...'
-                          : progress.phase === 'storing'
-                            ? 'Storing...'
-                            : 'Processing...'}
-                    </span>
-                    <span>{progress.processed} files</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div
-                      className="bg-[var(--accent)] h-2 rounded-full transition-all duration-200"
-                      style={{
-                        width: `${progress.total > 0 ? Math.min((progress.processed / progress.total) * 100, 100) : 0}%`,
-                      }}
-                    />
-                  </div>
+                  {progress.total > 0 ? (
+                    <>
+                      <div className="flex justify-end text-xs text-[var(--text-muted)] mb-1">
+                        <span>
+                          {Math.min(Math.round((progress.processed / progress.total) * 100), 100)}%
+                        </span>
+                      </div>
+                      <div
+                        className="w-full rounded-full h-1.5"
+                        style={{ backgroundColor: 'var(--thumb-bg)' }}
+                      >
+                        <div
+                          className="h-1.5 rounded-full transition-all duration-300 ease-linear"
+                          style={{
+                            width: `${Math.min((progress.processed / progress.total) * 100, 100)}%`,
+                            backgroundColor: 'var(--accent)',
+                          }}
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-xs text-[var(--text-muted)] text-center">
+                      {progress.phase === 'detecting' ? 'Detecting engine...' : 'Extracting...'}
+                    </p>
+                  )}
                 </div>
-                {progress.currentFile && (
-                  <p className="text-xs text-[var(--text-muted)] truncate max-w-full">
-                    {progress.currentFile}
-                  </p>
-                )}
-                {progress.gameTitle && (
-                  <p className="text-xs text-[var(--text-muted)]">
-                    <span className="font-medium">{progress.gameTitle}</span>
-                  </p>
-                )}
               </>
             ) : (
               <p className="text-sm text-[var(--text-muted)]">Starting import...</p>
             )}
             <button
-              className="text-sm text-[var(--text-muted)] hover:text-red-600 transition-colors cursor-pointer"
+              className="text-xs px-3 py-1 rounded-full bg-red-600 text-white hover:bg-red-700 transition-colors cursor-pointer"
               onClick={handleCancel}
             >
               Cancel

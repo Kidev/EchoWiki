@@ -15,7 +15,6 @@ export type ImportProgress = {
   phase: 'detecting' | 'decrypting' | 'storing' | 'done' | 'error';
   processed: number;
   total: number;
-  currentFile: string;
   engine: EngineType;
   gameTitle: string;
 };
@@ -129,8 +128,7 @@ export async function importGameFiles(options: ImportOptions): Promise<void> {
   onProgress({
     phase: 'detecting',
     processed: 0,
-    total: files.length,
-    currentFile: '',
+    total: 0,
     engine: 'auto',
     gameTitle: '',
   });
@@ -143,7 +141,6 @@ export async function importGameFiles(options: ImportOptions): Promise<void> {
       phase: 'error',
       processed: 0,
       total: 0,
-      currentFile: '',
       engine: 'auto',
       gameTitle: '',
     });
@@ -196,9 +193,8 @@ export async function importGameFiles(options: ImportOptions): Promise<void> {
 
   const DATA_EXT = /\.(json|xml|txt|csv)$/i;
 
-  let processed = 0;
-  const BATCH_SIZE = 50;
-  let batch: ProcessedAsset[] = [];
+  const allAssets: ProcessedAsset[] = [];
+  let extracted = 0;
 
   for await (const asset of generator) {
     if (signal?.aborted) {
@@ -207,35 +203,40 @@ export async function importGameFiles(options: ImportOptions): Promise<void> {
 
     if (DATA_EXT.test(asset.path)) continue;
 
-    batch.push(asset);
-    processed++;
+    allAssets.push(asset);
+    extracted++;
 
-    if (batch.length >= BATCH_SIZE) {
-      onProgress({
-        phase: 'storing',
-        processed,
-        total: files.length,
-        currentFile: asset.path,
-        engine,
-        gameTitle,
-      });
-
-      await storeAssetBatch(batch);
-      batch = [];
-    } else {
+    if (extracted % 20 === 0) {
       onProgress({
         phase: 'decrypting',
-        processed,
-        total: files.length,
-        currentFile: asset.path,
+        processed: extracted,
+        total: 0,
         engine,
         gameTitle,
       });
     }
   }
 
-  if (batch.length > 0) {
+  const total = allAssets.length;
+  const BATCH_SIZE = 50;
+  let stored = 0;
+
+  for (let i = 0; i < total; i += BATCH_SIZE) {
+    if (signal?.aborted) {
+      throw new Error('Import cancelled');
+    }
+
+    const batch = allAssets.slice(i, i + BATCH_SIZE);
     await storeAssetBatch(batch);
+    stored += batch.length;
+
+    onProgress({
+      phase: 'storing',
+      processed: stored,
+      total,
+      engine,
+      gameTitle,
+    });
   }
 
   const assetCount = await getAssetCount();
@@ -248,9 +249,8 @@ export async function importGameFiles(options: ImportOptions): Promise<void> {
 
   onProgress({
     phase: 'done',
-    processed,
-    total: processed,
-    currentFile: '',
+    processed: total,
+    total,
     engine,
     gameTitle,
   });

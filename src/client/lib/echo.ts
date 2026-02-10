@@ -51,9 +51,13 @@ export function revokeAllBlobUrls(): void {
   blobUrlCache.clear();
 }
 
+export async function preloadPaths(paths: string[]): Promise<void> {
+  await Promise.all(paths.map((p) => resolveEchoPath(p)));
+}
+
 export function useEchoUrl(echoPath: string | null): { url: string | null; loading: boolean } {
   const [url, setUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(echoPath !== null);
   const mountedRef = useRef(true);
 
   useEffect(() => {

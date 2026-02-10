@@ -4,6 +4,7 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react(), tailwind()],
+  publicDir: '../../assets',
   logLevel: 'warn',
   build: {
     outDir: '../../dist/client',
@@ -21,7 +22,7 @@ export default defineConfig({
         sourcemapFileNames: '[name].js.map',
       },
       onwarn(warning, warn) {
-        if (warning.code === 'EVAL' && warning.id?.includes('@protobufjs')) return;
+        if (warning.code === 'EVAL') return;
         warn(warning);
       },
     },

@@ -21,7 +21,7 @@ export default defineConfig({
         inlineDynamicImports: true,
       },
       onwarn(warning, warn) {
-        if (warning.code === 'EVAL' && warning.id?.includes('@protobufjs')) return;
+        if (warning.code === 'EVAL') return;
         warn(warning);
       },
     },
