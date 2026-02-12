@@ -1358,14 +1358,13 @@ function SettingsView({
   const [status, setStatus] = useState<{ ok: boolean; message: string } | null>(null);
   const [editingMode, setEditingMode] = useState<"light" | "dark">("light");
   const [gameTitle, setGameTitle] = useState(config.gameName);
-  const [storeLink, setStoreLink] = useState(config.storeLink);
   const [savingConfig, setSavingConfig] = useState(false);
 
   const editingColors = editingMode === "light" ? style.light : style.dark;
 
   const parsedEntries = useMemo(() => parseMappingText(text), [text]);
 
-  const configDirty = gameTitle !== config.gameName || storeLink !== config.storeLink;
+  const configDirty = gameTitle !== config.gameName;
 
   const handleSaveConfig = useCallback(async () => {
     setSavingConfig(true);
@@ -1373,7 +1372,7 @@ function SettingsView({
       const res = await fetch("/api/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ gameName: gameTitle, storeLink }),
+        body: JSON.stringify({ gameName: gameTitle }),
       });
       if (res.ok) {
         const data = (await res.json()) as { config: GameConfig };
@@ -1383,7 +1382,7 @@ function SettingsView({
     } finally {
       setSavingConfig(false);
     }
-  }, [gameTitle, storeLink, onConfigChanged]);
+  }, [gameTitle, onConfigChanged]);
 
   const handleSaveMapping = useCallback(async () => {
     setSaving(true);
@@ -1483,26 +1482,6 @@ function SettingsView({
                 Shown to users on import. Warns if imported game doesn't match.
               </span>
             </div>
-
-            {gameTitle.trim() && (
-              <div className="flex flex-col gap-2">
-                <span className="text-xs font-medium">Store Link</span>
-                <input
-                  type="text"
-                  value={storeLink}
-                  onChange={(e) => setStoreLink(e.target.value)}
-                  placeholder="https://store.steampowered.com/app/..."
-                  className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)]"
-                  style={{
-                    backgroundColor: "var(--control-bg)",
-                    color: "var(--control-text)",
-                  }}
-                />
-                <span className="text-[10px] text-[var(--text-muted)]">
-                  If set, a purchase link is shown on the import screen.
-                </span>
-              </div>
-            )}
 
             <button
               onClick={() => void handleSaveConfig()}
@@ -2200,22 +2179,6 @@ export const App = () => {
               >
                 Import Game Folder
               </button>
-              {config?.gameName && config?.storeLink && (
-                <div className="flex flex-col items-center gap-4 mt-2">
-                  <button
-                    onClick={() => {
-                      try {
-                        navigateTo({ url: config.storeLink });
-                      } catch {
-                        window.open(config.storeLink, "_blank");
-                      }
-                    }}
-                    className="flex items-center justify-center h-10 rounded-full cursor-pointer transition-all px-6 font-medium text-xs border-2 border-[var(--accent)] text-[var(--accent)] hover:bg-[var(--accent)] hover:text-white hover:scale-105 hover:border-white"
-                  >
-                    Purchase {config.gameName}
-                  </button>
-                </div>
-              )}
               {error && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
                   {error}

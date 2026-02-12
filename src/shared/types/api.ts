@@ -12,7 +12,6 @@ export type EngineType =
 
 export type GameConfig = {
   gameName: string;
-  storeLink: string;
   engine: EngineType;
   encryptionKey: string;
 };
@@ -24,7 +23,6 @@ export type ConfigResponse = {
 
 export type ConfigUpdateRequest = {
   gameName?: string;
-  storeLink?: string;
   engine?: EngineType;
   encryptionKey?: string;
 };

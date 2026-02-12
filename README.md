@@ -80,7 +80,6 @@ Moderators see a Settings tab with three sections:
 ### General
 
 - **Game Title**: Displayed to users during import. If the detected game title doesn't match, a dismissible warning is shown.
-- **Store Link**: Appears when Game Title is set. If filled, a purchase button is shown on the import screen.
 
 ### Style
 
@@ -110,9 +109,7 @@ Example:
 
 Fan wikis happen. For any game with a dedicated community, players will build wikis filled with screenshots, ripped sprites, and re-hosted audio. This is the reality of passionate fanbases, and it has always been largely uncontrollable: assets end up scattered across third-party sites, reposted without context, and stripped of any connection to the original product.
 
-EchoWiki takes a fundamentally different approach. No asset is ever uploaded, hosted, or distributed by anyone. Each user loads files from their own purchased copy of the game, and those files never leave their machine. The wiki references assets by filename, but every single user must own and import the game themselves for anything to appear. There is no server hosting your art, no CDN serving your music, no download link anywhere. If someone does not own the game, they see nothing.
-
-Moderators can configure a store link in the app settings, and users who have not yet imported the game are shown a purchase button pointing directly to the official store page. The app actively encourages ownership rather than working around it.
+EchoWiki takes a fundamentally different approach. No asset is ever uploaded, hosted, or distributed by anyone. Each user loads files from their own purchased copy of the game, and those files never leave their machine. The wiki references assets by filename, but every single user must own and import the game themselves for anything to appear. There is no server hosting your art, no CDN serving your music, no download link anywhere. If someone does not own the game, they see nothing. The app actively encourages ownership rather than working around it.
 
 If you are a developer whose game has an EchoWiki community, your fans are building something beautiful around the world you created, and they are doing it without redistributing a single byte of your work.
 

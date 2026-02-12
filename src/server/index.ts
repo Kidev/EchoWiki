@@ -35,7 +35,6 @@ const router = express.Router();
 
 const DEFAULT_CONFIG: GameConfig = {
   gameName: "",
-  storeLink: "",
   engine: "auto",
   encryptionKey: "",
 };
@@ -49,7 +48,6 @@ async function getConfig(): Promise<GameConfig> {
   }
   return {
     gameName: raw["gameName"] ?? DEFAULT_CONFIG.gameName,
-    storeLink: raw["storeLink"] ?? DEFAULT_CONFIG.storeLink,
     engine: (raw["engine"] as GameConfig["engine"]) ?? DEFAULT_CONFIG.engine,
     encryptionKey: raw["encryptionKey"] ?? DEFAULT_CONFIG.encryptionKey,
   };
@@ -135,9 +133,6 @@ router.post<Record<string, never>, ConfigUpdateResponse | ErrorResponse, ConfigU
 
       if (body.gameName !== undefined) {
         fields["gameName"] = body.gameName;
-      }
-      if (body.storeLink !== undefined) {
-        fields["storeLink"] = body.storeLink;
       }
       if (body.engine !== undefined) {
         fields["engine"] = body.engine;
