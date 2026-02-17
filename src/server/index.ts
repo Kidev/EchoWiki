@@ -9,12 +9,15 @@ import type {
   ErrorResponse,
   FontFamily,
   GameConfig,
+  HomeBackground,
+  HomeLogo,
   InitResponse,
   MappingResponse,
   MappingUpdateRequest,
   StyleConfig,
   StyleResponse,
   StyleUpdateRequest,
+  SubredditAppearance,
   WikiFontSize,
   WikiPagesResponse,
   WikiResponse,
@@ -37,7 +40,14 @@ const DEFAULT_CONFIG: GameConfig = {
   gameName: "",
   engine: "auto",
   encryptionKey: "",
+  wikiTitle: "",
+  wikiDescription: "",
+  homeBackground: "none",
+  homeLogo: "subreddit",
 };
+
+const VALID_HOME_BACKGROUNDS = new Set<string>(["ripple", "banner", "none"]);
+const VALID_HOME_LOGOS = new Set<string>(["echowiki", "subreddit"]);
 
 const DEFAULT_MAPPING_TEXT = '"original_filename": "mapped_filename"';
 
@@ -50,7 +60,57 @@ async function getConfig(): Promise<GameConfig> {
     gameName: raw["gameName"] ?? DEFAULT_CONFIG.gameName,
     engine: (raw["engine"] as GameConfig["engine"]) ?? DEFAULT_CONFIG.engine,
     encryptionKey: raw["encryptionKey"] ?? DEFAULT_CONFIG.encryptionKey,
+    wikiTitle: raw["wikiTitle"] ?? DEFAULT_CONFIG.wikiTitle,
+    wikiDescription: raw["wikiDescription"] ?? DEFAULT_CONFIG.wikiDescription,
+    homeBackground:
+      raw["homeBackground"] && VALID_HOME_BACKGROUNDS.has(raw["homeBackground"]!)
+        ? (raw["homeBackground"] as HomeBackground)
+        : DEFAULT_CONFIG.homeBackground,
+    homeLogo:
+      raw["homeLogo"] && VALID_HOME_LOGOS.has(raw["homeLogo"]!)
+        ? (raw["homeLogo"] as HomeLogo)
+        : DEFAULT_CONFIG.homeLogo,
   };
+}
+
+async function getSubredditAppearance(): Promise<SubredditAppearance> {
+  const fallback: SubredditAppearance = {
+    bannerUrl: null,
+    iconUrl: null,
+    keyColor: null,
+    primaryColor: null,
+    bgColor: null,
+    highlightColor: null,
+    font: null,
+  };
+  try {
+    const name = context.subredditName;
+    if (!name) return fallback;
+    const sub = await reddit.getSubredditByName(name);
+    const settings = sub.settings;
+
+    let bgColor: string | null = null;
+    let highlightColor: string | null = null;
+    let stylesKeyColor: string | null = null;
+    try {
+      const styles = await reddit.getSubredditStyles(sub.id);
+      bgColor = styles.backgroundColor ?? null;
+      highlightColor = styles.highlightColor ?? null;
+      stylesKeyColor = styles.primaryColor ?? null;
+    } catch {}
+
+    return {
+      bannerUrl: settings.bannerBackgroundImage ?? settings.bannerImage ?? null,
+      iconUrl: settings.communityIcon ?? null,
+      keyColor: settings.keyColor ?? stylesKeyColor ?? null,
+      primaryColor: settings.primaryColor ?? null,
+      bgColor,
+      highlightColor,
+      font: null,
+    };
+  } catch {
+    return fallback;
+  }
 }
 
 const ALLOWED_MAPPING_CHARS = /^[a-zA-Z0-9!_\-()[\]' ]+$/;
@@ -80,7 +140,11 @@ router.get<Record<string, never>, InitResponse | ErrorResponse>(
     }
 
     try {
-      const [config, username] = await Promise.all([getConfig(), reddit.getCurrentUsername()]);
+      const [config, username, appearance] = await Promise.all([
+        getConfig(),
+        reddit.getCurrentUsername(),
+        getSubredditAppearance(),
+      ]);
 
       let isMod = false;
       if (username && context.subredditName) {
@@ -101,6 +165,7 @@ router.get<Record<string, never>, InitResponse | ErrorResponse>(
         username: username ?? "anonymous",
         isMod,
         config,
+        appearance,
       });
     } catch (error) {
       const message =
@@ -139,6 +204,18 @@ router.post<Record<string, never>, ConfigUpdateResponse | ErrorResponse, ConfigU
       }
       if (body.encryptionKey !== undefined) {
         fields["encryptionKey"] = body.encryptionKey;
+      }
+      if (body.wikiTitle !== undefined) {
+        fields["wikiTitle"] = body.wikiTitle;
+      }
+      if (body.wikiDescription !== undefined) {
+        fields["wikiDescription"] = body.wikiDescription;
+      }
+      if (body.homeBackground && VALID_HOME_BACKGROUNDS.has(body.homeBackground)) {
+        fields["homeBackground"] = body.homeBackground;
+      }
+      if (body.homeLogo && VALID_HOME_LOGOS.has(body.homeLogo)) {
+        fields["homeLogo"] = body.homeLogo;
       }
 
       if (Object.keys(fields).length > 0) {
@@ -214,6 +291,7 @@ router.post<Record<string, never>, MappingResponse | ErrorResponse, MappingUpdat
 
 const DEFAULT_LIGHT: ColorTheme = {
   accentColor: "#d93900",
+  linkColor: "#d93900",
   bgColor: "#ffffff",
   textColor: "#111827",
   textMuted: "#6b7280",
@@ -224,6 +302,7 @@ const DEFAULT_LIGHT: ColorTheme = {
 
 const DEFAULT_DARK: ColorTheme = {
   accentColor: "#ff6b3d",
+  linkColor: "#ff6b3d",
   bgColor: "#1a1a1b",
   textColor: "#d7dadc",
   textMuted: "#818384",
@@ -243,7 +322,46 @@ const DEFAULT_STYLE: StyleConfig = {
 const VALID_HEX = /^#[0-9a-fA-F]{6}$/;
 const VALID_CARD_SIZES = new Set<string>(["compact", "normal", "large"]);
 const VALID_FONT_SIZES = new Set<string>(["small", "normal", "large"]);
-const VALID_FONT_FAMILIES = new Set<string>(["system", "serif", "mono"]);
+const VALID_FONT_FAMILIES = new Set<string>(["system", "serif", "mono", "subreddit"]);
+
+function getSubredditDefaults(appearance: SubredditAppearance): {
+  light: ColorTheme;
+  dark: ColorTheme;
+  fontFamily: FontFamily;
+} {
+  const accent = appearance.keyColor ?? DEFAULT_LIGHT.accentColor;
+  const bg = appearance.bgColor ?? DEFAULT_LIGHT.bgColor;
+  const highlight = appearance.highlightColor ?? darkenHex(bg, 0.05);
+  const light: ColorTheme = {
+    accentColor: accent,
+    linkColor: accent,
+    bgColor: bg,
+    textColor: "#f3f3f3",
+    textMuted: "#919191",
+    thumbBgColor: highlight,
+    controlBgColor: highlight,
+    controlTextColor: "#f3f3f3",
+  };
+  const darkAccent = appearance.keyColor ?? DEFAULT_DARK.accentColor;
+  const dark: ColorTheme = {
+    accentColor: darkAccent,
+    linkColor: darkAccent,
+    bgColor: appearance.bgColor ?? DEFAULT_DARK.bgColor,
+    textColor: "#f3f3f3",
+    textMuted: "#919191",
+    thumbBgColor: appearance.highlightColor ?? DEFAULT_DARK.thumbBgColor,
+    controlBgColor: appearance.highlightColor ?? DEFAULT_DARK.controlBgColor,
+    controlTextColor: "#f3f3f3",
+  };
+  return { light, dark, fontFamily: "subreddit" };
+}
+
+function darkenHex(hex: string, amount: number): string {
+  const r = Math.max(0, parseInt(hex.slice(1, 3), 16) - Math.round(255 * amount));
+  const g = Math.max(0, parseInt(hex.slice(3, 5), 16) - Math.round(255 * amount));
+  const b = Math.max(0, parseInt(hex.slice(5, 7), 16) - Math.round(255 * amount));
+  return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+}
 
 function parseColorTheme(raw: Record<string, string>, defaults: ColorTheme): ColorTheme {
   return {
@@ -251,6 +369,8 @@ function parseColorTheme(raw: Record<string, string>, defaults: ColorTheme): Col
       raw["accentColor"] && VALID_HEX.test(raw["accentColor"])
         ? raw["accentColor"]!
         : defaults.accentColor,
+    linkColor:
+      raw["linkColor"] && VALID_HEX.test(raw["linkColor"]) ? raw["linkColor"]! : defaults.linkColor,
     bgColor: raw["bgColor"] && VALID_HEX.test(raw["bgColor"]) ? raw["bgColor"]! : defaults.bgColor,
     textColor:
       raw["textColor"] && VALID_HEX.test(raw["textColor"]) ? raw["textColor"]! : defaults.textColor,
@@ -271,13 +391,17 @@ function parseColorTheme(raw: Record<string, string>, defaults: ColorTheme): Col
   };
 }
 
-async function getStyle(): Promise<StyleConfig> {
+async function getStyle(appearance?: SubredditAppearance | undefined): Promise<StyleConfig> {
   const [shared, lightRaw, darkRaw] = await Promise.all([
     redis.hGetAll("style"),
     redis.hGetAll("style:light"),
     redis.hGetAll("style:dark"),
   ]);
   const s = shared ?? {};
+  const subDefaults = appearance ? getSubredditDefaults(appearance) : null;
+  const lightDefaults = subDefaults?.light ?? DEFAULT_LIGHT;
+  const darkDefaults = subDefaults?.dark ?? DEFAULT_DARK;
+  const defaultFont = subDefaults?.fontFamily ?? DEFAULT_STYLE.fontFamily;
   return {
     cardSize:
       s["cardSize"] && VALID_CARD_SIZES.has(s["cardSize"]!)
@@ -290,9 +414,9 @@ async function getStyle(): Promise<StyleConfig> {
     fontFamily:
       s["fontFamily"] && VALID_FONT_FAMILIES.has(s["fontFamily"]!)
         ? (s["fontFamily"] as FontFamily)
-        : DEFAULT_STYLE.fontFamily,
-    light: parseColorTheme(lightRaw ?? {}, DEFAULT_LIGHT),
-    dark: parseColorTheme(darkRaw ?? {}, DEFAULT_DARK),
+        : defaultFont,
+    light: parseColorTheme(lightRaw ?? {}, lightDefaults),
+    dark: parseColorTheme(darkRaw ?? {}, darkDefaults),
   };
 }
 
@@ -300,7 +424,8 @@ router.get<Record<string, never>, StyleResponse | ErrorResponse>(
   "/api/style",
   async (_req, res): Promise<void> => {
     try {
-      const style = await getStyle();
+      const appearance = await getSubredditAppearance();
+      const style = await getStyle(appearance);
       res.json({ type: "style", style });
     } catch {
       res.json({ type: "style", style: { ...DEFAULT_STYLE } });
@@ -313,6 +438,14 @@ router.post<Record<string, never>, StyleResponse | ErrorResponse, StyleUpdateReq
   async (req, res): Promise<void> => {
     try {
       const body = req.body as StyleUpdateRequest;
+      const appearance = await getSubredditAppearance();
+
+      if (body.reset) {
+        await Promise.all([redis.del("style"), redis.del("style:light"), redis.del("style:dark")]);
+        const style = await getStyle(appearance);
+        res.json({ type: "style", style });
+        return;
+      }
 
       const shared: Record<string, string> = {};
       if (body.cardSize && VALID_CARD_SIZES.has(body.cardSize)) {
@@ -333,6 +466,9 @@ router.post<Record<string, never>, StyleResponse | ErrorResponse, StyleUpdateReq
         const colors: Record<string, string> = {};
         if (body.accentColor && VALID_HEX.test(body.accentColor)) {
           colors["accentColor"] = body.accentColor;
+        }
+        if (body.linkColor && VALID_HEX.test(body.linkColor)) {
+          colors["linkColor"] = body.linkColor;
         }
         if (body.bgColor && VALID_HEX.test(body.bgColor)) {
           colors["bgColor"] = body.bgColor;
@@ -359,7 +495,7 @@ router.post<Record<string, never>, StyleResponse | ErrorResponse, StyleUpdateReq
         }
       }
 
-      const style = await getStyle();
+      const style = await getStyle(appearance);
       res.json({ type: "style", style });
     } catch (error) {
       const message =
@@ -446,19 +582,51 @@ router.post<Record<string, never>, WikiUpdateResponse | ErrorResponse, WikiUpdat
   },
 );
 
+
+function normalizePostId(id: string): string {
+  return id.startsWith("t3_") ? id : `t3_${id}`;
+}
+
+async function getPostIds(): Promise<string[]> {
+  
+  const legacy = await redis.get("postId");
+  if (legacy) {
+    const normalized = normalizePostId(legacy);
+    await redis.zAdd("postIds", { member: normalized, score: Date.now() });
+    await redis.del("postId");
+  }
+  const entries = await redis.zRange("postIds", 0, -1);
+  
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const e of entries) {
+    const id = normalizePostId(e.member);
+    if (!seen.has(id)) {
+      seen.add(id);
+      result.push(id);
+    }
+  }
+  return result;
+}
+
+async function trackPost(postId: string): Promise<void> {
+  await redis.zAdd("postIds", { member: normalizePostId(postId), score: Date.now() });
+}
+
 router.post("/internal/on-app-install", async (_req, res): Promise<void> => {
   try {
-    const existing = await redis.get("postId");
-    if (existing) {
+    const existingIds = await getPostIds();
+    if (existingIds.length > 0) {
       res.json({
         status: "success",
-        message: `Post already exists in subreddit ${context.subredditName} with id ${existing}`,
+        message: `Post(s) already exist in subreddit ${context.subredditName}`,
       });
       return;
     }
 
-    const post = await createPost();
-    await redis.set("postId", post.id);
+    const sub = context.subredditName ?? "unknown";
+    const post = await createPost(`EchoWiki - r/${sub}`);
+    await trackPost(post.id);
     res.json({
       status: "success",
       message: `Post created in subreddit ${context.subredditName} with id ${post.id}`,
@@ -471,22 +639,189 @@ router.post("/internal/on-app-install", async (_req, res): Promise<void> => {
   }
 });
 
+
 router.post(
   "/internal/menu/post-create",
   async (_req, res: Response<UiResponse>): Promise<void> => {
     try {
-      const post = await createPost();
-      await redis.set("postId", post.id);
+      const config = await getConfig();
+      const sub = context.subredditName ?? "unknown";
+      const defaultTitle = config.wikiTitle || `EchoWiki - r/${sub}`;
+
+      
+      const trackedIds = await getPostIds();
+      const verifiedIds: string[] = [];
+      await Promise.all(
+        trackedIds.map(async (id) => {
+          try {
+            const p = await reddit.getPostById(id as `t3_${string}`);
+            if (!p.removed) verifiedIds.push(id);
+          } catch {
+            
+          }
+        }),
+      );
+
       res.json({
-        showToast: {
-          text: "EchoWiki post created!",
-          appearance: "success",
+        showForm: {
+          name: "postTitleForm",
+          form: {
+            title: "Create EchoWiki Post",
+            fields: [
+              {
+                type: "string" as const,
+                name: "postTitle",
+                label: "Post title",
+                required: true,
+                defaultValue: defaultTitle,
+              },
+              {
+                type: "string" as const,
+                name: "subtitle",
+                label: "Subtitle (optional)",
+                helpText: "Shown on the home screen below the title",
+                defaultValue: config.wikiDescription || "",
+              },
+              {
+                type: "string" as const,
+                name: "gameName",
+                label: "Game name (optional)",
+                helpText: "Shown on import. Warns if imported game doesn't match",
+                defaultValue: config.gameName || "",
+              },
+              {
+                label: "Post options",
+                type: "group" as const,
+                fields: [
+                  {
+                    type: "boolean" as const,
+                    name: "addWidget",
+                    label: "Add sidebar widget linking to the post",
+                    defaultValue: true,
+                  },
+                  {
+                    type: "boolean" as const,
+                    name: "lockComments",
+                    label: "Lock comments",
+                    defaultValue: false,
+                  },
+                ],
+              },
+              ...(verifiedIds.length > 0
+                ? [
+                    {
+                      type: "boolean" as const,
+                      name: "deleteExisting",
+                      label: `Delete ${verifiedIds.length} existing post(s)`,
+                      defaultValue: false,
+                    },
+                  ]
+                : []),
+            ],
+            acceptLabel: "Create",
+          },
         },
       });
     } catch {
+      res.json({ showToast: "Failed to load form" });
+    }
+  },
+);
+
+type PostCreateFormData = {
+  postTitle: string;
+  subtitle?: string;
+  gameName?: string;
+  addWidget?: boolean;
+  lockComments?: boolean;
+  deleteExisting?: boolean;
+};
+
+
+router.post(
+  "/internal/form/post-title-submit",
+  async (req, res: Response<UiResponse>): Promise<void> => {
+    try {
+      const body = req.body as PostCreateFormData;
+
+      if (body.deleteExisting) {
+        const existingIds = await getPostIds();
+        for (const id of existingIds) {
+          try {
+            const fullId = id.startsWith("t3_") ? id : `t3_${id}`;
+            const existingPost = await reddit.getPostById(fullId as `t3_${string}`);
+            await existingPost.delete();
+          } catch {
+            try {
+              const fullId = id.startsWith("t3_") ? id : `t3_${id}`;
+              const existingPost = await reddit.getPostById(fullId as `t3_${string}`);
+              await existingPost.remove();
+            } catch {
+              
+            }
+          }
+        }
+        await redis.del("postIds");
+      }
+
+      const post = await createPost(body.postTitle);
+      await trackPost(post.id);
+
+      
+      const warnings: string[] = [];
+
+      if (body.lockComments) {
+        try {
+          await post.lock();
+        } catch {
+          warnings.push("Could not lock comments");
+        }
+      }
+
+      if (body.addWidget && context.subredditName) {
+        const postUrl = `https://www.reddit.com/r/${context.subredditName}/comments/${post.id.replace("t3_", "")}`;
+        try {
+          await reddit.addWidget({
+            type: "button",
+            subreddit: context.subredditName,
+            shortName: "Links",
+            description: "",
+            buttons: [
+              {
+                kind: "text",
+                text: body.postTitle,
+                url: postUrl,
+                color: "#FFFFFF",
+                textColor: "#000000",
+                fillColor: "#FFFFFF",
+              },
+            ],
+          });
+        } catch {
+          warnings.push("Could not add sidebar widget");
+        }
+      }
+
+      
+      const configFields: Record<string, string> = { wikiTitle: body.postTitle };
+      if (body.subtitle !== undefined) configFields["wikiDescription"] = body.subtitle;
+      if (body.gameName !== undefined) configFields["gameName"] = body.gameName;
+      await Promise.all(
+        Object.entries(configFields).map(([k, v]) => redis.hSet("config", { [k]: v })),
+      );
+
+      const parts = [body.deleteExisting ? "Old posts deleted." : "", "EchoWiki post created!"];
+      if (warnings.length > 0) parts.push(`(${warnings.join(", ")})`);
+
       res.json({
-        showToast: "Failed to create post",
+        showToast: {
+          text: parts.filter(Boolean).join(" "),
+          appearance: warnings.length > 0 ? "neutral" : "success",
+        },
       });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Unknown error";
+      res.json({ showToast: `Failed to create post: ${msg}` });
     }
   },
 );

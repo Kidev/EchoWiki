@@ -134,7 +134,7 @@ export async function importGameFiles(options: ImportOptions): Promise<void> {
   });
 
   const detection = detectEngine(files);
-  const engine = engineOverride && engineOverride !== "auto" ? engineOverride : detection.engine;
+  let engine = engineOverride && engineOverride !== "auto" ? engineOverride : detection.engine;
 
   if (engine === "auto") {
     onProgress({
@@ -144,77 +144,79 @@ export async function importGameFiles(options: ImportOptions): Promise<void> {
       engine: "auto",
       gameTitle: "",
     });
-    throw new Error(
-      "Could not detect RPG Maker engine version. Please select the engine manually.",
-    );
+    throw new Error("Could not import: select a valid RPG Maker game root folder");
   }
 
-  const gameTitle = await detectGameTitle(files, engine, detection.dataRoot);
-
-  let generator = getAssetGenerator(
-    engine,
-    files,
-    engineOverride && engineOverride !== "auto"
-      ? { ...detection, engine: engineOverride }
-      : detection,
-    keyOverride,
-  );
-
-  if (engine === "rmxp" || engine === "rmvx" || engine === "rmvxace") {
-    const rtpNames = await getRtpDatNames(files);
-    if (rtpNames.length > 0) {
-      const rtpGenerators: AsyncGenerator<ProcessedAsset>[] = [];
-      if (generator) rtpGenerators.push(generator);
-
-      for (const name of rtpNames) {
-        const datFile = getFileByNormalizedPath(files, name);
-        if (!datFile) continue;
-        const format = await sniffDatFormat(datFile);
-        if (format === "zip") {
-          rtpGenerators.push(processZipArchive(datFile));
-        } else if (format === "rgssad") {
-          if (engine === "rmvxace") {
-            rtpGenerators.push(processRgss3aArchive(datFile));
-          } else {
-            rtpGenerators.push(processRgssadArchive(datFile));
-          }
-        }
-      }
-
-      if (rtpGenerators.length > 0) {
-        generator = chainGenerators(rtpGenerators);
-      }
-    }
-  }
-
-  if (!generator) {
-    throw new Error(`No processor available for engine: ${engine}`);
-  }
+  let gameTitle = await detectGameTitle(files, engine, detection.dataRoot);
 
   const DATA_EXT = /\.(json|xml|txt|csv)$/i;
 
-  const allAssets: ProcessedAsset[] = [];
-  let extracted = 0;
+  const extractAssets = async (eng: EngineType): Promise<ProcessedAsset[]> => {
+    let gen = getAssetGenerator(
+      eng,
+      files,
+      engineOverride && engineOverride !== "auto"
+        ? { ...detection, engine: engineOverride }
+        : detection,
+      keyOverride,
+    );
 
-  for await (const asset of generator) {
-    if (signal?.aborted) {
-      throw new Error("Import cancelled");
+    if (eng === "rmxp" || eng === "rmvx" || eng === "rmvxace") {
+      const rtpNames = await getRtpDatNames(files);
+      if (rtpNames.length > 0) {
+        const rtpGenerators: AsyncGenerator<ProcessedAsset>[] = [];
+        if (gen) rtpGenerators.push(gen);
+
+        for (const name of rtpNames) {
+          const datFile = getFileByNormalizedPath(files, name);
+          if (!datFile) continue;
+          const format = await sniffDatFormat(datFile);
+          if (format === "zip") {
+            rtpGenerators.push(processZipArchive(datFile));
+          } else if (format === "rgssad") {
+            if (eng === "rmvxace") {
+              rtpGenerators.push(processRgss3aArchive(datFile));
+            } else {
+              rtpGenerators.push(processRgssadArchive(datFile));
+            }
+          }
+        }
+
+        if (rtpGenerators.length > 0) {
+          gen = chainGenerators(rtpGenerators);
+        }
+      }
     }
 
-    if (DATA_EXT.test(asset.path)) continue;
+    if (!gen) return [];
 
-    allAssets.push(asset);
-    extracted++;
-
-    if (extracted % 20 === 0) {
-      onProgress({
-        phase: "decrypting",
-        processed: extracted,
-        total: 0,
-        engine,
-        gameTitle,
-      });
+    const assets: ProcessedAsset[] = [];
+    let count = 0;
+    for await (const asset of gen) {
+      if (signal?.aborted) throw new Error("Import cancelled");
+      if (DATA_EXT.test(asset.path)) continue;
+      assets.push(asset);
+      count++;
+      if (count % 20 === 0) {
+        onProgress({ phase: "decrypting", processed: count, total: 0, engine: eng, gameTitle });
+      }
     }
+    return assets;
+  };
+
+  let allAssets = await extractAssets(engine);
+
+  
+  if (
+    allAssets.length === 0 &&
+    engineOverride &&
+    engineOverride !== "auto" &&
+    detection.engine !== "auto" &&
+    detection.engine !== engineOverride
+  ) {
+    engine = detection.engine;
+    gameTitle = await detectGameTitle(files, engine, detection.dataRoot);
+    allAssets = await extractAssets(engine);
   }
 
   const total = allAssets.length;

@@ -1,9 +1,8 @@
-import { reddit, context } from "@devvit/web/server";
+import { reddit } from "@devvit/web/server";
 
-export const createPost = async () => {
-  const sub = context.subredditName ?? "unknown";
+export const createPost = async (title: string) => {
   return await reddit.submitCustomPost({
-    title: `EchoWiki - r/${sub}`,
+    title,
     splash: {
       appDisplayName: "EchoWiki",
       backgroundUri: "default-splash.png",

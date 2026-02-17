@@ -14,6 +14,10 @@ export type GameConfig = {
   gameName: string;
   engine: EngineType;
   encryptionKey: string;
+  wikiTitle: string;
+  wikiDescription: string;
+  homeBackground: HomeBackground;
+  homeLogo: HomeLogo;
 };
 
 export type ConfigResponse = {
@@ -25,11 +29,25 @@ export type ConfigUpdateRequest = {
   gameName?: string;
   engine?: EngineType;
   encryptionKey?: string;
+  wikiTitle?: string;
+  wikiDescription?: string;
+  homeBackground?: HomeBackground;
+  homeLogo?: HomeLogo;
 };
 
 export type ConfigUpdateResponse = {
   type: "config-updated";
   config: GameConfig;
+};
+
+export type SubredditAppearance = {
+  bannerUrl: string | null;
+  iconUrl: string | null;
+  keyColor: string | null;
+  primaryColor: string | null;
+  bgColor: string | null;
+  highlightColor: string | null;
+  font: string | null;
 };
 
 export type InitResponse = {
@@ -39,6 +57,7 @@ export type InitResponse = {
   username: string;
   isMod: boolean;
   config: GameConfig;
+  appearance: SubredditAppearance;
 };
 
 export type WikiResponse = {
@@ -66,10 +85,15 @@ export type CardSize = "compact" | "normal" | "large";
 
 export type WikiFontSize = "small" | "normal" | "large";
 
-export type FontFamily = "system" | "serif" | "mono";
+export type FontFamily = "system" | "serif" | "mono" | "subreddit";
+
+export type HomeBackground = "ripple" | "banner" | "none";
+
+export type HomeLogo = "echowiki" | "subreddit";
 
 export type ColorTheme = {
   accentColor: string;
+  linkColor: string;
   bgColor: string;
   textColor: string;
   textMuted: string;
@@ -94,6 +118,7 @@ export type StyleResponse = {
 export type StyleUpdateRequest = {
   mode?: "light" | "dark" | undefined;
   accentColor?: string | undefined;
+  linkColor?: string | undefined;
   bgColor?: string | undefined;
   textColor?: string | undefined;
   textMuted?: string | undefined;
@@ -103,6 +128,7 @@ export type StyleUpdateRequest = {
   cardSize?: CardSize | undefined;
   wikiFontSize?: WikiFontSize | undefined;
   fontFamily?: FontFamily | undefined;
+  reset?: boolean | undefined;
 };
 
 export type WikiUpdateRequest = {

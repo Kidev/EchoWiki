@@ -20,12 +20,16 @@ import {
 import type {
   CardSize,
   ColorTheme,
+  EngineType,
   FontFamily,
+  HomeBackground,
+  HomeLogo,
   InitResponse,
   GameConfig,
   MappingResponse,
   StyleConfig,
   StyleResponse,
+  SubredditAppearance,
   WikiFontSize,
   WikiResponse,
   WikiPagesResponse,
@@ -37,7 +41,6 @@ import {
   revokeAllBlobUrls,
   useEchoUrl,
   setReverseMapping,
-  preloadPaths,
   getAudioEditionParamsForPath,
 } from "../lib/echo";
 import {
@@ -64,6 +67,7 @@ const DEFAULT_STYLE: StyleConfig = {
   fontFamily: "system",
   light: {
     accentColor: "#d93900",
+    linkColor: "#d93900",
     bgColor: "#ffffff",
     textColor: "#111827",
     textMuted: "#6b7280",
@@ -73,6 +77,7 @@ const DEFAULT_STYLE: StyleConfig = {
   },
   dark: {
     accentColor: "#ff6b3d",
+    linkColor: "#ff6b3d",
     bgColor: "#1a1a1b",
     textColor: "#d7dadc",
     textMuted: "#818384",
@@ -82,47 +87,40 @@ const DEFAULT_STYLE: StyleConfig = {
   },
 };
 
-const ACCENT_PRESETS = ["#d93900", "#2563eb", "#16a34a", "#7c3aed", "#db2777", "#0d9488"] as const;
+const DEFAULT_APPEARANCE: SubredditAppearance = {
+  bannerUrl: null,
+  iconUrl: null,
+  keyColor: null,
+  primaryColor: null,
+  bgColor: null,
+  highlightColor: null,
+  font: null,
+};
 
-const BG_PRESETS = ["#ffffff", "#f9fafb", "#1f2937", "#111827"] as const;
+const FONT_MAP: Record<Exclude<FontFamily, "subreddit">, string> = {
+  system: "ui-sans-serif, system-ui, -apple-system, sans-serif",
+  serif: 'ui-serif, Georgia, Cambria, "Times New Roman", serif',
+  mono: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+};
 
-const TEXT_PRESETS = ["#111827", "#1f2937", "#f9fafb", "#ffffff"] as const;
+function getFontFamily(fontFamily: FontFamily, subredditFont: string | null): string {
+  if (fontFamily === "subreddit") {
+    return subredditFont ?? FONT_MAP.system;
+  }
+  return FONT_MAP[fontFamily];
+}
 
-const MUTED_PRESETS = ["#6b7280", "#9ca3af", "#4b5563", "#d1d5db"] as const;
-
-const THUMB_BG_PRESETS = ["#e5e7eb", "#d1d5db", "#f3f4f6", "#1f2937"] as const;
-
-const DARK_BG_PRESETS = ["#1a1a1b", "#111827", "#1f2937", "#0f172a"] as const;
-
-const DARK_TEXT_PRESETS = ["#d7dadc", "#f9fafb", "#e5e7eb", "#ffffff"] as const;
-
-const DARK_THUMB_BG_PRESETS = ["#343536", "#374151", "#1f2937", "#4b5563"] as const;
-
-const CONTROL_BG_PRESETS = ["#ffffff", "#f9fafb", "#f3f4f6", "#e5e7eb"] as const;
-
-const CONTROL_TEXT_PRESETS = ["#111827", "#1f2937", "#374151", "#4b5563"] as const;
-
-const DARK_CONTROL_BG_PRESETS = ["#343536", "#374151", "#1f2937", "#4b5563"] as const;
-
-const DARK_CONTROL_TEXT_PRESETS = ["#d7dadc", "#e5e7eb", "#f9fafb", "#ffffff"] as const;
-
-const PRE_IMPORT_VARS: CSSProperties = {
+const ECHOWIKI_PRE_IMPORT: CSSProperties = {
   "--accent": "#6a5cff",
   "--accent-hover": "#5a4ee6",
   "--accent-ring": "rgba(106, 92, 255, 0.2)",
-  "--bg": "#1a1a2e",
+  "--bg": "transparent",
   "--text": "#ffffff",
   "--text-muted": "#677db7",
   "--thumb-bg": "#16213e",
   "--control-bg": "#16213e",
   "--control-text": "#ffffff",
 } as CSSProperties;
-
-const FONT_MAP: Record<FontFamily, string> = {
-  system: "ui-sans-serif, system-ui, -apple-system, sans-serif",
-  serif: 'ui-serif, Georgia, Cambria, "Times New Roman", serif',
-  mono: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-};
 
 function darkenHex(hex: string, amount: number): string {
   const r = Math.max(0, parseInt(hex.slice(1, 3), 16) - Math.round(255 * amount));
@@ -181,29 +179,6 @@ function naturalSortKey(p: string, pathToMapped: Map<string, string>): string {
   return getFileName(mapped ?? p).toLowerCase();
 }
 
-function getFirstVisibleImagePaths(allPaths: string[]): string[] {
-  const images = allPaths.filter(isImagePath);
-  const folderCounts = new Map<string, number>();
-  for (const p of images) {
-    const folder = getSubfolder(p);
-    if (folder) folderCounts.set(folder, (folderCounts.get(folder) ?? 0) + 1);
-  }
-  const firstFolder =
-    [...folderCounts.entries()]
-      .sort(([a], [b]) => a.localeCompare(b, undefined, { sensitivity: "base" }))
-      .map(([name]) => name)[0] ?? null;
-  const filtered = firstFolder ? images.filter((p) => getSubfolder(p) === firstFolder) : images;
-  const empty = new Map<string, string>();
-  return [...filtered]
-    .sort((a, b) =>
-      naturalSortKey(a, empty).localeCompare(naturalSortKey(b, empty), undefined, {
-        numeric: true,
-        sensitivity: "base",
-      }),
-    )
-    .slice(0, PAGE_SIZE);
-}
-
 function toDisplayName(path: string): string {
   const stem = getStem(path);
   const ext = getExt(path);
@@ -253,6 +228,10 @@ function formatPageName(page: string): string {
   return prefix ? `${prefix} > ${display}` : display;
 }
 
+function EchoInlineImage({ url, alt }: { url: string; alt: string }) {
+  return <img src={url} alt={alt} className="inline-block max-w-full rounded my-1" />;
+}
+
 function EchoInlineAsset({ path, children }: { path: string; children: ReactNode }) {
   const { url, loading } = useEchoUrl(path);
   const { basePath } = parseEditions(path);
@@ -277,9 +256,7 @@ function EchoInlineAsset({ path, children }: { path: string; children: ReactNode
   }
 
   if (isImagePath(basePath) && url) {
-    return (
-      <img src={url} alt={name} className="inline-block max-w-full rounded my-1" loading="lazy" />
-    );
+    return <EchoInlineImage url={url} alt={name} />;
   }
 
   if (isAudioPath(basePath) && url) {
@@ -308,50 +285,101 @@ function AudioPreview({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const rafRef = useRef<number>(0);
-  const ctxRef = useRef<AudioContext | null>(null);
+  const waveformRef = useRef<Float32Array | null>(null);
+  const durationRef = useRef(0);
 
+  
   useEffect(() => {
-    const audio = audioRef.current;
     const canvas = canvasRef.current;
-    if (!audio || !canvas) return;
+    if (!canvas) return;
+    let cancelled = false;
 
-    const audioCtx = new AudioContext();
-    ctxRef.current = audioCtx;
-    const source = audioCtx.createMediaElementSource(audio);
-    const analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 256;
-    source.connect(analyser);
-    analyser.connect(audioCtx.destination);
+    void (async () => {
+      try {
+        const res = await fetch(url);
+        const arrayBuffer = await res.arrayBuffer();
+        if (cancelled) return;
+        const offlineCtx = new OfflineAudioContext(1, 1, 44100);
+        const decoded = await offlineCtx.decodeAudioData(arrayBuffer);
+        if (cancelled) return;
 
-    const canvasCtx = canvas.getContext("2d")!;
-    const bufferLength = analyser.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
+        durationRef.current = decoded.duration;
+        const raw = decoded.getChannelData(0);
+        
+        const buckets = canvas.width;
+        const samples = new Float32Array(buckets);
+        const bucketSize = Math.floor(raw.length / buckets);
+        for (let i = 0; i < buckets; i++) {
+          let sum = 0;
+          const start = i * bucketSize;
+          for (let j = start; j < start + bucketSize && j < raw.length; j++) {
+            sum += Math.abs(raw[j]!);
+          }
+          samples[i] = sum / bucketSize;
+        }
+        waveformRef.current = samples;
+      } catch {
+        
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [url]);
+
+  
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const audio = audioRef.current;
+    if (!canvas || !audio) return;
+
+    const ctx = canvas.getContext("2d")!;
+    const w = canvas.width;
+    const h = canvas.height;
 
     const draw = () => {
       rafRef.current = requestAnimationFrame(draw);
-      analyser.getByteFrequencyData(dataArray);
+      ctx.fillStyle = "#1f2937";
+      ctx.fillRect(0, 0, w, h);
 
-      canvasCtx.fillStyle = "#1f2937";
-      canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+      const samples = waveformRef.current;
+      if (samples) {
+        const barW = Math.max(1, w / samples.length);
+        const playPos = audio.duration > 0 ? audio.currentTime / audio.duration : 0;
+        const playX = playPos * w;
 
-      const barWidth = (canvas.width / bufferLength) * 2.5;
-      let x = 0;
+        for (let i = 0; i < samples.length; i++) {
+          const barH = samples[i]! * h * 0.9;
+          const x = i * barW;
+          const hue = (i / samples.length) * 30;
+          ctx.fillStyle = x < playX ? `hsl(${hue}, 90%, 55%)` : `hsl(${hue}, 40%, 30%)`;
+          ctx.fillRect(x, (h - barH) / 2, barW - 0.5, barH || 1);
+        }
 
-      for (let i = 0; i < bufferLength; i++) {
-        const barHeight = (dataArray[i]! / 255) * canvas.height;
-        const hue = (i / bufferLength) * 30;
-        canvasCtx.fillStyle = `hsl(${hue}, 80%, 50%)`;
-        canvasCtx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
-        x += barWidth + 1;
+        
+        if (audio.duration > 0) {
+          ctx.fillStyle = "rgba(255,255,255,0.8)";
+          ctx.fillRect(playX - 0.5, 0, 1, h);
+        }
       }
     };
     draw();
 
     return () => {
       cancelAnimationFrame(rafRef.current);
-      void audioCtx.close();
     };
   }, [url]);
+
+  const handleCanvasClick = useCallback((e: ReactMouseEvent<HTMLCanvasElement>) => {
+    const audio = audioRef.current;
+    const canvas = canvasRef.current;
+    if (!audio || !canvas || !audio.duration) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const ratio = x / rect.width;
+    audio.currentTime = ratio * audio.duration;
+  }, []);
 
   useEffect(() => {
     if (audioRef.current) {
@@ -362,7 +390,13 @@ function AudioPreview({
 
   return (
     <div className="flex flex-col items-center gap-3 w-full max-w-sm">
-      <canvas ref={canvasRef} width={320} height={100} className="w-full rounded bg-gray-800" />
+      <canvas
+        ref={canvasRef}
+        width={320}
+        height={100}
+        className="w-full rounded bg-gray-800 cursor-pointer"
+        onClick={handleCanvasClick}
+      />
       <audio ref={audioRef} controls src={url} className="w-full" />
     </div>
   );
@@ -492,11 +526,17 @@ function AssetPreview({
   }, [onClose]);
 
   const toggleCrop = useCallback(() => {
-    setEditions((prev) =>
-      prev.some((e) => e.type === "crop")
-        ? prev.filter((e) => e.type !== "crop")
-        : [{ type: "crop" as const }, ...prev],
-    );
+    setEditions((prev) => {
+      if (prev.some((e) => e.type === "crop")) {
+        return prev.filter((e) => e.type !== "crop");
+      }
+      
+      const without = prev.filter((e) => e.type !== "sprite");
+      return [{ type: "crop" as const }, ...without];
+    });
+    setSpriteOpen(false);
+    setSpriteRows(0);
+    setSpriteCols(0);
   }, []);
 
   const handleSpriteClick = useCallback(
@@ -525,6 +565,8 @@ function AssetPreview({
         setSpriteCols(0);
         return false;
       }
+      
+      setEditions((eds) => eds.filter((e) => e.type !== "crop"));
       const fileName = getFileName(mappedPath ?? path);
       const m = /(\d+)x(\d+)/i.exec(fileName);
       if (m) {
@@ -579,190 +621,217 @@ function AssetPreview({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
       onClick={onClose}
     >
-      <div
-        className="relative flex flex-col items-center max-w-[90vw] max-h-[90vh]"
-        onClick={(e) => e.stopPropagation()}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          handleCopy();
-        }}
-      >
-        {loading ? (
-          <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-        ) : category === "images" && showUrl ? (
-          <div
-            className="relative rounded-t border border-white/20 border-b-0 p-1 overflow-hidden"
-            style={{ backgroundColor: "var(--thumb-bg)" }}
-          >
-            <img
-              ref={imgRef}
-              src={showUrl}
-              alt={displayName}
-              className="max-w-full max-h-[60vh] object-contain rounded"
-              onLoad={handleImgLoad}
-            />
-            {showSpriteGrid && imgRef.current && (
-              <div
-                className="absolute pointer-events-auto"
-                style={{
-                  top: imgRef.current.offsetTop,
-                  left: imgRef.current.offsetLeft,
-                  width: imgRef.current.clientWidth,
-                  height: imgRef.current.clientHeight,
-                  display: "grid",
-                  gridTemplateRows: `repeat(${spriteRows}, 1fr)`,
-                  gridTemplateColumns: `repeat(${spriteCols}, 1fr)`,
-                }}
-              >
-                {Array.from({ length: spriteRows * spriteCols }, (_, i) => (
-                  <div
-                    key={i}
-                    className="border border-white/30 cursor-pointer transition-colors"
-                    style={{
-                      backgroundColor: spriteHover === i ? "rgba(255,255,255,0.25)" : "transparent",
-                    }}
-                    onMouseEnter={() => setSpriteHover(i)}
-                    onMouseLeave={() => setSpriteHover(null)}
-                    onClick={() => handleSpriteClick(i)}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        ) : category === "audio" && showUrl ? (
-          <AudioPreview url={showUrl} playbackRate={audioEditionParams?.playbackRate} />
-        ) : (
-          <div className="flex items-center justify-center w-32 h-32 rounded bg-gray-800 text-gray-400 text-sm">
-            No preview
-          </div>
-        )}
-
-        <div
-          className="flex flex-col w-full px-3 py-1.5 rounded-b gap-1"
-          style={{ backgroundColor: "var(--accent)" }}
+      <div className="relative">
+        <button
+          className="absolute -top-10 -right-1 w-8 h-8 flex items-center justify-center rounded-full bg-white/20 hover:bg-white/40 text-white transition-colors cursor-pointer z-10 backdrop-blur-sm"
+          onClick={onClose}
         >
-          <div className="text-white text-xs truncate w-full text-left">
-            {displayName}
-            {editions.length > 0 && (
-              <span className="text-white/70 ml-1">{serializeEditions("", editions)}</span>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2 w-full">
-            {category === "images" && url && (
-              <>
-                <button
-                  onClick={toggleCrop}
-                  className={`text-[10px] px-2 py-0.5 rounded-full cursor-pointer transition-colors flex-shrink-0 ${
-                    hasCrop
-                      ? "bg-white text-[var(--accent)] font-medium"
-                      : "bg-white/20 text-white hover:bg-white/30"
-                  }`}
-                >
-                  Crop
-                </button>
-                <div className="w-px h-4 bg-white/30 flex-shrink-0" />
-                {selectedSpriteIndex !== null ? (
-                  <button
-                    onClick={clearSprite}
-                    className="text-[10px] px-2 py-0.5 rounded-full cursor-pointer bg-white text-[var(--accent)] font-medium flex-shrink-0"
-                  >
-                    Sprite #{selectedSpriteIndex} &times;
-                  </button>
-                ) : (
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    <button
-                      onClick={toggleSprite}
-                      className={`text-[10px] px-2 py-0.5 rounded-full cursor-pointer transition-colors ${
-                        spriteOpen
-                          ? "bg-white text-[var(--accent)] font-medium"
-                          : "bg-white/20 text-white hover:bg-white/30"
-                      }`}
-                    >
-                      Sprite
-                    </button>
-                    {spriteOpen && (
-                      <>
-                        <input
-                          type="number"
-                          min={0}
-                          max={64}
-                          placeholder="C"
-                          value={spriteCols || ""}
-                          onChange={(e) =>
-                            setSpriteCols(Math.max(0, parseInt(e.target.value) || 0))
-                          }
-                          className="w-8 text-[10px] text-center px-0.5 py-0.5 rounded bg-white/20 text-white border border-white/30 focus:outline-none"
-                        />
-                        <span className="text-white/50 text-[10px]">&times;</span>
-                        <input
-                          type="number"
-                          min={0}
-                          max={64}
-                          placeholder="R"
-                          value={spriteRows || ""}
-                          onChange={(e) =>
-                            setSpriteRows(Math.max(0, parseInt(e.target.value) || 0))
-                          }
-                          className="w-8 text-[10px] text-center px-0.5 py-0.5 rounded bg-white/20 text-white border border-white/30 focus:outline-none"
-                        />
-                      </>
-                    )}
-                  </div>
-                )}
-              </>
-            )}
-
-            {category === "audio" && url && (
-              <>
-                <label className="flex items-center gap-1 text-white/80 text-[10px] flex-1 min-w-0">
-                  <span className="flex-shrink-0">Spd</span>
-                  <input
-                    type="range"
-                    min={0.25}
-                    max={4}
-                    step={0.05}
-                    value={speed}
-                    onChange={(e) => handleSpeedChange(parseFloat(e.target.value))}
-                    className="flex-1 min-w-0"
-                  />
-                  <span className="w-7 text-right font-mono flex-shrink-0">{speed.toFixed(1)}</span>
-                </label>
-                <div className="w-px h-4 bg-white/30 flex-shrink-0" />
-                <label className="flex items-center gap-1 text-white/80 text-[10px] flex-1 min-w-0">
-                  <span className="flex-shrink-0">Pit</span>
-                  <input
-                    type="range"
-                    min={-12}
-                    max={12}
-                    step={0.5}
-                    value={pitch}
-                    onChange={(e) => handlePitchChange(parseFloat(e.target.value))}
-                    className="flex-1 min-w-0"
-                  />
-                  <span className="w-7 text-right font-mono flex-shrink-0">
-                    {pitch >= 0 ? `+${pitch.toFixed(0)}` : pitch.toFixed(0)}
-                  </span>
-                </label>
-              </>
-            )}
-
-            <div className="flex-1" />
-            <button
-              onClick={handleCopy}
-              className="flex items-center gap-1 text-white text-[10px] font-medium cursor-pointer hover:opacity-80 transition-opacity flex-shrink-0 bg-white/20 px-2 py-0.5 rounded-full"
-              title="Copy echo link (Ctrl+click for original name)"
+          <svg
+            className="w-5 h-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2.5}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+        <div
+          className="flex flex-col items-center max-w-[90vw] max-h-[90vh] rounded-lg overflow-hidden"
+          style={{ backgroundColor: "var(--accent)" }}
+          onClick={(e) => e.stopPropagation()}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            handleCopy();
+          }}
+        >
+          {loading ? (
+            <div
+              className="flex items-center justify-center m-1 mb-0 rounded"
+              style={{ backgroundColor: "var(--thumb-bg)", minWidth: 120, minHeight: 120 }}
             >
-              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-                />
-              </svg>
-              Copy ECHO
-            </button>
+              <div className="w-8 h-8 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+            </div>
+          ) : category === "images" && showUrl ? (
+            <div
+              className="relative m-1 mb-0 overflow-hidden rounded"
+              style={{ backgroundColor: "var(--thumb-bg)" }}
+            >
+              <img
+                ref={imgRef}
+                src={showUrl}
+                alt={displayName}
+                className="max-w-full max-h-[60vh] object-contain block"
+                onLoad={handleImgLoad}
+              />
+              {showSpriteGrid && imgRef.current && (
+                <div
+                  className="absolute pointer-events-auto"
+                  style={{
+                    top: imgRef.current.offsetTop,
+                    left: imgRef.current.offsetLeft,
+                    width: imgRef.current.clientWidth,
+                    height: imgRef.current.clientHeight,
+                    display: "grid",
+                    gridTemplateRows: `repeat(${spriteRows}, 1fr)`,
+                    gridTemplateColumns: `repeat(${spriteCols}, 1fr)`,
+                  }}
+                >
+                  {Array.from({ length: spriteRows * spriteCols }, (_, i) => (
+                    <div
+                      key={i}
+                      className="border border-white/30 cursor-pointer transition-colors"
+                      style={{
+                        backgroundColor:
+                          spriteHover === i ? "rgba(255,255,255,0.25)" : "transparent",
+                      }}
+                      onMouseEnter={() => setSpriteHover(i)}
+                      onMouseLeave={() => setSpriteHover(null)}
+                      onClick={() => handleSpriteClick(i)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : category === "audio" && showUrl ? (
+            <div
+              className="m-1 mb-0 p-3 overflow-hidden rounded"
+              style={{ backgroundColor: "var(--thumb-bg)" }}
+            >
+              <AudioPreview url={showUrl} playbackRate={audioEditionParams?.playbackRate} />
+            </div>
+          ) : (
+            <div className="flex items-center justify-center w-32 h-32 m-1 rounded bg-gray-800 text-gray-400 text-sm">
+              No preview
+            </div>
+          )}
+
+          <div className="flex flex-col w-full px-3 py-1.5 gap-1">
+            <div className="text-white text-xs truncate w-full text-left">
+              {displayName}
+              {editions.length > 0 && (
+                <span className="text-white/70 ml-1">{serializeEditions("", editions)}</span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 w-full">
+              {category === "images" && url && (
+                <>
+                  <button
+                    onClick={toggleCrop}
+                    className={`text-[10px] px-2 py-0.5 rounded-full cursor-pointer transition-colors flex-shrink-0 ${
+                      hasCrop
+                        ? "bg-white text-[var(--accent)] font-medium"
+                        : "bg-white/20 text-white hover:bg-white/30"
+                    }`}
+                  >
+                    Crop
+                  </button>
+                  <div className="w-px h-4 bg-white/30 flex-shrink-0" />
+                  {selectedSpriteIndex !== null ? (
+                    <button
+                      onClick={clearSprite}
+                      className="text-[10px] px-2 py-0.5 rounded-full cursor-pointer bg-white text-[var(--accent)] font-medium flex-shrink-0"
+                    >
+                      Sprite #{selectedSpriteIndex} &times;
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button
+                        onClick={toggleSprite}
+                        className={`text-[10px] px-2 py-0.5 rounded-full cursor-pointer transition-colors ${
+                          spriteOpen
+                            ? "bg-white text-[var(--accent)] font-medium"
+                            : "bg-white/20 text-white hover:bg-white/30"
+                        }`}
+                      >
+                        Sprite
+                      </button>
+                      {spriteOpen && (
+                        <>
+                          <input
+                            type="number"
+                            min={0}
+                            max={64}
+                            placeholder="C"
+                            value={spriteCols || ""}
+                            onChange={(e) =>
+                              setSpriteCols(Math.max(0, parseInt(e.target.value) || 0))
+                            }
+                            className="w-8 text-[10px] text-center px-0.5 py-0.5 rounded bg-white/20 text-white border border-white/30 focus:outline-none"
+                          />
+                          <span className="text-white/50 text-[10px]">&times;</span>
+                          <input
+                            type="number"
+                            min={0}
+                            max={64}
+                            placeholder="R"
+                            value={spriteRows || ""}
+                            onChange={(e) =>
+                              setSpriteRows(Math.max(0, parseInt(e.target.value) || 0))
+                            }
+                            className="w-8 text-[10px] text-center px-0.5 py-0.5 rounded bg-white/20 text-white border border-white/30 focus:outline-none"
+                          />
+                        </>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {category === "audio" && url && (
+                <>
+                  <label className="flex items-center gap-1 text-white/80 text-[10px] flex-1 min-w-0">
+                    <span className="flex-shrink-0">Spd</span>
+                    <input
+                      type="range"
+                      min={0.25}
+                      max={4}
+                      step={0.05}
+                      value={speed}
+                      onChange={(e) => handleSpeedChange(parseFloat(e.target.value))}
+                      className="flex-1 min-w-0"
+                    />
+                    <span className="w-7 text-right font-mono flex-shrink-0">
+                      {speed.toFixed(1)}
+                    </span>
+                  </label>
+                  <div className="w-px h-4 bg-white/30 flex-shrink-0" />
+                  <label className="flex items-center gap-1 text-white/80 text-[10px] flex-1 min-w-0">
+                    <span className="flex-shrink-0">Pit</span>
+                    <input
+                      type="range"
+                      min={-12}
+                      max={12}
+                      step={0.5}
+                      value={pitch}
+                      onChange={(e) => handlePitchChange(parseFloat(e.target.value))}
+                      className="flex-1 min-w-0"
+                    />
+                    <span className="w-7 text-right font-mono flex-shrink-0">
+                      {pitch >= 0 ? `+${pitch.toFixed(0)}` : pitch.toFixed(0)}
+                    </span>
+                  </label>
+                </>
+              )}
+
+              <div className="flex-1" />
+              <button
+                onClick={handleCopy}
+                className="flex items-center gap-1 text-white text-[10px] font-medium cursor-pointer hover:opacity-80 transition-opacity flex-shrink-0 bg-white/20 px-2 py-0.5 rounded-full"
+                title="Copy echo link (Ctrl+click for original name)"
+              >
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                  />
+                </svg>
+                Copy ECHO
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -787,6 +856,7 @@ function WikiView({
   const [pages, setPages] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState("index");
   const wikiContainerRef = useRef<HTMLDivElement>(null);
+  const anchorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -910,7 +980,7 @@ function WikiView({
             "--tw-prose-body": "var(--text)",
             "--tw-prose-headings": "var(--text)",
             "--tw-prose-bold": "var(--text)",
-            "--tw-prose-links": "var(--accent)",
+            "--tw-prose-links": "var(--link-color)",
             "--tw-prose-quotes": "var(--text-muted)",
             "--tw-prose-quote-borders": "var(--accent)",
             "--tw-prose-code": "var(--text)",
@@ -984,7 +1054,7 @@ function WikiView({
                       e.preventDefault();
                       void handlePageChange(wikiPage);
                     }}
-                    className="text-[var(--accent)] hover:underline cursor-pointer"
+                    className="text-[var(--link-color)] hover:underline cursor-pointer"
                   >
                     {linkChildren}
                   </a>
@@ -1004,13 +1074,18 @@ function WikiView({
                           `[id="${CSS.escape(id.toLowerCase())}"]`,
                         );
                       if (target) {
-                        target.scrollIntoView({
-                          behavior: "smooth",
-                          block: "start",
-                        });
+                        
+                        if (anchorTimerRef.current) clearTimeout(anchorTimerRef.current);
+                        
+                        target.scrollIntoView({ behavior: "instant", block: "start" });
+                        
+                        anchorTimerRef.current = setTimeout(() => {
+                          anchorTimerRef.current = null;
+                          target.scrollIntoView({ behavior: "smooth", block: "start" });
+                        }, 300);
                       }
                     }}
-                    className="text-[var(--accent)] hover:underline cursor-pointer"
+                    className="text-[var(--link-color)] hover:underline cursor-pointer"
                   >
                     {linkChildren}
                   </a>
@@ -1032,7 +1107,7 @@ function WikiView({
                       window.open(externalUrl, "_blank");
                     }
                   }}
-                  className="text-[var(--accent)] hover:underline cursor-pointer"
+                  className="text-[var(--link-color)] hover:underline cursor-pointer"
                 >
                   {linkChildren}
                 </a>
@@ -1044,6 +1119,39 @@ function WikiView({
         </Markdown>
       </div>
     </div>
+  );
+}
+
+function AssetNameLabel({ displayName, hovered }: { displayName: string; hovered: boolean }) {
+  const measureRef = useRef<HTMLSpanElement>(null);
+  const [overflows, setOverflows] = useState(false);
+
+  useEffect(() => {
+    const el = measureRef.current;
+    if (el) {
+      setOverflows(el.scrollWidth > el.clientWidth);
+    }
+  }, [displayName]);
+
+  if (hovered && overflows) {
+    const charCount = displayName.length;
+    const duration = Math.max(3, charCount * 0.18);
+    return (
+      <span className="asset-name-scroll-container text-[var(--text-muted)] leading-tight">
+        <span
+          className="asset-name-scroll-inner"
+          style={{ "--scroll-duration": `${duration}s` } as CSSProperties}
+        >
+          {displayName} &mdash; {displayName} &mdash;&nbsp;
+        </span>
+      </span>
+    );
+  }
+
+  return (
+    <span ref={measureRef} className="asset-name-static text-[var(--text-muted)] leading-tight">
+      {displayName}
+    </span>
   );
 }
 
@@ -1087,6 +1195,8 @@ function AssetCard({
     [echoMarkdown, originalMarkdown, onCopied, path],
   );
 
+  const [cardHovered, setCardHovered] = useState(false);
+
   const thumbClass =
     cardSize === "compact" ? "w-12 h-12" : cardSize === "large" ? "w-24 h-24" : "w-16 h-16";
   const labelClass =
@@ -1096,9 +1206,16 @@ function AssetCard({
 
   return (
     <div
-      className="flex flex-col items-center gap-1 p-1.5 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer overflow-hidden"
+      className="flex flex-col items-center gap-1 p-1.5 rounded-lg transition-colors cursor-pointer overflow-hidden"
+      onMouseEnter={(e) => {
+        e.currentTarget.style.backgroundColor = "var(--thumb-bg)";
+        setCardHovered(true);
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.backgroundColor = "transparent";
+        setCardHovered(false);
+      }}
       onClick={handleClick}
-      title={echoMarkdown}
     >
       <div
         className={`${thumbClass} rounded border border-gray-200 flex items-center justify-center overflow-hidden flex-shrink-0`}
@@ -1157,9 +1274,7 @@ function AssetCard({
         )}
       </div>
       <div className={`${labelClass} flex items-center gap-0.5 w-full min-w-0`}>
-        <span className="text-[var(--text-muted)] truncate flex-1 leading-tight">
-          {displayName}
-        </span>
+        <AssetNameLabel displayName={displayName} hovered={cardHovered} />
         <button
           className="flex-shrink-0 text-gray-300 hover:text-[var(--accent)] transition-colors cursor-pointer p-0.5"
           onClick={handleCopy}
@@ -1196,10 +1311,15 @@ function FilterTabs({
         <button
           key={f}
           className={`text-xs px-2.5 py-1 rounded-full transition-colors cursor-pointer ${
-            active === f
-              ? "bg-[var(--accent)] text-white"
-              : "bg-gray-100 text-[var(--text-muted)] hover:bg-gray-200"
+            active === f ? "bg-[var(--accent)] text-white" : "text-[var(--text-muted)]"
           }`}
+          style={active !== f ? { backgroundColor: "transparent" } : undefined}
+          onMouseEnter={(e) => {
+            if (active !== f) e.currentTarget.style.backgroundColor = "var(--thumb-bg)";
+          }}
+          onMouseLeave={(e) => {
+            if (active !== f) e.currentTarget.style.backgroundColor = "transparent";
+          }}
           onClick={() => onChange(f)}
         >
           {f.charAt(0).toUpperCase() + f.slice(1)}
@@ -1226,10 +1346,15 @@ function SubFilterTabs({
         <button
           key={s.name}
           className={`text-[10px] px-2 py-0.5 rounded-full transition-colors cursor-pointer ${
-            active === s.name
-              ? "bg-[var(--accent)]/20 text-[var(--accent)]"
-              : "bg-gray-50 text-[var(--text-muted)] hover:bg-gray-100"
+            active === s.name ? "bg-[var(--accent)] text-white" : "text-[var(--text-muted)]"
           }`}
+          style={active !== s.name ? { backgroundColor: "transparent" } : undefined}
+          onMouseEnter={(e) => {
+            if (active !== s.name) e.currentTarget.style.backgroundColor = "var(--thumb-bg)";
+          }}
+          onMouseLeave={(e) => {
+            if (active !== s.name) e.currentTarget.style.backgroundColor = "transparent";
+          }}
           onClick={() => onChange(s.name)}
         >
           {s.name.charAt(0).toUpperCase() + s.name.slice(1)}
@@ -1255,10 +1380,15 @@ function SegmentedControl<T extends string>({
         <button
           key={opt.value}
           className={`text-xs px-3 py-1.5 transition-colors cursor-pointer ${
-            value === opt.value
-              ? "bg-[var(--accent)] text-white"
-              : "bg-white text-[var(--text-muted)] hover:bg-gray-50"
+            value === opt.value ? "bg-[var(--accent)] text-white" : "text-[var(--text-muted)]"
           }`}
+          style={value !== opt.value ? { backgroundColor: "var(--control-bg)" } : undefined}
+          onMouseEnter={(e) => {
+            if (value !== opt.value) e.currentTarget.style.backgroundColor = "var(--thumb-bg)";
+          }}
+          onMouseLeave={(e) => {
+            if (value !== opt.value) e.currentTarget.style.backgroundColor = "var(--control-bg)";
+          }}
           onClick={() => onChange(opt.value)}
         >
           {opt.label}
@@ -1271,19 +1401,14 @@ function SegmentedControl<T extends string>({
 function ColorPickerRow({
   label,
   value,
-  presets,
   onSelect,
 }: {
   label: string;
   value: string;
-  presets: readonly string[];
   onSelect: (color: string) => void;
 }) {
-  const [customHex, setCustomHex] = useState(presets.includes(value) ? "" : value);
-
-  const handleCustom = useCallback(
+  const handleHexChange = useCallback(
     (hex: string) => {
-      setCustomHex(hex);
       if (/^#[0-9a-fA-F]{6}$/.test(hex)) {
         onSelect(hex);
       }
@@ -1292,34 +1417,25 @@ function ColorPickerRow({
   );
 
   return (
-    <div className="flex flex-col gap-2">
-      <span className="text-xs font-medium">{label}</span>
-      <div className="flex items-center gap-2">
-        {presets.map((color) => (
-          <button
-            key={color}
-            className={`w-7 h-7 rounded-full cursor-pointer transition-shadow border border-gray-200 ${
-              value === color && !customHex
-                ? "ring-2 ring-offset-2 ring-gray-400"
-                : "hover:ring-2 hover:ring-offset-1 hover:ring-gray-300"
-            }`}
-            style={{ backgroundColor: color }}
-            onClick={() => {
-              setCustomHex("");
-              onSelect(color);
-            }}
-            title={color}
-          />
-        ))}
-        <input
-          type="text"
-          placeholder="#hex"
-          value={customHex}
-          onChange={(e) => handleCustom(e.target.value)}
-          maxLength={7}
-          className="w-20 text-xs font-mono px-2 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)]"
-        />
-      </div>
+    <div className="flex items-center gap-3">
+      <span className="text-xs font-medium w-32 flex-shrink-0">{label}</span>
+      <input
+        type="color"
+        value={value}
+        onChange={(e) => onSelect(e.target.value)}
+        className="w-8 h-8 rounded cursor-pointer border border-gray-200 p-0.5 flex-shrink-0"
+      />
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => handleHexChange(e.target.value)}
+        maxLength={7}
+        className="w-20 text-xs font-mono px-2 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)]"
+        style={{
+          backgroundColor: "var(--control-bg)",
+          color: "var(--control-text)",
+        }}
+      />
     </div>
   );
 }
@@ -1335,12 +1451,14 @@ function parseMappingText(text: string): Array<[string, string]> {
   return results;
 }
 
-type SettingsTab = "general" | "style" | "mapping";
+type SettingsTab = "general" | "game" | "style" | "mapping";
 
 function SettingsView({
   mappingText,
   style,
   config,
+  appearance,
+  subredditName,
   onMappingSaved,
   onStyleChanged,
   onConfigChanged,
@@ -1348,6 +1466,8 @@ function SettingsView({
   mappingText: string;
   style: StyleConfig;
   config: GameConfig;
+  appearance: SubredditAppearance;
+  subredditName: string;
   onMappingSaved: (text: string, mapping: Record<string, string> | null) => void;
   onStyleChanged: (style: StyleConfig) => void;
   onConfigChanged: (config: GameConfig) => void;
@@ -1358,13 +1478,39 @@ function SettingsView({
   const [status, setStatus] = useState<{ ok: boolean; message: string } | null>(null);
   const [editingMode, setEditingMode] = useState<"light" | "dark">("light");
   const [gameTitle, setGameTitle] = useState(config.gameName);
+  const [wikiTitleField, setWikiTitleField] = useState(config.wikiTitle);
+  const [wikiDescriptionField, setWikiDescriptionField] = useState(config.wikiDescription);
+  const [homeBackground, setHomeBackground] = useState<HomeBackground>(config.homeBackground);
+  const [homeLogo, setHomeLogo] = useState<HomeLogo>(config.homeLogo);
+  const [engineField, setEngineField] = useState<EngineType>(config.engine);
+  const [encryptionKeyField, setEncryptionKeyField] = useState(config.encryptionKey);
   const [savingConfig, setSavingConfig] = useState(false);
+  const [resettingStyle, setResettingStyle] = useState(false);
+
+  const isTcoaalDetected = useMemo(() => {
+    const t = gameTitle.toLowerCase();
+    return t.includes("coffin") && t.includes("andy") && t.includes("leyley");
+  }, [gameTitle]);
+
+  useEffect(() => {
+    if (isTcoaalDetected) {
+      setEngineField("tcoaal");
+      setEncryptionKeyField("");
+    }
+  }, [isTcoaalDetected]);
 
   const editingColors = editingMode === "light" ? style.light : style.dark;
 
   const parsedEntries = useMemo(() => parseMappingText(text), [text]);
 
-  const configDirty = gameTitle !== config.gameName;
+  const configDirty =
+    gameTitle !== config.gameName ||
+    wikiTitleField !== config.wikiTitle ||
+    wikiDescriptionField !== config.wikiDescription ||
+    homeBackground !== config.homeBackground ||
+    homeLogo !== config.homeLogo ||
+    engineField !== config.engine ||
+    encryptionKeyField !== config.encryptionKey;
 
   const handleSaveConfig = useCallback(async () => {
     setSavingConfig(true);
@@ -1372,7 +1518,15 @@ function SettingsView({
       const res = await fetch("/api/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ gameName: gameTitle }),
+        body: JSON.stringify({
+          gameName: gameTitle,
+          wikiTitle: wikiTitleField,
+          wikiDescription: wikiDescriptionField,
+          homeBackground,
+          homeLogo,
+          engine: engineField,
+          encryptionKey: encryptionKeyField,
+        }),
       });
       if (res.ok) {
         const data = (await res.json()) as { config: GameConfig };
@@ -1382,7 +1536,34 @@ function SettingsView({
     } finally {
       setSavingConfig(false);
     }
-  }, [gameTitle, onConfigChanged]);
+  }, [
+    gameTitle,
+    wikiTitleField,
+    wikiDescriptionField,
+    homeBackground,
+    homeLogo,
+    engineField,
+    encryptionKeyField,
+    onConfigChanged,
+  ]);
+
+  const handleResetStyle = useCallback(async () => {
+    setResettingStyle(true);
+    try {
+      const res = await fetch("/api/style", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reset: true }),
+      });
+      if (res.ok) {
+        const data: StyleResponse = await res.json();
+        onStyleChanged(data.style);
+      }
+    } catch {
+    } finally {
+      setResettingStyle(false);
+    }
+  }, [onStyleChanged]);
 
   const handleSaveMapping = useCallback(async () => {
     setSaving(true);
@@ -1441,12 +1622,13 @@ function SettingsView({
 
   const SETTINGS_TABS: readonly { value: SettingsTab; label: string }[] = [
     { value: "general", label: "General" },
+    { value: "game", label: "Game" },
     { value: "style", label: "Style" },
     { value: "mapping", label: "Mapping" },
   ] as const;
 
   return (
-    <div className="flex-1 overflow-auto">
+    <>
       <div className="flex gap-1 px-4 pt-3 pb-2 border-b border-gray-200">
         {SETTINGS_TABS.map((tab) => (
           <button
@@ -1454,8 +1636,16 @@ function SettingsView({
             className={`text-xs px-3 py-1.5 rounded-full transition-colors cursor-pointer ${
               settingsTab === tab.value
                 ? "bg-[var(--accent)] text-white"
-                : "text-[var(--text-muted)] hover:bg-gray-100"
+                : "text-[var(--text-muted)]"
             }`}
+            style={settingsTab !== tab.value ? { backgroundColor: "transparent" } : undefined}
+            onMouseEnter={(e) => {
+              if (settingsTab !== tab.value)
+                e.currentTarget.style.backgroundColor = "var(--thumb-bg)";
+            }}
+            onMouseLeave={(e) => {
+              if (settingsTab !== tab.value) e.currentTarget.style.backgroundColor = "transparent";
+            }}
             onClick={() => setSettingsTab(tab.value)}
           >
             {tab.label}
@@ -1463,9 +1653,57 @@ function SettingsView({
         ))}
       </div>
 
-      <div className="px-4 py-4 max-w-lg">
+      <div className="flex-1 overflow-auto px-4 py-4">
         {settingsTab === "general" && (
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-4 max-w-lg">
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-medium">Wiki Title</span>
+              <input
+                type="text"
+                value={wikiTitleField}
+                onChange={(e) => setWikiTitleField(e.target.value)}
+                placeholder={`WIKI r/${subredditName}`}
+                className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)]"
+                style={{
+                  backgroundColor: "var(--control-bg)",
+                  color: "var(--control-text)",
+                }}
+              />
+              <span className="text-[10px] text-[var(--text-muted)]">
+                Displayed on the home screen below the logo. Leave empty for default.
+              </span>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-medium">Wiki Description</span>
+              <input
+                type="text"
+                value={wikiDescriptionField}
+                onChange={(e) => setWikiDescriptionField(e.target.value)}
+                placeholder="A short description shown on the home screen"
+                className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)]"
+                style={{
+                  backgroundColor: "var(--control-bg)",
+                  color: "var(--control-text)",
+                }}
+              />
+              <span className="text-[10px] text-[var(--text-muted)]">
+                Displayed on the home screen below the title.
+              </span>
+            </div>
+
+            <button
+              onClick={() => void handleSaveConfig()}
+              disabled={savingConfig || !configDirty}
+              className="self-start text-sm px-4 py-1.5 rounded-full bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] transition-colors cursor-pointer disabled:opacity-50"
+            >
+              {savingConfig ? "Saving..." : "Save"}
+            </button>
+          </div>
+        )}
+
+        {settingsTab === "game" && (
+          <div className="flex flex-col gap-4 max-w-lg">
             <div className="flex flex-col gap-2">
               <span className="text-xs font-medium">Game Title</span>
               <input
@@ -1483,6 +1721,61 @@ function SettingsView({
               </span>
             </div>
 
+            {gameTitle.length > 0 && (
+              <>
+                <div className="flex flex-col gap-2">
+                  <span className="text-xs font-medium">Engine</span>
+                  <select
+                    value={engineField}
+                    onChange={(e) => setEngineField(e.target.value as EngineType)}
+                    disabled={isTcoaalDetected}
+                    className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)] disabled:opacity-50"
+                    style={{
+                      backgroundColor: "var(--control-bg)",
+                      color: "var(--control-text)",
+                    }}
+                  >
+                    <option value="auto">Auto-detect</option>
+                    <option value="rm2k3">RPG Maker 2003</option>
+                    <option value="rmxp">RPG Maker XP</option>
+                    <option value="rmvx">RPG Maker VX</option>
+                    <option value="rmvxace">RPG Maker VX Ace</option>
+                    <option value="rmmv">RPG Maker MV</option>
+                    <option value="rmmv-encrypted">RPG Maker MV (Encrypted)</option>
+                    <option value="rmmz">RPG Maker MZ</option>
+                    <option value="rmmz-encrypted">RPG Maker MZ (Encrypted)</option>
+                    <option value="tcoaal">TCOAAL</option>
+                  </select>
+                  <span className="text-[10px] text-[var(--text-muted)]">
+                    {isTcoaalDetected
+                      ? "Auto-detected from game title."
+                      : "Override the engine auto-detection. Leave on Auto-detect if unsure."}
+                  </span>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <span className="text-xs font-medium">Encryption Key</span>
+                  <input
+                    type="text"
+                    value={encryptionKeyField}
+                    onChange={(e) => setEncryptionKeyField(e.target.value)}
+                    disabled={isTcoaalDetected}
+                    placeholder="Leave empty for auto-detection"
+                    className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)] disabled:opacity-50"
+                    style={{
+                      backgroundColor: "var(--control-bg)",
+                      color: "var(--control-text)",
+                    }}
+                  />
+                  <span className="text-[10px] text-[var(--text-muted)]">
+                    {isTcoaalDetected
+                      ? "TCOAAL does not use a user-provided key."
+                      : "Override the encryption key used for decryption. Leave empty if unsure."}
+                  </span>
+                </div>
+              </>
+            )}
+
             <button
               onClick={() => void handleSaveConfig()}
               disabled={savingConfig || !configDirty}
@@ -1494,112 +1787,174 @@ function SettingsView({
         )}
 
         {settingsTab === "style" && (
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-2">
-              <span className="text-xs font-medium">Font</span>
-              <SegmentedControl
-                value={style.fontFamily}
-                options={[
-                  { value: "system" as FontFamily, label: "System" },
-                  { value: "serif" as FontFamily, label: "Serif" },
-                  { value: "mono" as FontFamily, label: "Mono" },
-                ]}
-                onChange={(v) => void saveStyle({ fontFamily: v })}
-              />
+          <div className="flex gap-8">
+            <div className="flex flex-col gap-4 max-w-lg flex-1 min-w-0">
+              <div className="flex flex-col gap-2">
+                <span className="text-xs font-medium">Home Background</span>
+                <SegmentedControl
+                  value={homeBackground}
+                  options={[
+                    { value: "ripple" as HomeBackground, label: "Ripple" },
+                    ...(appearance.bannerUrl
+                      ? [{ value: "banner" as HomeBackground, label: "Banner" }]
+                      : []),
+                    { value: "none" as HomeBackground, label: "None" },
+                  ]}
+                  onChange={setHomeBackground}
+                />
+                <span className="text-[10px] text-[var(--text-muted)]">
+                  Background effect on the home/import screen.
+                </span>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <span className="text-xs font-medium">Home Logo</span>
+                <SegmentedControl
+                  value={homeLogo}
+                  options={[
+                    { value: "echowiki" as HomeLogo, label: "EchoWiki" },
+                    ...(appearance.iconUrl
+                      ? [{ value: "subreddit" as HomeLogo, label: "Subreddit" }]
+                      : []),
+                  ]}
+                  onChange={setHomeLogo}
+                />
+                <span className="text-[10px] text-[var(--text-muted)]">
+                  Logo displayed on the home/import screen.
+                </span>
+              </div>
+
+              {(homeBackground !== config.homeBackground || homeLogo !== config.homeLogo) && (
+                <button
+                  onClick={() => void handleSaveConfig()}
+                  disabled={savingConfig}
+                  className="self-start text-sm px-4 py-1.5 rounded-full bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {savingConfig ? "Saving..." : "Save"}
+                </button>
+              )}
+
+              <div className="border-b border-gray-200 my-1" />
+
+              <div className="flex flex-col gap-2">
+                <span className="text-xs font-medium">Font</span>
+                <SegmentedControl
+                  value={style.fontFamily}
+                  options={[
+                    { value: "system" as FontFamily, label: "System" },
+                    { value: "serif" as FontFamily, label: "Serif" },
+                    { value: "mono" as FontFamily, label: "Mono" },
+                    { value: "subreddit" as FontFamily, label: "Subreddit" },
+                  ]}
+                  onChange={(v) => void saveStyle({ fontFamily: v })}
+                />
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <span className="text-xs font-medium">Card Size</span>
+                <SegmentedControl
+                  value={style.cardSize}
+                  options={[
+                    { value: "compact" as CardSize, label: "Compact" },
+                    { value: "normal" as CardSize, label: "Normal" },
+                    { value: "large" as CardSize, label: "Large" },
+                  ]}
+                  onChange={(v) => void saveStyle({ cardSize: v })}
+                />
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <span className="text-xs font-medium">Wiki Font Size</span>
+                <SegmentedControl
+                  value={style.wikiFontSize}
+                  options={[
+                    { value: "small" as WikiFontSize, label: "Small" },
+                    { value: "normal" as WikiFontSize, label: "Normal" },
+                    { value: "large" as WikiFontSize, label: "Large" },
+                  ]}
+                  onChange={(v) => void saveStyle({ wikiFontSize: v })}
+                />
+              </div>
+
+              <div className="border-b border-gray-200 my-1" />
+
+              <button
+                onClick={() => void handleResetStyle()}
+                disabled={resettingStyle}
+                className="self-start text-xs px-3 py-1.5 rounded-full border border-gray-300 text-[var(--text-muted)] transition-colors cursor-pointer disabled:opacity-50"
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--thumb-bg)")}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+              >
+                {resettingStyle ? "Resetting..." : "Reset to Defaults"}
+              </button>
             </div>
 
-            <div className="flex flex-col gap-2">
-              <span className="text-xs font-medium">Card Size</span>
+            <div className="flex flex-col gap-4 max-w-xs flex-1 min-w-0">
               <SegmentedControl
-                value={style.cardSize}
+                value={editingMode}
                 options={[
-                  { value: "compact" as CardSize, label: "Compact" },
-                  { value: "normal" as CardSize, label: "Normal" },
-                  { value: "large" as CardSize, label: "Large" },
+                  { value: "light" as const, label: "Light" },
+                  { value: "dark" as const, label: "Dark" },
                 ]}
-                onChange={(v) => void saveStyle({ cardSize: v })}
+                onChange={setEditingMode}
+              />
+
+              <ColorPickerRow
+                key={`accent-${editingMode}`}
+                label="Accent"
+                value={editingColors.accentColor}
+                onSelect={(c) => saveColor("accentColor", c)}
+              />
+
+              <ColorPickerRow
+                key={`link-${editingMode}`}
+                label="Links"
+                value={editingColors.linkColor}
+                onSelect={(c) => saveColor("linkColor", c)}
+              />
+
+              <ColorPickerRow
+                key={`bg-${editingMode}`}
+                label="Background"
+                value={editingColors.bgColor}
+                onSelect={(c) => saveColor("bgColor", c)}
+              />
+
+              <ColorPickerRow
+                key={`text-${editingMode}`}
+                label="Text"
+                value={editingColors.textColor}
+                onSelect={(c) => saveColor("textColor", c)}
+              />
+
+              <ColorPickerRow
+                key={`muted-${editingMode}`}
+                label="Muted Text"
+                value={editingColors.textMuted}
+                onSelect={(c) => saveColor("textMuted", c)}
+              />
+
+              <ColorPickerRow
+                key={`thumb-${editingMode}`}
+                label="Thumbnail Background"
+                value={editingColors.thumbBgColor}
+                onSelect={(c) => saveColor("thumbBgColor", c)}
+              />
+
+              <ColorPickerRow
+                key={`control-bg-${editingMode}`}
+                label="Control Background"
+                value={editingColors.controlBgColor}
+                onSelect={(c) => saveColor("controlBgColor", c)}
+              />
+
+              <ColorPickerRow
+                key={`control-text-${editingMode}`}
+                label="Control Text"
+                value={editingColors.controlTextColor}
+                onSelect={(c) => saveColor("controlTextColor", c)}
               />
             </div>
-
-            <div className="flex flex-col gap-2">
-              <span className="text-xs font-medium">Wiki Font Size</span>
-              <SegmentedControl
-                value={style.wikiFontSize}
-                options={[
-                  { value: "small" as WikiFontSize, label: "Small" },
-                  { value: "normal" as WikiFontSize, label: "Normal" },
-                  { value: "large" as WikiFontSize, label: "Large" },
-                ]}
-                onChange={(v) => void saveStyle({ wikiFontSize: v })}
-              />
-            </div>
-
-            <div className="border-b border-gray-200 my-1" />
-
-            <SegmentedControl
-              value={editingMode}
-              options={[
-                { value: "light" as const, label: "Light" },
-                { value: "dark" as const, label: "Dark" },
-              ]}
-              onChange={setEditingMode}
-            />
-
-            <ColorPickerRow
-              key={`accent-${editingMode}`}
-              label="Accent Color"
-              value={editingColors.accentColor}
-              presets={ACCENT_PRESETS}
-              onSelect={(c) => saveColor("accentColor", c)}
-            />
-
-            <ColorPickerRow
-              key={`bg-${editingMode}`}
-              label="Background"
-              value={editingColors.bgColor}
-              presets={editingMode === "light" ? BG_PRESETS : DARK_BG_PRESETS}
-              onSelect={(c) => saveColor("bgColor", c)}
-            />
-
-            <ColorPickerRow
-              key={`text-${editingMode}`}
-              label="Text Color"
-              value={editingColors.textColor}
-              presets={editingMode === "light" ? TEXT_PRESETS : DARK_TEXT_PRESETS}
-              onSelect={(c) => saveColor("textColor", c)}
-            />
-
-            <ColorPickerRow
-              key={`muted-${editingMode}`}
-              label="Muted Text"
-              value={editingColors.textMuted}
-              presets={MUTED_PRESETS}
-              onSelect={(c) => saveColor("textMuted", c)}
-            />
-
-            <ColorPickerRow
-              key={`thumb-${editingMode}`}
-              label="Thumbnail Background"
-              value={editingColors.thumbBgColor}
-              presets={editingMode === "light" ? THUMB_BG_PRESETS : DARK_THUMB_BG_PRESETS}
-              onSelect={(c) => saveColor("thumbBgColor", c)}
-            />
-
-            <ColorPickerRow
-              key={`control-bg-${editingMode}`}
-              label="Control Background"
-              value={editingColors.controlBgColor}
-              presets={editingMode === "light" ? CONTROL_BG_PRESETS : DARK_CONTROL_BG_PRESETS}
-              onSelect={(c) => saveColor("controlBgColor", c)}
-            />
-
-            <ColorPickerRow
-              key={`control-text-${editingMode}`}
-              label="Control Text"
-              value={editingColors.controlTextColor}
-              presets={editingMode === "light" ? CONTROL_TEXT_PRESETS : DARK_CONTROL_TEXT_PRESETS}
-              onSelect={(c) => saveColor("controlTextColor", c)}
-            />
           </div>
         )}
 
@@ -1664,7 +2019,7 @@ function SettingsView({
           </div>
         )}
       </div>
-    </div>
+    </>
   );
 }
 
@@ -1675,7 +2030,6 @@ export const App = () => {
   const [config, setConfig] = useState<GameConfig | null>(null);
   const [isMod, setIsMod] = useState(false);
   const [meta, setMeta] = useState<EchoMeta | null>(null);
-  const [progress, setProgress] = useState<ImportProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1691,10 +2045,15 @@ export const App = () => {
   const [mappingText, setMappingText] = useState('"original_filename": "mapped_filename"');
   const [pathToMapped, setPathToMapped] = useState<Map<string, string>>(new Map());
 
-  const [mismatchWarning, setMismatchWarning] = useState<string | null>(null);
+  const [gameMismatch, setGameMismatch] = useState<{
+    expected: string;
+    detected: string;
+  } | null>(null);
   const [mappingUpdateInfo, setMappingUpdateInfo] = useState<string | null>(null);
   const mappingRef = useRef<Record<string, string> | null>(null);
   const [style, setStyle] = useState<StyleConfig>({ ...DEFAULT_STYLE });
+  const [appearance, setAppearance] = useState<SubredditAppearance>({ ...DEFAULT_APPEARANCE });
+  const [initResolved, setInitResolved] = useState(false);
   const [isDark, setIsDark] = useState(
     () => window.matchMedia("(prefers-color-scheme: dark)").matches,
   );
@@ -1714,12 +2073,38 @@ export const App = () => {
 
   const colors: ColorTheme = isDark ? style.dark : style.light;
 
+  const preImportVars = useMemo((): CSSProperties => {
+    if (!initResolved) return ECHOWIKI_PRE_IMPORT;
+    const bg = colors.bgColor;
+    const accent = colors.accentColor;
+    const text = colors.textColor;
+    const muted = colors.textMuted;
+    return {
+      "--accent": accent,
+      "--accent-hover": darkenHex(accent, 0.05),
+      "--accent-ring": hexToRgba(accent, 0.2),
+      "--bg": bg,
+      "--text": text,
+      "--text-muted": muted,
+      "--thumb-bg": colors.thumbBgColor,
+      "--control-bg": colors.controlBgColor,
+      "--control-text": colors.controlTextColor,
+    } as CSSProperties;
+  }, [initResolved, colors]);
+
+  const wikiTitle = useMemo(() => {
+    if (config?.wikiTitle) return config.wikiTitle;
+    if (subredditName) return `WIKI r/${subredditName}`;
+    return "";
+  }, [config?.wikiTitle, subredditName]);
+
   const cssVars = useMemo(
     () =>
       ({
         "--accent": colors.accentColor,
         "--accent-hover": darkenHex(colors.accentColor, 0.05),
         "--accent-ring": hexToRgba(colors.accentColor, 0.2),
+        "--link-color": colors.linkColor,
         "--bg": colors.bgColor,
         "--text": colors.textColor,
         "--text-muted": colors.textMuted,
@@ -1729,6 +2114,7 @@ export const App = () => {
       }) as CSSProperties,
     [
       colors.accentColor,
+      colors.linkColor,
       colors.bgColor,
       colors.textColor,
       colors.textMuted,
@@ -1740,7 +2126,8 @@ export const App = () => {
 
   useEffect(() => {
     const init = async () => {
-      const wikiPromise = fetch("/api/wiki").catch(() => null);
+      const stylePromise = fetch("/api/style").catch(() => null);
+      let initConfig: GameConfig | null = null;
 
       try {
         const res = await fetch("/api/init");
@@ -1749,7 +2136,19 @@ export const App = () => {
         setSubredditName(data.subredditName);
         setConfig(data.config);
         setIsMod(data.isMod);
+        setAppearance(data.appearance);
+        initConfig = data.config;
       } catch {}
+
+      try {
+        const styleRes = await stylePromise;
+        if (styleRes?.ok) {
+          const data: StyleResponse = await styleRes.json();
+          setStyle(data.style);
+        }
+      } catch {}
+
+      setInitResolved(true);
 
       const imported = await hasAssets();
       if (imported) {
@@ -1758,24 +2157,15 @@ export const App = () => {
         const allPaths = await listAssetPaths();
         setPaths(allPaths);
 
-        const imagePaths = getFirstVisibleImagePaths(allPaths);
-        const wikiEchoPaths: string[] = [];
+        if (
+          initConfig?.gameName &&
+          m?.gameTitle &&
+          initConfig.gameName.toLowerCase() !== m.gameTitle.toLowerCase()
+        ) {
+          setGameMismatch({ expected: initConfig.gameName, detected: m.gameTitle });
+          setActiveTab("assets");
+        }
 
-        try {
-          const wikiRes = await wikiPromise;
-          if (wikiRes?.ok) {
-            const data: WikiResponse = await wikiRes.json();
-            if (data.content) {
-              const re = /echo:\/\/([^\s)"]+)/g;
-              let em;
-              while ((em = re.exec(data.content)) !== null) {
-                if (em[1]) wikiEchoPaths.push(em[1].toLowerCase());
-              }
-            }
-          }
-        } catch {}
-
-        await preloadPaths([...new Set([...imagePaths, ...wikiEchoPaths])]);
         setAppState("ready");
       } else {
         setAppState("no-assets");
@@ -1788,10 +2178,7 @@ export const App = () => {
     if (appState !== "ready") return;
     const load = async () => {
       try {
-        const [mappingRes, styleRes] = await Promise.all([
-          fetch("/api/mapping"),
-          fetch("/api/style"),
-        ]);
+        const mappingRes = await fetch("/api/mapping");
         if (mappingRes.ok) {
           const data: MappingResponse = await mappingRes.json();
           setMapping(data.mapping);
@@ -1801,10 +2188,6 @@ export const App = () => {
             setPathToMapped(result);
             setReverseMapping(result);
           }
-        }
-        if (styleRes.ok) {
-          const data: StyleResponse = await styleRes.json();
-          setStyle(data.style);
         }
       } catch {}
     };
@@ -1885,7 +2268,6 @@ export const App = () => {
       const files = Array.from(fileList);
       setAppState("importing");
       setError(null);
-      setProgress(null);
 
       const controller = new AbortController();
       abortRef.current = controller;
@@ -1900,7 +2282,6 @@ export const App = () => {
           keyOverride: config?.encryptionKey || undefined,
           onProgress: (p) => {
             progressRef.current = p;
-            setProgress(p);
           },
           signal: controller.signal,
         });
@@ -1924,12 +2305,12 @@ export const App = () => {
           progressRef.current?.gameTitle &&
           config.gameName.toLowerCase() !== progressRef.current.gameTitle.toLowerCase()
         ) {
-          setMismatchWarning(
-            `Expected '${config.gameName}' but detected '${progressRef.current.gameTitle}'. You may have imported the wrong game.`,
-          );
+          setGameMismatch({
+            expected: config.gameName,
+            detected: progressRef.current.gameTitle,
+          });
+          setActiveTab("assets");
         }
-
-        await preloadPaths(getFirstVisibleImagePaths(allPaths));
 
         setAppState("ready");
       } catch (err) {
@@ -1963,10 +2344,6 @@ export const App = () => {
     [config, mapping],
   );
 
-  const handleCancel = useCallback(() => {
-    abortRef.current?.abort();
-  }, []);
-
   const handleCopied = useCallback((path: string) => {
     setCopiedPath(path);
     setTimeout(() => setCopiedPath(null), 1500);
@@ -1986,6 +2363,8 @@ export const App = () => {
     setPathToMapped(new Map());
     setReverseMapping(null);
     setPreviewPath(null);
+    setActiveTab("wiki");
+    setGameMismatch(null);
     setAppState("no-assets");
   }, []);
 
@@ -2079,28 +2458,37 @@ export const App = () => {
   }, []);
 
   const isInline = getWebViewMode() === "inline";
-  const poppedOutRef = useRef(false);
 
+  
   useEffect(() => {
-    if (!isInline) return;
+    if (!isInline || appState !== "ready") return;
     const onFocus = () => {
-      if (poppedOutRef.current && appState === "ready") {
-        poppedOutRef.current = false;
-        void handleWipe();
-      }
+      void hasAssets().then((still) => {
+        if (!still) {
+          revokeAllBlobUrls();
+          setMeta(null);
+          setPaths([]);
+          setActiveTab("wiki");
+          setGameMismatch(null);
+          setAppState("no-assets");
+        }
+      });
     };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-  }, [isInline, appState, handleWipe]);
+  }, [isInline, appState]);
 
   return (
     <div
-      className="flex flex-col min-h-screen"
+      className="flex flex-col h-screen"
       style={{
-        ...(appState === "ready" ? cssVars : PRE_IMPORT_VARS),
+        ...(appState === "ready" ? cssVars : preImportVars),
         backgroundColor: "var(--bg)",
         color: "var(--text)",
-        fontFamily: appState === "ready" ? FONT_MAP[style.fontFamily] : FONT_MAP.system,
+        fontFamily: getFontFamily(
+          appState === "ready" || initResolved ? style.fontFamily : "system",
+          appearance.font,
+        ),
       }}
     >
       <input
@@ -2130,108 +2518,159 @@ export const App = () => {
       )}
 
       {appState !== "ready" && (
-        <div className="flex-1 relative flex flex-col items-center">
+        <div className="flex-1 relative flex flex-col items-center overflow-hidden">
+          {}
           <div
-            className="ripple-container"
+            className="absolute inset-0 pointer-events-none bg-crossfade bg-cover bg-center"
+            style={{
+              backgroundImage: "url(/default-splash.png)",
+              opacity: initResolved ? 0 : 1,
+              zIndex: 0,
+            }}
+          />
+
+          {}
+          <div
+            className="absolute inset-0 pointer-events-none bg-crossfade"
+            style={{
+              backgroundColor: "var(--bg)",
+              opacity: initResolved ? 1 : 0,
+              zIndex: 0,
+            }}
+          />
+
+          {}
+          {appearance.bannerUrl && (
+            <div
+              className="absolute top-0 left-0 right-0 overflow-hidden pointer-events-none bg-crossfade flex justify-center"
+              style={{
+                height: 120,
+                opacity:
+                  initResolved && config?.homeBackground === "banner" && appState !== "importing"
+                    ? 0.3
+                    : 0,
+                zIndex: 1,
+              }}
+            >
+              <img
+                src={appearance.bannerUrl}
+                alt=""
+                className="h-full w-auto min-w-full object-cover"
+              />
+            </div>
+          )}
+
+          {}
+          <div
+            className={
+              appState === "importing"
+                ? "ripple-container ripple-inward"
+                : initResolved && config?.homeBackground === "ripple"
+                  ? "ripple-container"
+                  : "ripple-container ripple-hidden"
+            }
             style={{
               position: "absolute",
-              top: appState === "loading" ? "calc(50% - 150px)" : "-5%",
+              top:
+                !initResolved || appState === "loading" || appState === "importing"
+                  ? "calc(50% - 150px)"
+                  : "-5%",
               transition: "top 0.7s ease-in-out",
+              zIndex: 2,
             }}
           >
             <div />
             <div />
             <div />
+
+            {}
             <img
               src="/title.png"
               alt="EchoWiki"
-              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-50 object-contain z-1"
+              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-50 object-contain z-1 title-crossfade"
+              style={{
+                opacity: !initResolved || !config || config.homeLogo === "echowiki" ? 1 : 0,
+              }}
             />
-            {subredditName && (
+
+            {}
+            {appearance.iconUrl && (
+              <img
+                src={appearance.iconUrl}
+                alt={subredditName}
+                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-30 w-30 rounded-full object-cover z-1 title-crossfade"
+                style={{
+                  opacity: initResolved && config?.homeLogo === "subreddit" ? 1 : 0,
+                }}
+              />
+            )}
+
+            {}
+            {initResolved && wikiTitle && (
               <p
-                className="absolute left-1/2 -translate-x-1/2 text-base text-[var(--text)] whitespace-nowrap pointer-events-none z-1"
+                className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none z-1 title-content-reveal"
                 style={{ top: "70%" }}
               >
-                r/{subredditName}
+                <span className="text-base text-[var(--text)] whitespace-nowrap">{wikiTitle}</span>
+                <span className="relative mt-1 flex justify-center" style={{ minHeight: 16 }}>
+                  {config?.wikiDescription && (
+                    <span
+                      className="text-xs text-[var(--text-muted)] whitespace-nowrap title-crossfade"
+                      style={{ opacity: appState !== "importing" ? 1 : 0 }}
+                    >
+                      {config.wikiDescription}
+                    </span>
+                  )}
+                  <span
+                    className={`text-xs text-[var(--text-muted)] whitespace-nowrap title-crossfade${config?.wikiDescription ? " absolute" : ""}`}
+                    style={{ opacity: appState === "importing" ? 1 : 0 }}
+                  >
+                    Loading
+                  </span>
+                </span>
               </p>
             )}
           </div>
 
-          {appState === "no-assets" && (
+          {(appState === "no-assets" || appState === "importing") && initResolved && (
             <div
-              className="content-fade-in flex flex-col items-center gap-6 max-w-md text-center"
-              style={{ position: "absolute", top: "50%" }}
+              className={`flex flex-col items-center gap-6 max-w-md text-center${appState === "no-assets" ? " home-content-reveal" : ""}`}
+              style={{
+                position: "absolute",
+                top: "50%",
+                zIndex: 3,
+                opacity: appState === "no-assets" ? 1 : 0,
+                transition: "opacity 0.5s ease-out",
+                pointerEvents: appState === "no-assets" ? "auto" : "none",
+              }}
             >
               {config?.gameName ? (
                 <p className="text-[var(--text-muted)] text-sm">
-                  Please select the folder that contains the game{" "}
-                  <div className="font-semibold text-[var(--text)]">{config.gameName}</div>
-                  Those files will never leave your device.
+                  To access the Wiki, select the folder containing the game <br />
+                  <span className="font-semibold text-[var(--text)]">{config.gameName}</span>
+                  <br />
                 </p>
               ) : (
                 <p className="text-[var(--text-muted)] text-sm">
-                  Select your game folder to import assets locally. Files never leave your device.
+                  To access the Wiki, select your game folder
+                  <br />
                 </p>
               )}
               <button
-                className="flex items-center justify-center bg-[var(--accent)] text-white h-10 rounded-full cursor-pointer transition-all px-6 font-medium hover:scale-105 hover:font-bold hover:border-2 hover:border-white"
+                className="flex items-center justify-center h-10 rounded-full cursor-pointer transition-all px-6 font-medium hover:scale-105 hover:font-bold hover:border-2 hover:border-[var(--text)]"
+                style={{
+                  backgroundColor: "var(--accent)",
+                  color: "var(--text)",
+                }}
                 onClick={handleImport}
               >
-                Import Game Folder
+                Select Game Folder
               </button>
               {error && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
                   {error}
                 </div>
               )}
-            </div>
-          )}
-
-          {appState === "importing" && (
-            <div
-              className="content-fade-in flex flex-col items-center gap-4 max-w-md w-full"
-              style={{ position: "absolute", top: "50%" }}
-            >
-              {progress ? (
-                <>
-                  <div className="w-full">
-                    {progress.total > 0 ? (
-                      <>
-                        <div className="flex justify-end text-xs text-[var(--text-muted)] mb-1">
-                          <span>
-                            {Math.min(Math.round((progress.processed / progress.total) * 100), 100)}
-                            %
-                          </span>
-                        </div>
-                        <div
-                          className="w-full rounded-full h-1.5"
-                          style={{ backgroundColor: "var(--thumb-bg)" }}
-                        >
-                          <div
-                            className="h-1.5 rounded-full transition-all duration-300 ease-linear"
-                            style={{
-                              width: `${Math.min((progress.processed / progress.total) * 100, 100)}%`,
-                              backgroundColor: "var(--accent)",
-                            }}
-                          />
-                        </div>
-                      </>
-                    ) : (
-                      <p className="text-xs text-[var(--text-muted)] text-center">
-                        {progress.phase === "detecting" ? "Detecting engine..." : "Extracting..."}
-                      </p>
-                    )}
-                  </div>
-                </>
-              ) : (
-                <p className="text-sm text-[var(--text-muted)]">Starting import...</p>
-              )}
-              <button
-                className="text-xs px-3 py-1 rounded-full bg-red-600 text-white hover:bg-red-700 transition-colors cursor-pointer"
-                onClick={handleCancel}
-              >
-                Cancel
-              </button>
             </div>
           )}
         </div>
@@ -2241,23 +2680,40 @@ export const App = () => {
         <>
           <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100">
             <div className="flex items-center gap-1">
-              <h1 className="text-lg font-bold mr-2">EchoWiki</h1>
-              <button
-                className={`text-sm px-3 py-1 rounded-full transition-colors cursor-pointer ${
-                  activeTab === "wiki"
-                    ? "bg-[var(--accent)] text-white"
-                    : "text-[var(--text-muted)] hover:bg-gray-100"
-                }`}
-                onClick={() => setActiveTab("wiki")}
-              >
-                Wiki
-              </button>
+              {!gameMismatch && (
+                <button
+                  className={`text-sm px-3 py-1 rounded-full transition-colors cursor-pointer ${
+                    activeTab === "wiki"
+                      ? "bg-[var(--accent)] text-white"
+                      : "text-[var(--text-muted)]"
+                  }`}
+                  style={activeTab !== "wiki" ? { backgroundColor: "transparent" } : undefined}
+                  onMouseEnter={(e) => {
+                    if (activeTab !== "wiki")
+                      e.currentTarget.style.backgroundColor = "var(--thumb-bg)";
+                  }}
+                  onMouseLeave={(e) => {
+                    if (activeTab !== "wiki") e.currentTarget.style.backgroundColor = "transparent";
+                  }}
+                  onClick={() => setActiveTab("wiki")}
+                >
+                  Wiki
+                </button>
+              )}
               <button
                 className={`text-sm px-3 py-1 rounded-full transition-colors cursor-pointer ${
                   activeTab === "assets"
                     ? "bg-[var(--accent)] text-white"
-                    : "text-[var(--text-muted)] hover:bg-gray-100"
+                    : "text-[var(--text-muted)]"
                 }`}
+                style={activeTab !== "assets" ? { backgroundColor: "transparent" } : undefined}
+                onMouseEnter={(e) => {
+                  if (activeTab !== "assets")
+                    e.currentTarget.style.backgroundColor = "var(--thumb-bg)";
+                }}
+                onMouseLeave={(e) => {
+                  if (activeTab !== "assets") e.currentTarget.style.backgroundColor = "transparent";
+                }}
                 onClick={() => setActiveTab("assets")}
               >
                 Assets
@@ -2270,21 +2726,34 @@ export const App = () => {
                   className={`text-sm px-3 py-1 rounded-full transition-colors cursor-pointer ${
                     activeTab === "settings"
                       ? "bg-[var(--accent)] text-white"
-                      : "text-[var(--text-muted)] hover:bg-gray-100"
+                      : "text-[var(--text-muted)]"
                   }`}
+                  style={activeTab !== "settings" ? { backgroundColor: "transparent" } : undefined}
+                  onMouseEnter={(e) => {
+                    if (activeTab !== "settings")
+                      e.currentTarget.style.backgroundColor = "var(--thumb-bg)";
+                  }}
+                  onMouseLeave={(e) => {
+                    if (activeTab !== "settings")
+                      e.currentTarget.style.backgroundColor = "transparent";
+                  }}
                   onClick={() => setActiveTab("settings")}
                 >
                   Settings
                 </button>
               )}
             </div>
+            {gameMismatch && (
+              <span className="text-[10px] text-red-600 truncate px-2">
+                Expected {gameMismatch.expected} but detected {gameMismatch.detected}
+              </span>
+            )}
             <div className="flex items-center gap-3">
               {isInline && (
                 <button
                   className="text-gray-400 hover:text-[var(--text-muted)] transition-colors cursor-pointer"
                   title="Pop out"
                   onClick={(e) => {
-                    poppedOutRef.current = true;
                     void requestExpandedMode(e.nativeEvent, "default");
                   }}
                 >
@@ -2304,8 +2773,7 @@ export const App = () => {
                   if (isInline) {
                     void handleWipe();
                   } else {
-                    revokeAllBlobUrls();
-                    void exitExpandedMode(e.nativeEvent);
+                    void handleWipe().then(() => exitExpandedMode(e.nativeEvent));
                   }
                 }}
               >
@@ -2317,25 +2785,6 @@ export const App = () => {
           {error && (
             <div className="px-4 py-2 bg-red-50 border-b border-red-200 text-sm text-red-700">
               {error}
-            </div>
-          )}
-
-          {mismatchWarning && (
-            <div className="flex items-center justify-between px-4 py-2 bg-yellow-50 border-b border-yellow-200 text-sm text-yellow-800">
-              <span>{mismatchWarning}</span>
-              <button
-                onClick={() => setMismatchWarning(null)}
-                className="ml-3 flex-shrink-0 text-yellow-600 hover:text-yellow-800 cursor-pointer"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
             </div>
           )}
 
@@ -2448,6 +2897,8 @@ export const App = () => {
               mappingText={mappingText}
               style={style}
               config={config}
+              appearance={appearance}
+              subredditName={subredditName}
               onMappingSaved={handleMappingSaved}
               onStyleChanged={handleStyleChanged}
               onConfigChanged={setConfig}

@@ -48,9 +48,17 @@ export function parseEditions(echoPath: string): ParsedEchoPath {
   return { basePath, editions };
 }
 
+const EDITION_ORDER: Record<Edition["type"], number> = {
+  crop: 0,
+  sprite: 1,
+  speed: 2,
+  pitch: 3,
+};
+
 export function serializeEditions(basePath: string, editions: Edition[]): string {
+  const sorted = [...editions].sort((a, b) => EDITION_ORDER[a.type] - EDITION_ORDER[b.type]);
   const params: string[] = [];
-  for (const ed of editions) {
+  for (const ed of sorted) {
     switch (ed.type) {
       case "crop":
         params.push("crop");

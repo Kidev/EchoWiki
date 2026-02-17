@@ -26,6 +26,9 @@
   "triggers": {
     "onAppInstall": "/internal/on-app-install"
   },
+  "forms": {
+    "postTitleForm": "/internal/form/post-title-submit"
+  },
   "menu": {
     "items": [
       {
