@@ -24,7 +24,7 @@
   },
   "dependencies": {
     "@devvit/mcp": "^0.0.21",
-    "@devvit/web": "^0.12.12",
+    "@devvit/web": "^0.12.13",
     "clsx": "2.1.1",
     "devvit": "^1.0.0",
     "express": "5.1.0",
@@ -32,6 +32,7 @@
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-markdown": "^10.1.0",
+    "rehype-raw": "^7.0.0",
     "remark-gfm": "^4.0.1",
     "tailwind-merge": "3.3.0"
   },

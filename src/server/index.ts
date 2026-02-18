@@ -42,11 +42,11 @@ const DEFAULT_CONFIG: GameConfig = {
   encryptionKey: "",
   wikiTitle: "",
   wikiDescription: "",
-  homeBackground: "none",
+  homeBackground: "ripple",
   homeLogo: "subreddit",
 };
 
-const VALID_HOME_BACKGROUNDS = new Set<string>(["ripple", "banner", "none"]);
+const VALID_HOME_BACKGROUNDS = new Set<string>(["ripple", "banner", "both", "none"]);
 const VALID_HOME_LOGOS = new Set<string>(["echowiki", "subreddit"]);
 
 const DEFAULT_MAPPING_TEXT = '"original_filename": "mapped_filename"';
@@ -582,13 +582,11 @@ router.post<Record<string, never>, WikiUpdateResponse | ErrorResponse, WikiUpdat
   },
 );
 
-
 function normalizePostId(id: string): string {
   return id.startsWith("t3_") ? id : `t3_${id}`;
 }
 
 async function getPostIds(): Promise<string[]> {
-  
   const legacy = await redis.get("postId");
   if (legacy) {
     const normalized = normalizePostId(legacy);
@@ -596,7 +594,7 @@ async function getPostIds(): Promise<string[]> {
     await redis.del("postId");
   }
   const entries = await redis.zRange("postIds", 0, -1);
-  
+
   const seen = new Set<string>();
   const result: string[] = [];
   for (const e of entries) {
@@ -639,7 +637,6 @@ router.post("/internal/on-app-install", async (_req, res): Promise<void> => {
   }
 });
 
-
 router.post(
   "/internal/menu/post-create",
   async (_req, res: Response<UiResponse>): Promise<void> => {
@@ -648,7 +645,6 @@ router.post(
       const sub = context.subredditName ?? "unknown";
       const defaultTitle = config.wikiTitle || `EchoWiki - r/${sub}`;
 
-      
       const trackedIds = await getPostIds();
       const verifiedIds: string[] = [];
       await Promise.all(
@@ -656,9 +652,7 @@ router.post(
           try {
             const p = await reddit.getPostById(id as `t3_${string}`);
             if (!p.removed) verifiedIds.push(id);
-          } catch {
-            
-          }
+          } catch {}
         }),
       );
 
@@ -737,7 +731,6 @@ type PostCreateFormData = {
   deleteExisting?: boolean;
 };
 
-
 router.post(
   "/internal/form/post-title-submit",
   async (req, res: Response<UiResponse>): Promise<void> => {
@@ -756,9 +749,7 @@ router.post(
               const fullId = id.startsWith("t3_") ? id : `t3_${id}`;
               const existingPost = await reddit.getPostById(fullId as `t3_${string}`);
               await existingPost.remove();
-            } catch {
-              
-            }
+            } catch {}
           }
         }
         await redis.del("postIds");
@@ -767,7 +758,6 @@ router.post(
       const post = await createPost(body.postTitle);
       await trackPost(post.id);
 
-      
       const warnings: string[] = [];
 
       if (body.lockComments) {
@@ -802,7 +792,6 @@ router.post(
         }
       }
 
-      
       const configFields: Record<string, string> = { wikiTitle: body.postTitle };
       if (body.subtitle !== undefined) configFields["wikiDescription"] = body.subtitle;
       if (body.gameName !== undefined) configFields["gameName"] = body.gameName;

@@ -87,7 +87,7 @@ export type WikiFontSize = "small" | "normal" | "large";
 
 export type FontFamily = "system" | "serif" | "mono" | "subreddit";
 
-export type HomeBackground = "ripple" | "banner" | "none";
+export type HomeBackground = "ripple" | "banner" | "both" | "none";
 
 export type HomeLogo = "echowiki" | "subreddit";
 

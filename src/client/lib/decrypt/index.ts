@@ -206,7 +206,6 @@ export async function importGameFiles(options: ImportOptions): Promise<void> {
 
   let allAssets = await extractAssets(engine);
 
-  
   if (
     allAssets.length === 0 &&
     engineOverride &&

@@ -1,4 +1,5 @@
 import {
+  Fragment,
   type ChangeEvent,
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
@@ -10,6 +11,7 @@ import {
   useState,
 } from "react";
 import Markdown, { defaultUrlTransform } from "react-markdown";
+import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 import {
   getWebViewMode,
@@ -194,6 +196,44 @@ function slugify(text: string): string {
     .replace(/^-|-$/g, "");
 }
 
+const ALERT_META: Record<string, { color: string; icon: string }> = {
+  note: {
+    color: "var(--link-color)",
+    icon: '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>',
+  },
+  tip: {
+    color: "#22c55e",
+    icon: '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M8 1.5c-2.363 0-4 1.69-4 3.75 0 .984.424 1.625.984 2.304l.214.253c.223.264.47.556.673.848.284.411.537.896.621 1.49a.75.75 0 0 1-1.484.211c-.04-.282-.163-.547-.37-.847a8.456 8.456 0 0 0-.542-.68c-.084-.1-.173-.205-.268-.32C3.201 7.75 2.5 6.766 2.5 5.25 2.5 2.31 4.863 0 8 0s5.5 2.31 5.5 5.25c0 1.516-.701 2.5-1.328 3.259-.095.115-.184.22-.268.319-.207.245-.383.453-.541.681-.208.3-.33.565-.37.847a.751.751 0 0 1-1.485-.212c.084-.593.337-1.078.621-1.489.203-.292.45-.584.673-.848.075-.088.147-.173.213-.253.561-.679.985-1.32.985-2.304 0-2.06-1.637-3.75-4-3.75ZM5.75 12h4.5a.75.75 0 0 1 0 1.5h-4.5a.75.75 0 0 1 0-1.5ZM6 15.25a.75.75 0 0 1 .75-.75h2.5a.75.75 0 0 1 0 1.5h-2.5a.75.75 0 0 1-.75-.75Z"></path></svg>',
+  },
+  important: {
+    color: "#a855f7",
+    icon: '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v9.5A1.75 1.75 0 0 1 14.25 13H8.06l-2.573 2.573A1.458 1.458 0 0 1 3 14.543V13H1.75A1.75 1.75 0 0 1 0 11.25Zm1.75-.25a.25.25 0 0 0-.25.25v9.5c0 .138.112.25.25.25h2a.75.75 0 0 1 .75.75v2.19l2.72-2.72a.749.749 0 0 1 .53-.22h6.5a.25.25 0 0 0 .25-.25v-9.5a.25.25 0 0 0-.25-.25Zm7 2.25v2.5a.75.75 0 0 1-1.5 0v-2.5a.75.75 0 0 1 1.5 0ZM9 9a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z"></path></svg>',
+  },
+  warning: {
+    color: "#eab308",
+    icon: '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M6.457 1.047c.659-1.234 2.427-1.234 3.086 0l6.082 11.378A1.75 1.75 0 0 1 14.082 15H1.918a1.75 1.75 0 0 1-1.543-2.575Zm1.763.707a.25.25 0 0 0-.44 0L1.698 13.132a.25.25 0 0 0 .22.368h12.164a.25.25 0 0 0 .22-.368Zm.53 3.996v2.5a.75.75 0 0 1-1.5 0v-2.5a.75.75 0 0 1 1.5 0ZM9 11a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z"></path></svg>',
+  },
+  caution: {
+    color: "#ef4444",
+    icon: '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M4.47.22A.749.749 0 0 1 5 0h6c.199 0 .389.079.53.22l4.25 4.25c.141.14.22.331.22.53v6a.749.749 0 0 1-.22.53l-4.25 4.25A.749.749 0 0 1 11 16H5a.749.749 0 0 1-.53-.22L.22 11.53A.749.749 0 0 1 0 11V5c0-.199.079-.389.22-.53Zm.84 1.28L1.5 5.31v5.38l3.81 3.81h5.38l3.81-3.81V5.31L10.69 1.5ZM8 4a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 8 4Zm0 8a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>',
+  },
+};
+
+function preprocessAlerts(md: string): string {
+  return md.replace(
+    /^> \[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\][^\S\n]*\n((?:> [^\n]*\n?)*)/gm,
+    (_, type: string, body: string) => {
+      const t = type.toLowerCase();
+      const label = type.charAt(0) + type.slice(1).toLowerCase();
+      const meta = ALERT_META[t];
+      const color = meta?.color ?? "var(--text-muted)";
+      const icon = meta?.icon ?? "";
+      const content = body.replace(/^> ?/gm, "");
+      return `<div class="wiki-alert" style="border-color: ${color};"><div class="wiki-alert-title" style="color: ${color};">${icon}<span>${label}</span></div>\n\n${content}\n</div>\n`;
+    },
+  );
+}
+
 function extractWikiPage(href: string, subredditName: string): string | null {
   const sub = subredditName.toLowerCase();
 
@@ -220,16 +260,8 @@ function extractWikiPage(href: string, subredditName: string): string | null {
   return null;
 }
 
-function formatPageName(page: string): string {
-  const parts = page.split("/");
-  const prefix = parts.slice(0, -1).join(" > ");
-  const last = parts[parts.length - 1] ?? page;
-  const display = last.replace(/[_-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-  return prefix ? `${prefix} > ${display}` : display;
-}
-
 function EchoInlineImage({ url, alt }: { url: string; alt: string }) {
-  return <img src={url} alt={alt} className="inline-block max-w-full rounded my-1" />;
+  return <img src={url} alt={alt} className="echo-inline inline-block max-w-full rounded" />;
 }
 
 function EchoInlineAsset({ path, children }: { path: string; children: ReactNode }) {
@@ -288,7 +320,6 @@ function AudioPreview({
   const waveformRef = useRef<Float32Array | null>(null);
   const durationRef = useRef(0);
 
-  
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -305,7 +336,7 @@ function AudioPreview({
 
         durationRef.current = decoded.duration;
         const raw = decoded.getChannelData(0);
-        
+
         const buckets = canvas.width;
         const samples = new Float32Array(buckets);
         const bucketSize = Math.floor(raw.length / buckets);
@@ -318,9 +349,7 @@ function AudioPreview({
           samples[i] = sum / bucketSize;
         }
         waveformRef.current = samples;
-      } catch {
-        
-      }
+      } catch {}
     })();
 
     return () => {
@@ -328,7 +357,6 @@ function AudioPreview({
     };
   }, [url]);
 
-  
   useEffect(() => {
     const canvas = canvasRef.current;
     const audio = audioRef.current;
@@ -357,7 +385,6 @@ function AudioPreview({
           ctx.fillRect(x, (h - barH) / 2, barW - 0.5, barH || 1);
         }
 
-        
         if (audio.duration > 0) {
           ctx.fillStyle = "rgba(255,255,255,0.8)";
           ctx.fillRect(playX - 0.5, 0, 1, h);
@@ -530,7 +557,7 @@ function AssetPreview({
       if (prev.some((e) => e.type === "crop")) {
         return prev.filter((e) => e.type !== "crop");
       }
-      
+
       const without = prev.filter((e) => e.type !== "sprite");
       return [{ type: "crop" as const }, ...without];
     });
@@ -565,7 +592,7 @@ function AssetPreview({
         setSpriteCols(0);
         return false;
       }
-      
+
       setEditions((eds) => eds.filter((e) => e.type !== "crop"));
       const fileName = getFileName(mappedPath ?? path);
       const m = /(\d+)x(\d+)/i.exec(fileName);
@@ -847,33 +874,30 @@ async function resolveOriginalBlob(path: string): Promise<Blob | null> {
 function WikiView({
   subredditName,
   wikiFontSize,
+  currentPage,
+  onPageChange,
 }: {
   subredditName: string;
   wikiFontSize: WikiFontSize;
+  currentPage: string;
+  onPageChange: (page: string) => void;
 }) {
   const [content, setContent] = useState<string | null | undefined>(undefined);
   const [loading, setLoading] = useState(true);
-  const [pages, setPages] = useState<string[]>([]);
-  const [currentPage, setCurrentPage] = useState("index");
   const wikiContainerRef = useRef<HTMLDivElement>(null);
   const anchorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastPageRef = useRef(currentPage);
 
   useEffect(() => {
     const load = async () => {
+      setLoading(true);
       try {
-        const [wikiRes, pagesRes] = await Promise.all([
-          fetch("/api/wiki"),
-          fetch("/api/wiki/pages"),
-        ]);
-        if (wikiRes.ok) {
-          const data: WikiResponse = await wikiRes.json();
+        const res = await fetch(`/api/wiki?page=${encodeURIComponent(currentPage)}`);
+        if (res.ok) {
+          const data: WikiResponse = await res.json();
           setContent(data.content);
         } else {
           setContent(null);
-        }
-        if (pagesRes.ok) {
-          const data: WikiPagesResponse = await pagesRes.json();
-          setPages(data.pages);
         }
       } catch {
         setContent(null);
@@ -882,242 +906,223 @@ function WikiView({
       }
     };
     void load();
-  }, []);
+  }, [currentPage]);
 
-  const handlePageChange = useCallback(async (page: string) => {
-    setCurrentPage(page);
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/wiki?page=${encodeURIComponent(page)}`);
-      if (res.ok) {
-        const data: WikiResponse = await res.json();
-        setContent(data.content);
-      } else {
-        setContent(null);
-      }
-    } catch {
-      setContent(null);
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    if (currentPage !== lastPageRef.current) {
+      lastPageRef.current = currentPage;
+      wikiContainerRef.current?.parentElement?.scrollTo(0, 0);
     }
-  }, []);
+  }, [currentPage]);
 
-  const handleLinkClick = useCallback(() => {
-    navigateTo({
-      url: `https://www.reddit.com/r/${subredditName}/wiki/${currentPage}`,
-    });
-  }, [subredditName, currentPage]);
+  const handlePageChange = useCallback(
+    (page: string) => {
+      onPageChange(page);
+    },
+    [onPageChange],
+  );
 
   const proseSize =
     wikiFontSize === "small" ? "prose-sm" : wikiFontSize === "large" ? "prose-lg" : "";
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center py-16">
-        <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
-      </div>
-    );
-  }
-
-  if (content === null || content === undefined) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 gap-3 text-center px-4">
-        <p className="text-[var(--text-muted)] text-sm">No wiki page yet</p>
-        <a
-          href={`https://www.reddit.com/r/${subredditName}/wiki/index`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-sm text-[var(--accent)] hover:underline"
-        >
-          Create the wiki index page
-        </a>
-      </div>
-    );
-  }
-
   return (
-    <div ref={wikiContainerRef} className="px-4 py-4">
-      <div className="flex items-center gap-2 mb-3">
-        {pages.length > 1 ? (
-          <select
-            value={currentPage}
-            onChange={(e) => void handlePageChange(e.target.value)}
-            className="text-sm px-2 py-1 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)]"
-            style={{
-              backgroundColor: "var(--control-bg)",
-              color: "var(--control-text)",
-            }}
+    <div className="flex-1 overflow-auto">
+      {loading ? (
+        <div className="flex justify-center items-center py-16">
+          <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+        </div>
+      ) : content === null || content === undefined ? (
+        <div className="flex flex-col items-center justify-center py-16 gap-3 text-center px-4">
+          <p className="text-[var(--text-muted)] text-sm">No wiki page yet</p>
+          <a
+            href={`https://www.reddit.com/r/${subredditName}/wiki/index`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-[var(--accent)] hover:underline"
           >
-            {pages.map((p) => (
-              <option key={p} value={p}>
-                {formatPageName(p)}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <span className="text-sm font-medium">{formatPageName(currentPage)}</span>
-        )}
-        <button
-          onClick={handleLinkClick}
-          className="text-gray-400 hover:text-[var(--text-muted)] transition-colors cursor-pointer"
-          title="Open wiki page in browser"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-            />
-          </svg>
-        </button>
-      </div>
-
-      <div
-        className={`prose ${proseSize} max-w-none`}
-        style={
-          {
-            "--tw-prose-body": "var(--text)",
-            "--tw-prose-headings": "var(--text)",
-            "--tw-prose-bold": "var(--text)",
-            "--tw-prose-links": "var(--link-color)",
-            "--tw-prose-quotes": "var(--text-muted)",
-            "--tw-prose-quote-borders": "var(--accent)",
-            "--tw-prose-code": "var(--text)",
-            "--tw-prose-counters": "var(--text-muted)",
-            "--tw-prose-bullets": "var(--text-muted)",
-            "--tw-prose-hr": "var(--text-muted)",
-            "--tw-prose-th-borders": "var(--text-muted)",
-            "--tw-prose-td-borders": "var(--text-muted)",
-          } as CSSProperties
-        }
-      >
-        <Markdown
-          remarkPlugins={[remarkGfm]}
-          urlTransform={(url) => (url.startsWith("echo://") ? url : defaultUrlTransform(url))}
-          components={{
-            h1: ({ children: c }: { children?: ReactNode }) => {
-              const text = typeof c === "string" ? c : "";
-              return <h1 id={slugify(text)}>{c}</h1>;
-            },
-            h2: ({ children: c }: { children?: ReactNode }) => {
-              const text = typeof c === "string" ? c : "";
-              return <h2 id={slugify(text)}>{c}</h2>;
-            },
-            h3: ({ children: c }: { children?: ReactNode }) => {
-              const text = typeof c === "string" ? c : "";
-              return <h3 id={slugify(text)}>{c}</h3>;
-            },
-            h4: ({ children: c }: { children?: ReactNode }) => {
-              const text = typeof c === "string" ? c : "";
-              return <h4 id={slugify(text)}>{c}</h4>;
-            },
-            h5: ({ children: c }: { children?: ReactNode }) => {
-              const text = typeof c === "string" ? c : "";
-              return <h5 id={slugify(text)}>{c}</h5>;
-            },
-            h6: ({ children: c }: { children?: ReactNode }) => {
-              const text = typeof c === "string" ? c : "";
-              return <h6 id={slugify(text)}>{c}</h6>;
-            },
-            img: ({ src, alt }: { src?: string | undefined; alt?: string | undefined }) => {
-              if (src?.startsWith("echo://")) {
-                const echoPath = src.slice("echo://".length).toLowerCase();
-                return (
-                  <EchoInlineAsset path={echoPath}>{alt ?? getFileName(echoPath)}</EchoInlineAsset>
-                );
-              }
-              return <img src={src} alt={alt} />;
-            },
-            a: ({
-              href,
-              children: linkChildren,
-            }: {
-              href?: string | undefined;
-              children?: ReactNode | undefined;
-            }) => {
-              if (!href) {
-                return <span>{linkChildren}</span>;
-              }
-
-              if (href.startsWith("echo://")) {
-                const echoPath = href.slice("echo://".length).toLowerCase();
-                return <EchoInlineAsset path={echoPath}>{linkChildren}</EchoInlineAsset>;
-              }
-
-              const wikiPage = extractWikiPage(href, subredditName);
-              if (wikiPage !== null) {
-                return (
-                  <a
-                    href={href}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      void handlePageChange(wikiPage);
-                    }}
-                    className="text-[var(--link-color)] hover:underline cursor-pointer"
-                  >
-                    {linkChildren}
-                  </a>
-                );
-              }
-
-              if (href.startsWith("#")) {
-                return (
-                  <a
-                    href={href}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      const id = href.slice(1);
-                      const target =
-                        wikiContainerRef.current?.querySelector(`[id="${CSS.escape(id)}"]`) ??
-                        wikiContainerRef.current?.querySelector(
-                          `[id="${CSS.escape(id.toLowerCase())}"]`,
-                        );
-                      if (target) {
-                        
-                        if (anchorTimerRef.current) clearTimeout(anchorTimerRef.current);
-                        
-                        target.scrollIntoView({ behavior: "instant", block: "start" });
-                        
-                        anchorTimerRef.current = setTimeout(() => {
-                          anchorTimerRef.current = null;
-                          target.scrollIntoView({ behavior: "smooth", block: "start" });
-                        }, 300);
+            Create the wiki index page
+          </a>
+        </div>
+      ) : (
+        <div ref={wikiContainerRef} className="px-4 py-4">
+          <div
+            className={`prose ${proseSize} max-w-none`}
+            style={
+              {
+                "--tw-prose-body": "var(--text)",
+                "--tw-prose-headings": "var(--text)",
+                "--tw-prose-bold": "var(--text)",
+                "--tw-prose-links": "var(--link-color)",
+                "--tw-prose-quotes": "var(--text-muted)",
+                "--tw-prose-quote-borders": "var(--accent)",
+                "--tw-prose-code": "var(--text)",
+                "--tw-prose-counters": "var(--text-muted)",
+                "--tw-prose-bullets": "var(--text-muted)",
+                "--tw-prose-hr": "var(--text-muted)",
+                "--tw-prose-th-borders": "var(--text-muted)",
+                "--tw-prose-td-borders": "var(--text-muted)",
+              } as CSSProperties
+            }
+          >
+            <Markdown
+              remarkPlugins={[remarkGfm]}
+              rehypePlugins={[rehypeRaw]}
+              urlTransform={(url) => (url.startsWith("echo://") ? url : defaultUrlTransform(url))}
+              components={{
+                h1: ({ children: c }: { children?: ReactNode }) => {
+                  const text = typeof c === "string" ? c : "";
+                  return <h1 id={slugify(text)}>{c}</h1>;
+                },
+                h2: ({ children: c }: { children?: ReactNode }) => {
+                  const text = typeof c === "string" ? c : "";
+                  return <h2 id={slugify(text)}>{c}</h2>;
+                },
+                h3: ({ children: c }: { children?: ReactNode }) => {
+                  const text = typeof c === "string" ? c : "";
+                  return <h3 id={slugify(text)}>{c}</h3>;
+                },
+                h4: ({ children: c }: { children?: ReactNode }) => {
+                  const text = typeof c === "string" ? c : "";
+                  return <h4 id={slugify(text)}>{c}</h4>;
+                },
+                h5: ({ children: c }: { children?: ReactNode }) => {
+                  const text = typeof c === "string" ? c : "";
+                  return <h5 id={slugify(text)}>{c}</h5>;
+                },
+                h6: ({ children: c }: { children?: ReactNode }) => {
+                  const text = typeof c === "string" ? c : "";
+                  return <h6 id={slugify(text)}>{c}</h6>;
+                },
+                p: ({ children, node }: { children?: ReactNode; node?: unknown }) => {
+                  const n = node as
+                    | {
+                        children?: {
+                          type: string;
+                          tagName?: string;
+                          properties?: Record<string, unknown>;
+                          value?: string;
+                        }[];
                       }
-                    }}
-                    className="text-[var(--link-color)] hover:underline cursor-pointer"
-                  >
-                    {linkChildren}
-                  </a>
-                );
-              }
+                    | undefined;
+                  const kids = n?.children ?? [];
+                  const echoOnly =
+                    kids.length > 0 &&
+                    kids.every(
+                      (c) =>
+                        (c.type === "element" &&
+                          c.tagName === "img" &&
+                          typeof c.properties?.src === "string" &&
+                          (c.properties.src as string).startsWith("echo://")) ||
+                        (c.type === "element" &&
+                          c.tagName === "a" &&
+                          typeof c.properties?.href === "string" &&
+                          (c.properties.href as string).startsWith("echo://")) ||
+                        (c.type === "text" && !(c.value ?? "").trim()),
+                    );
+                  if (echoOnly) return <>{children}</>;
+                  return <p>{children}</p>;
+                },
+                img: ({ src, alt }: { src?: string | undefined; alt?: string | undefined }) => {
+                  if (src?.startsWith("echo://")) {
+                    const echoPath = src.slice("echo://".length).toLowerCase();
+                    return (
+                      <EchoInlineAsset path={echoPath}>
+                        {alt ?? getFileName(echoPath)}
+                      </EchoInlineAsset>
+                    );
+                  }
+                  return <img src={src} alt={alt} />;
+                },
+                a: ({
+                  href,
+                  children: linkChildren,
+                }: {
+                  href?: string | undefined;
+                  children?: ReactNode | undefined;
+                }) => {
+                  if (!href) {
+                    return <span>{linkChildren}</span>;
+                  }
 
-              const externalUrl =
-                href.startsWith("http://") || href.startsWith("https://")
-                  ? href
-                  : `https://www.reddit.com${href.startsWith("/") ? href : `/${href}`}`;
-              return (
-                <a
-                  href={externalUrl}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    try {
-                      navigateTo({ url: externalUrl });
-                    } catch {
-                      window.open(externalUrl, "_blank");
-                    }
-                  }}
-                  className="text-[var(--link-color)] hover:underline cursor-pointer"
-                >
-                  {linkChildren}
-                </a>
-              );
-            },
-          }}
-        >
-          {content}
-        </Markdown>
-      </div>
+                  if (href.startsWith("echo://")) {
+                    const echoPath = href.slice("echo://".length).toLowerCase();
+                    return <EchoInlineAsset path={echoPath}>{linkChildren}</EchoInlineAsset>;
+                  }
+
+                  const wikiPage = extractWikiPage(href, subredditName);
+                  if (wikiPage !== null) {
+                    return (
+                      <a
+                        href={href}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          void handlePageChange(wikiPage);
+                        }}
+                        className="text-[var(--link-color)] hover:underline cursor-pointer"
+                      >
+                        {linkChildren}
+                      </a>
+                    );
+                  }
+
+                  if (href.startsWith("#")) {
+                    return (
+                      <a
+                        href={href}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          const id = href.slice(1);
+                          const target =
+                            wikiContainerRef.current?.querySelector(`[id="${CSS.escape(id)}"]`) ??
+                            wikiContainerRef.current?.querySelector(
+                              `[id="${CSS.escape(id.toLowerCase())}"]`,
+                            );
+                          if (target) {
+                            if (anchorTimerRef.current) clearTimeout(anchorTimerRef.current);
+
+                            target.scrollIntoView({ behavior: "instant", block: "start" });
+
+                            anchorTimerRef.current = setTimeout(() => {
+                              anchorTimerRef.current = null;
+                              target.scrollIntoView({ behavior: "smooth", block: "start" });
+                            }, 300);
+                          }
+                        }}
+                        className="text-[var(--link-color)] hover:underline cursor-pointer"
+                      >
+                        {linkChildren}
+                      </a>
+                    );
+                  }
+
+                  const externalUrl =
+                    href.startsWith("http://") || href.startsWith("https://")
+                      ? href
+                      : `https://www.reddit.com${href.startsWith("/") ? href : `/${href}`}`;
+                  return (
+                    <a
+                      href={externalUrl}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        try {
+                          navigateTo({ url: externalUrl });
+                        } catch {
+                          window.open(externalUrl, "_blank");
+                        }
+                      }}
+                      className="text-[var(--link-color)] hover:underline cursor-pointer"
+                    >
+                      {linkChildren}
+                    </a>
+                  );
+                },
+              }}
+            >
+              {preprocessAlerts(content)}
+            </Markdown>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1401,10 +1406,12 @@ function SegmentedControl<T extends string>({
 function ColorPickerRow({
   label,
   value,
+  defaultValue,
   onSelect,
 }: {
   label: string;
   value: string;
+  defaultValue?: string | undefined;
   onSelect: (color: string) => void;
 }) {
   const handleHexChange = useCallback(
@@ -1417,25 +1424,39 @@ function ColorPickerRow({
   );
 
   return (
-    <div className="flex items-center gap-3">
-      <span className="text-xs font-medium w-32 flex-shrink-0">{label}</span>
-      <input
-        type="color"
-        value={value}
-        onChange={(e) => onSelect(e.target.value)}
-        className="w-8 h-8 rounded cursor-pointer border border-gray-200 p-0.5 flex-shrink-0"
-      />
-      <input
-        type="text"
-        value={value}
-        onChange={(e) => handleHexChange(e.target.value)}
-        maxLength={7}
-        className="w-20 text-xs font-mono px-2 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)]"
-        style={{
-          backgroundColor: "var(--control-bg)",
-          color: "var(--control-text)",
-        }}
-      />
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-medium">{label}</span>
+        {defaultValue && (
+          <button
+            onClick={() => onSelect(defaultValue)}
+            disabled={value.toLowerCase() === defaultValue.toLowerCase()}
+            className="text-sm leading-none cursor-pointer transition-colors disabled:opacity-20 disabled:cursor-default text-[var(--text-muted)] hover:text-[var(--text)] disabled:hover:text-[var(--text-muted)]"
+            title={`Reset to default (${defaultValue})`}
+          >
+            &#x21ba;
+          </button>
+        )}
+      </div>
+      <div className="flex items-center gap-2">
+        <input
+          type="color"
+          value={value}
+          onChange={(e) => onSelect(e.target.value)}
+          className="w-7 h-7 rounded cursor-pointer border border-gray-200 p-0.5 flex-shrink-0"
+        />
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => handleHexChange(e.target.value)}
+          maxLength={7}
+          className="w-20 text-xs font-mono px-2 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)]"
+          style={{
+            backgroundColor: "var(--control-bg)",
+            color: "var(--control-text)",
+          }}
+        />
+      </div>
     </div>
   );
 }
@@ -1451,7 +1472,161 @@ function parseMappingText(text: string): Array<[string, string]> {
   return results;
 }
 
-type SettingsTab = "general" | "game" | "style" | "mapping";
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function highlightMappingSyntax(text: string): string {
+  return text
+    .split("\n")
+    .map((line) => {
+      if (/^\s*\/\//.test(line)) {
+        return `<span style="color:#6a9955">${escapeHtml(line)}</span>`;
+      }
+      return line.replace(
+        /("(?:[^"\\]|\\.)*")|(:)|(\/\/[^\n]*)/g,
+        (m, str?: string, colon?: string, comment?: string) => {
+          if (comment) return `<span style="color:#6a9955">${escapeHtml(comment)}</span>`;
+          if (str) return `<span style="color:#ce9178">${escapeHtml(str)}</span>`;
+          if (colon) return `<span style="color:#d4d4d4">:</span>`;
+          return escapeHtml(m);
+        },
+      );
+    })
+    .join("\n");
+}
+
+function MappingPanel({
+  text,
+  setText,
+  parsedEntries,
+  status,
+}: {
+  text: string;
+  setText: (v: string) => void;
+  parsedEntries: Array<[string, string]>;
+  status: { ok: boolean; message: string } | null;
+}) {
+  const [splitRatio, setSplitRatio] = useState(0.6);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const dragging = useRef(false);
+  const codeRef = useRef<HTMLTextAreaElement>(null);
+  const preRef = useRef<HTMLPreElement>(null);
+
+  const handlePointerDown = useCallback((e: ReactMouseEvent) => {
+    e.preventDefault();
+    dragging.current = true;
+    document.body.style.cursor = "row-resize";
+    document.body.style.userSelect = "none";
+  }, []);
+
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      if (!dragging.current || !containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const ratio = Math.min(0.85, Math.max(0.15, (e.clientY - rect.top) / rect.height));
+      setSplitRatio(ratio);
+    };
+    const onUp = () => {
+      if (dragging.current) {
+        dragging.current = false;
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      }
+    };
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+    return () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+    };
+  }, []);
+
+  const handleScroll = useCallback(() => {
+    if (codeRef.current && preRef.current) {
+      preRef.current.scrollTop = codeRef.current.scrollTop;
+      preRef.current.scrollLeft = codeRef.current.scrollLeft;
+    }
+  }, []);
+
+  return (
+    <div ref={containerRef} className="flex flex-col flex-1 min-h-0">
+      <div className="flex flex-col min-h-0" style={{ flex: `${splitRatio} 1 0%` }}>
+        <div style={{ backgroundColor: "var(--thumb-bg)" }}>
+          <table className="w-full text-xs">
+            <thead>
+              <tr>
+                <th className="text-left px-3 py-1.5 font-medium text-[var(--text-muted)]">
+                  Original
+                </th>
+                <th className="text-left px-3 py-1.5 font-medium text-[var(--text-muted)]">
+                  Mapped To
+                </th>
+              </tr>
+            </thead>
+          </table>
+        </div>
+        <div className="flex-1 overflow-auto">
+          {parsedEntries.length > 0 ? (
+            <table className="w-full text-xs">
+              <tbody>
+                {parsedEntries.map(([key, val], i) => (
+                  <tr key={i} className="border-t border-gray-100">
+                    <td className="px-3 py-1 font-mono text-[var(--text)]">{key}</td>
+                    <td className="px-3 py-1 font-mono text-[var(--text)]">{val}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p className="px-3 py-3 text-xs text-[var(--text-muted)]">No valid mappings found</p>
+          )}
+        </div>
+        {status && (
+          <div className="px-3 py-1.5 border-t border-gray-100">
+            <span className={`text-xs ${status.ok ? "text-green-600" : "text-red-600"}`}>
+              {status.message}
+            </span>
+          </div>
+        )}
+      </div>
+      <div
+        className="h-1.5 cursor-row-resize flex-shrink-0 flex items-center justify-center hover:bg-[var(--thumb-bg)] transition-colors"
+        style={{
+          backgroundColor: "var(--control-bg)",
+          borderTop: "1px solid var(--thumb-bg)",
+          borderBottom: "1px solid var(--thumb-bg)",
+        }}
+        onPointerDown={handlePointerDown}
+      >
+        <div className="w-8 h-0.5 rounded-full bg-[var(--text-muted)] opacity-40" />
+      </div>
+      <div
+        className="relative min-h-0"
+        style={{ flex: `${1 - splitRatio} 1 0%`, backgroundColor: "var(--control-bg)" }}
+      >
+        <pre
+          ref={preRef}
+          className="absolute inset-0 text-sm font-mono px-3 py-2 overflow-hidden pointer-events-none whitespace-pre-wrap break-words m-0"
+          aria-hidden
+          dangerouslySetInnerHTML={{ __html: highlightMappingSyntax(text) + "\n" }}
+        />
+        <textarea
+          ref={codeRef}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onScroll={handleScroll}
+          spellCheck={false}
+          placeholder={`// Map original filenames to custom names\n"actor1": "hero_sprite"\n"dungeon_a1": "cave_tileset"`}
+          className="relative w-full h-full text-sm font-mono px-3 py-2 focus:outline-none resize-none bg-transparent"
+          style={{ color: "transparent", caretColor: "var(--text)" }}
+        />
+      </div>
+    </div>
+  );
+}
+
+type SettingsTab = "general" | "game" | "style" | "theme" | "mapping";
 
 function SettingsView({
   mappingText,
@@ -1485,7 +1660,6 @@ function SettingsView({
   const [engineField, setEngineField] = useState<EngineType>(config.engine);
   const [encryptionKeyField, setEncryptionKeyField] = useState(config.encryptionKey);
   const [savingConfig, setSavingConfig] = useState(false);
-  const [resettingStyle, setResettingStyle] = useState(false);
 
   const isTcoaalDetected = useMemo(() => {
     const t = gameTitle.toLowerCase();
@@ -1547,24 +1721,6 @@ function SettingsView({
     onConfigChanged,
   ]);
 
-  const handleResetStyle = useCallback(async () => {
-    setResettingStyle(true);
-    try {
-      const res = await fetch("/api/style", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reset: true }),
-      });
-      if (res.ok) {
-        const data: StyleResponse = await res.json();
-        onStyleChanged(data.style);
-      }
-    } catch {
-    } finally {
-      setResettingStyle(false);
-    }
-  }, [onStyleChanged]);
-
   const handleSaveMapping = useCallback(async () => {
     setSaving(true);
     setStatus(null);
@@ -1620,40 +1776,91 @@ function SettingsView({
     [saveStyle, editingMode],
   );
 
+  const mappingDirty = text !== mappingText;
+  const anyDirty = configDirty || mappingDirty;
+
+  const handleSaveAll = useCallback(async () => {
+    if (configDirty) void handleSaveConfig();
+    if (mappingDirty) void handleSaveMapping();
+  }, [configDirty, mappingDirty, handleSaveConfig, handleSaveMapping]);
+
+  const defaultColors = useMemo(() => {
+    const accent = appearance.keyColor ?? "#d93900";
+    const bg = appearance.bgColor ?? "#ffffff";
+    const highlight = appearance.highlightColor ?? darkenHex(bg, 0.05);
+    const light: ColorTheme = {
+      accentColor: accent,
+      linkColor: accent,
+      bgColor: bg,
+      textColor: "#f3f3f3",
+      textMuted: "#919191",
+      thumbBgColor: highlight,
+      controlBgColor: highlight,
+      controlTextColor: "#f3f3f3",
+    };
+    const darkAccent = appearance.keyColor ?? "#ff6b3d";
+    const dark: ColorTheme = {
+      accentColor: darkAccent,
+      linkColor: darkAccent,
+      bgColor: appearance.bgColor ?? "#1a1a1b",
+      textColor: "#f3f3f3",
+      textMuted: "#919191",
+      thumbBgColor: appearance.highlightColor ?? "#343536",
+      controlBgColor: appearance.highlightColor ?? "#343536",
+      controlTextColor: "#f3f3f3",
+    };
+    return { light, dark };
+  }, [appearance]);
+
+  const editingDefaults = editingMode === "light" ? defaultColors.light : defaultColors.dark;
+
   const SETTINGS_TABS: readonly { value: SettingsTab; label: string }[] = [
     { value: "general", label: "General" },
     { value: "game", label: "Game" },
     { value: "style", label: "Style" },
+    { value: "theme", label: "Theme" },
     { value: "mapping", label: "Mapping" },
   ] as const;
 
   return (
     <>
-      <div className="flex gap-1 px-4 pt-3 pb-2 border-b border-gray-200">
-        {SETTINGS_TABS.map((tab) => (
-          <button
-            key={tab.value}
-            className={`text-xs px-3 py-1.5 rounded-full transition-colors cursor-pointer ${
-              settingsTab === tab.value
-                ? "bg-[var(--accent)] text-white"
-                : "text-[var(--text-muted)]"
-            }`}
-            style={settingsTab !== tab.value ? { backgroundColor: "transparent" } : undefined}
-            onMouseEnter={(e) => {
-              if (settingsTab !== tab.value)
-                e.currentTarget.style.backgroundColor = "var(--thumb-bg)";
-            }}
-            onMouseLeave={(e) => {
-              if (settingsTab !== tab.value) e.currentTarget.style.backgroundColor = "transparent";
-            }}
-            onClick={() => setSettingsTab(tab.value)}
-          >
-            {tab.label}
-          </button>
-        ))}
+      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100">
+        <div className="flex gap-1">
+          {SETTINGS_TABS.map((tab) => (
+            <button
+              key={tab.value}
+              className={`text-xs px-[10px] py-[4px] rounded-full transition-colors cursor-pointer ${
+                settingsTab === tab.value
+                  ? "bg-[var(--accent)] text-white"
+                  : "text-[var(--text-muted)]"
+              }`}
+              style={settingsTab !== tab.value ? { backgroundColor: "transparent" } : undefined}
+              onMouseEnter={(e) => {
+                if (settingsTab !== tab.value)
+                  e.currentTarget.style.backgroundColor = "var(--thumb-bg)";
+              }}
+              onMouseLeave={(e) => {
+                if (settingsTab !== tab.value)
+                  e.currentTarget.style.backgroundColor = "transparent";
+              }}
+              onClick={() => setSettingsTab(tab.value)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => void handleSaveAll()}
+          disabled={!anyDirty || savingConfig || saving}
+          className="text-xs px-[10px] py-[4px] rounded-full bg-[var(--accent)] text-white transition-colors cursor-pointer disabled:opacity-30"
+        >
+          {savingConfig || saving ? "Saving..." : "Save"}
+        </button>
       </div>
 
-      <div className="flex-1 overflow-auto px-4 py-4">
+      <div
+        className={`flex-1 ${settingsTab === "mapping" ? "overflow-hidden flex flex-col" : "overflow-auto px-4 py-4"}`}
+      >
         {settingsTab === "general" && (
           <div className="flex flex-col gap-4 max-w-lg">
             <div className="flex flex-col gap-2">
@@ -1691,14 +1898,6 @@ function SettingsView({
                 Displayed on the home screen below the title.
               </span>
             </div>
-
-            <button
-              onClick={() => void handleSaveConfig()}
-              disabled={savingConfig || !configDirty}
-              className="self-start text-sm px-4 py-1.5 rounded-full bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] transition-colors cursor-pointer disabled:opacity-50"
-            >
-              {savingConfig ? "Saving..." : "Save"}
-            </button>
           </div>
         )}
 
@@ -1775,248 +1974,174 @@ function SettingsView({
                 </div>
               </>
             )}
-
-            <button
-              onClick={() => void handleSaveConfig()}
-              disabled={savingConfig || !configDirty}
-              className="self-start text-sm px-4 py-1.5 rounded-full bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] transition-colors cursor-pointer disabled:opacity-50"
-            >
-              {savingConfig ? "Saving..." : "Save"}
-            </button>
           </div>
         )}
 
         {settingsTab === "style" && (
-          <div className="flex gap-8">
-            <div className="flex flex-col gap-4 max-w-lg flex-1 min-w-0">
-              <div className="flex flex-col gap-2">
-                <span className="text-xs font-medium">Home Background</span>
-                <SegmentedControl
-                  value={homeBackground}
-                  options={[
-                    { value: "ripple" as HomeBackground, label: "Ripple" },
-                    ...(appearance.bannerUrl
-                      ? [{ value: "banner" as HomeBackground, label: "Banner" }]
-                      : []),
-                    { value: "none" as HomeBackground, label: "None" },
-                  ]}
-                  onChange={setHomeBackground}
-                />
-                <span className="text-[10px] text-[var(--text-muted)]">
-                  Background effect on the home/import screen.
-                </span>
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <span className="text-xs font-medium">Home Logo</span>
-                <SegmentedControl
-                  value={homeLogo}
-                  options={[
-                    { value: "echowiki" as HomeLogo, label: "EchoWiki" },
-                    ...(appearance.iconUrl
-                      ? [{ value: "subreddit" as HomeLogo, label: "Subreddit" }]
-                      : []),
-                  ]}
-                  onChange={setHomeLogo}
-                />
-                <span className="text-[10px] text-[var(--text-muted)]">
-                  Logo displayed on the home/import screen.
-                </span>
-              </div>
-
-              {(homeBackground !== config.homeBackground || homeLogo !== config.homeLogo) && (
-                <button
-                  onClick={() => void handleSaveConfig()}
-                  disabled={savingConfig}
-                  className="self-start text-sm px-4 py-1.5 rounded-full bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] transition-colors cursor-pointer disabled:opacity-50"
-                >
-                  {savingConfig ? "Saving..." : "Save"}
-                </button>
-              )}
-
-              <div className="border-b border-gray-200 my-1" />
-
-              <div className="flex flex-col gap-2">
-                <span className="text-xs font-medium">Font</span>
-                <SegmentedControl
-                  value={style.fontFamily}
-                  options={[
-                    { value: "system" as FontFamily, label: "System" },
-                    { value: "serif" as FontFamily, label: "Serif" },
-                    { value: "mono" as FontFamily, label: "Mono" },
-                    { value: "subreddit" as FontFamily, label: "Subreddit" },
-                  ]}
-                  onChange={(v) => void saveStyle({ fontFamily: v })}
-                />
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <span className="text-xs font-medium">Card Size</span>
-                <SegmentedControl
-                  value={style.cardSize}
-                  options={[
-                    { value: "compact" as CardSize, label: "Compact" },
-                    { value: "normal" as CardSize, label: "Normal" },
-                    { value: "large" as CardSize, label: "Large" },
-                  ]}
-                  onChange={(v) => void saveStyle({ cardSize: v })}
-                />
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <span className="text-xs font-medium">Wiki Font Size</span>
-                <SegmentedControl
-                  value={style.wikiFontSize}
-                  options={[
-                    { value: "small" as WikiFontSize, label: "Small" },
-                    { value: "normal" as WikiFontSize, label: "Normal" },
-                    { value: "large" as WikiFontSize, label: "Large" },
-                  ]}
-                  onChange={(v) => void saveStyle({ wikiFontSize: v })}
-                />
-              </div>
-
-              <div className="border-b border-gray-200 my-1" />
-
-              <button
-                onClick={() => void handleResetStyle()}
-                disabled={resettingStyle}
-                className="self-start text-xs px-3 py-1.5 rounded-full border border-gray-300 text-[var(--text-muted)] transition-colors cursor-pointer disabled:opacity-50"
-                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--thumb-bg)")}
-                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-              >
-                {resettingStyle ? "Resetting..." : "Reset to Defaults"}
-              </button>
+          <div className="flex flex-col gap-4 max-w-lg">
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-medium">Home Background</span>
+              <SegmentedControl
+                value={homeBackground}
+                options={[
+                  { value: "ripple" as HomeBackground, label: "Ripple" },
+                  ...(appearance.bannerUrl
+                    ? [
+                        { value: "banner" as HomeBackground, label: "Banner" },
+                        { value: "both" as HomeBackground, label: "Both" },
+                      ]
+                    : []),
+                  { value: "none" as HomeBackground, label: "None" },
+                ]}
+                onChange={setHomeBackground}
+              />
+              <span className="text-[10px] text-[var(--text-muted)]">
+                Background effect on the home/import screen.
+              </span>
             </div>
 
-            <div className="flex flex-col gap-4 max-w-xs flex-1 min-w-0">
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-medium">Home Logo</span>
               <SegmentedControl
-                value={editingMode}
+                value={homeLogo}
                 options={[
-                  { value: "light" as const, label: "Light" },
-                  { value: "dark" as const, label: "Dark" },
+                  { value: "echowiki" as HomeLogo, label: "EchoWiki" },
+                  ...(appearance.iconUrl
+                    ? [{ value: "subreddit" as HomeLogo, label: "Subreddit" }]
+                    : []),
                 ]}
-                onChange={setEditingMode}
+                onChange={setHomeLogo}
               />
+              <span className="text-[10px] text-[var(--text-muted)]">
+                Logo displayed on the home/import screen.
+              </span>
+            </div>
 
-              <ColorPickerRow
-                key={`accent-${editingMode}`}
-                label="Accent"
-                value={editingColors.accentColor}
-                onSelect={(c) => saveColor("accentColor", c)}
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-medium">Font</span>
+              <SegmentedControl
+                value={style.fontFamily}
+                options={[
+                  { value: "system" as FontFamily, label: "System" },
+                  { value: "serif" as FontFamily, label: "Serif" },
+                  { value: "mono" as FontFamily, label: "Mono" },
+                  { value: "subreddit" as FontFamily, label: "Subreddit" },
+                ]}
+                onChange={(v) => void saveStyle({ fontFamily: v })}
               />
+            </div>
 
-              <ColorPickerRow
-                key={`link-${editingMode}`}
-                label="Links"
-                value={editingColors.linkColor}
-                onSelect={(c) => saveColor("linkColor", c)}
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-medium">Card Size</span>
+              <SegmentedControl
+                value={style.cardSize}
+                options={[
+                  { value: "compact" as CardSize, label: "Compact" },
+                  { value: "normal" as CardSize, label: "Normal" },
+                  { value: "large" as CardSize, label: "Large" },
+                ]}
+                onChange={(v) => void saveStyle({ cardSize: v })}
               />
+            </div>
 
-              <ColorPickerRow
-                key={`bg-${editingMode}`}
-                label="Background"
-                value={editingColors.bgColor}
-                onSelect={(c) => saveColor("bgColor", c)}
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-medium">Wiki Font Size</span>
+              <SegmentedControl
+                value={style.wikiFontSize}
+                options={[
+                  { value: "small" as WikiFontSize, label: "Small" },
+                  { value: "normal" as WikiFontSize, label: "Normal" },
+                  { value: "large" as WikiFontSize, label: "Large" },
+                ]}
+                onChange={(v) => void saveStyle({ wikiFontSize: v })}
               />
+            </div>
+          </div>
+        )}
 
-              <ColorPickerRow
-                key={`text-${editingMode}`}
-                label="Text"
-                value={editingColors.textColor}
-                onSelect={(c) => saveColor("textColor", c)}
-              />
+        {settingsTab === "theme" && (
+          <div className="flex flex-col gap-4">
+            <SegmentedControl
+              value={editingMode}
+              options={[
+                { value: "light" as const, label: "Light" },
+                { value: "dark" as const, label: "Dark" },
+              ]}
+              onChange={setEditingMode}
+            />
 
-              <ColorPickerRow
-                key={`muted-${editingMode}`}
-                label="Muted Text"
-                value={editingColors.textMuted}
-                onSelect={(c) => saveColor("textMuted", c)}
-              />
-
-              <ColorPickerRow
-                key={`thumb-${editingMode}`}
-                label="Thumbnail Background"
-                value={editingColors.thumbBgColor}
-                onSelect={(c) => saveColor("thumbBgColor", c)}
-              />
-
-              <ColorPickerRow
-                key={`control-bg-${editingMode}`}
-                label="Control Background"
-                value={editingColors.controlBgColor}
-                onSelect={(c) => saveColor("controlBgColor", c)}
-              />
-
-              <ColorPickerRow
-                key={`control-text-${editingMode}`}
-                label="Control Text"
-                value={editingColors.controlTextColor}
-                onSelect={(c) => saveColor("controlTextColor", c)}
-              />
+            <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+              <div className="flex flex-col gap-4">
+                <ColorPickerRow
+                  key={`accent-${editingMode}`}
+                  label="Accent"
+                  value={editingColors.accentColor}
+                  defaultValue={editingDefaults.accentColor}
+                  onSelect={(c) => saveColor("accentColor", c)}
+                />
+                <ColorPickerRow
+                  key={`link-${editingMode}`}
+                  label="Links"
+                  value={editingColors.linkColor}
+                  defaultValue={editingDefaults.linkColor}
+                  onSelect={(c) => saveColor("linkColor", c)}
+                />
+                <ColorPickerRow
+                  key={`text-${editingMode}`}
+                  label="Text"
+                  value={editingColors.textColor}
+                  defaultValue={editingDefaults.textColor}
+                  onSelect={(c) => saveColor("textColor", c)}
+                />
+                <ColorPickerRow
+                  key={`muted-${editingMode}`}
+                  label="Muted Text"
+                  value={editingColors.textMuted}
+                  defaultValue={editingDefaults.textMuted}
+                  onSelect={(c) => saveColor("textMuted", c)}
+                />
+              </div>
+              <div className="flex flex-col gap-4">
+                <ColorPickerRow
+                  key={`bg-${editingMode}`}
+                  label="Background"
+                  value={editingColors.bgColor}
+                  defaultValue={editingDefaults.bgColor}
+                  onSelect={(c) => saveColor("bgColor", c)}
+                />
+                <ColorPickerRow
+                  key={`thumb-${editingMode}`}
+                  label="Thumbnail Bg"
+                  value={editingColors.thumbBgColor}
+                  defaultValue={editingDefaults.thumbBgColor}
+                  onSelect={(c) => saveColor("thumbBgColor", c)}
+                />
+                <ColorPickerRow
+                  key={`control-bg-${editingMode}`}
+                  label="Control Bg"
+                  value={editingColors.controlBgColor}
+                  defaultValue={editingDefaults.controlBgColor}
+                  onSelect={(c) => saveColor("controlBgColor", c)}
+                />
+                <ColorPickerRow
+                  key={`control-text-${editingMode}`}
+                  label="Control Text"
+                  value={editingColors.controlTextColor}
+                  defaultValue={editingDefaults.controlTextColor}
+                  onSelect={(c) => saveColor("controlTextColor", c)}
+                />
+              </div>
             </div>
           </div>
         )}
 
         {settingsTab === "mapping" && (
-          <div className="flex flex-col gap-3">
-            <label className="flex flex-col gap-1">
-              <textarea
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                rows={10}
-                spellCheck={false}
-                placeholder={`// Map original filenames to custom names\n"actor1": "hero_sprite"\n"dungeon_a1": "cave_tileset"`}
-                className="text-sm font-mono px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)] resize-y"
-                style={{
-                  backgroundColor: "var(--control-bg)",
-                  color: "var(--control-text)",
-                }}
-              />
-            </label>
-
-            {parsedEntries.length > 0 ? (
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr style={{ backgroundColor: "var(--thumb-bg)" }}>
-                      <th className="text-left px-3 py-1.5 font-medium text-[var(--text-muted)]">
-                        Original
-                      </th>
-                      <th className="text-left px-3 py-1.5 font-medium text-[var(--text-muted)]">
-                        Mapped To
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {parsedEntries.map(([key, value], i) => (
-                      <tr key={i} className="border-t border-gray-100">
-                        <td className="px-3 py-1 font-mono text-[var(--text)]">{key}</td>
-                        <td className="px-3 py-1 font-mono text-[var(--text)]">{value}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="text-xs text-[var(--text-muted)]">No valid mappings found</p>
-            )}
-
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => void handleSaveMapping()}
-                disabled={saving}
-                className="text-sm px-4 py-1.5 rounded-full bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] transition-colors cursor-pointer disabled:opacity-50"
-              >
-                {saving ? "Saving..." : "Save"}
-              </button>
-              {status && (
-                <span className={`text-xs ${status.ok ? "text-green-600" : "text-red-600"}`}>
-                  {status.message}
-                </span>
-              )}
-            </div>
-          </div>
+          <MappingPanel
+            text={text}
+            setText={setText}
+            parsedEntries={parsedEntries}
+            status={status}
+          />
         )}
       </div>
     </>
@@ -2070,6 +2195,60 @@ export const App = () => {
   }, [mapping]);
 
   const [previewPath, setPreviewPath] = useState<string | null>(null);
+
+  const [wikiCurrentPage, setWikiCurrentPage] = useState("index");
+  const [wikiPages, setWikiPages] = useState<string[]>([]);
+  const [showBreadcrumb, setShowBreadcrumb] = useState(false);
+  const [openBreadcrumbDropdown, setOpenBreadcrumbDropdown] = useState<number | null>(null);
+  const breadcrumbBarRef = useRef<HTMLDivElement>(null);
+  const topBarRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch("/api/wiki/pages");
+        if (res.ok) {
+          const data: WikiPagesResponse = await res.json();
+          setWikiPages(data.pages);
+        }
+      } catch {}
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (openBreadcrumbDropdown === null) return;
+    const handler = () => setOpenBreadcrumbDropdown(null);
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, [openBreadcrumbDropdown]);
+
+  const wikiBreadcrumbs = useMemo(() => {
+    const parts = wikiCurrentPage.split("/");
+    return parts.map((part, i) => {
+      const pagePath = parts.slice(0, i + 1).join("/");
+      const prefix = i > 0 ? parts.slice(0, i).join("/") + "/" : "";
+      const siblings = wikiPages
+        .filter((p) => {
+          if (!p.startsWith(prefix)) return false;
+          const rest = p.slice(prefix.length);
+          return !rest.includes("/") && rest !== part;
+        })
+        .sort();
+      return {
+        label: part.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+        page: pagePath,
+        siblings,
+      };
+    });
+  }, [wikiCurrentPage, wikiPages]);
+
+  const handleBreadcrumbBarLeave = useCallback((e: ReactMouseEvent) => {
+    const topBar = topBarRef.current;
+    const related = e.relatedTarget as Node | null;
+    if (topBar && related && topBar.contains(related)) return;
+    setShowBreadcrumb(false);
+    setOpenBreadcrumbDropdown(null);
+  }, []);
 
   const colors: ColorTheme = isDark ? style.dark : style.light;
 
@@ -2459,7 +2638,6 @@ export const App = () => {
 
   const isInline = getWebViewMode() === "inline";
 
-  
   useEffect(() => {
     if (!isInline || appState !== "ready") return;
     const onFocus = () => {
@@ -2546,7 +2724,9 @@ export const App = () => {
               style={{
                 height: 120,
                 opacity:
-                  initResolved && config?.homeBackground === "banner" && appState !== "importing"
+                  initResolved &&
+                  (config?.homeBackground === "banner" || config?.homeBackground === "both") &&
+                  appState !== "importing"
                     ? 0.3
                     : 0,
                 zIndex: 1,
@@ -2565,7 +2745,8 @@ export const App = () => {
             className={
               appState === "importing"
                 ? "ripple-container ripple-inward"
-                : initResolved && config?.homeBackground === "ripple"
+                : initResolved &&
+                    (config?.homeBackground === "ripple" || config?.homeBackground === "both")
                   ? "ripple-container"
                   : "ripple-container ripple-hidden"
             }
@@ -2678,108 +2859,206 @@ export const App = () => {
 
       {appState === "ready" && (
         <>
-          <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100">
-            <div className="flex items-center gap-1">
-              {!gameMismatch && (
-                <button
-                  className={`text-sm px-3 py-1 rounded-full transition-colors cursor-pointer ${
-                    activeTab === "wiki"
-                      ? "bg-[var(--accent)] text-white"
-                      : "text-[var(--text-muted)]"
-                  }`}
-                  style={activeTab !== "wiki" ? { backgroundColor: "transparent" } : undefined}
-                  onMouseEnter={(e) => {
-                    if (activeTab !== "wiki")
-                      e.currentTarget.style.backgroundColor = "var(--thumb-bg)";
-                  }}
-                  onMouseLeave={(e) => {
-                    if (activeTab !== "wiki") e.currentTarget.style.backgroundColor = "transparent";
-                  }}
-                  onClick={() => setActiveTab("wiki")}
-                >
-                  Wiki
-                </button>
-              )}
-              <button
-                className={`text-sm px-3 py-1 rounded-full transition-colors cursor-pointer ${
-                  activeTab === "assets"
-                    ? "bg-[var(--accent)] text-white"
-                    : "text-[var(--text-muted)]"
-                }`}
-                style={activeTab !== "assets" ? { backgroundColor: "transparent" } : undefined}
-                onMouseEnter={(e) => {
-                  if (activeTab !== "assets")
-                    e.currentTarget.style.backgroundColor = "var(--thumb-bg)";
-                }}
-                onMouseLeave={(e) => {
-                  if (activeTab !== "assets") e.currentTarget.style.backgroundColor = "transparent";
-                }}
-                onClick={() => setActiveTab("assets")}
-              >
-                Assets
-                {meta && (
-                  <span className="ml-1 opacity-70">{meta.assetCount.toLocaleString()}</span>
+          <div className="relative" style={{ zIndex: 10 }}>
+            <div
+              ref={topBarRef}
+              className={`flex items-center justify-between px-4 py-2 border-b ${showBreadcrumb && activeTab === "wiki" ? "border-transparent" : "border-gray-100"}`}
+              onMouseLeave={(e) => {
+                const bar = breadcrumbBarRef.current;
+                const related = e.relatedTarget as Node | null;
+                if (bar && related && bar.contains(related)) return;
+                setShowBreadcrumb(false);
+                setOpenBreadcrumbDropdown(null);
+              }}
+            >
+              <div className="flex items-center gap-1">
+                {!gameMismatch && (
+                  <button
+                    className={`text-sm px-3 py-1 rounded-full transition-colors cursor-pointer ${
+                      activeTab === "wiki"
+                        ? "bg-[var(--accent)] text-white"
+                        : "text-[var(--text-muted)]"
+                    }`}
+                    style={activeTab !== "wiki" ? { backgroundColor: "transparent" } : undefined}
+                    onMouseEnter={(e) => {
+                      if (activeTab === "wiki") {
+                        setShowBreadcrumb(true);
+                      } else {
+                        e.currentTarget.style.backgroundColor = "var(--thumb-bg)";
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (activeTab !== "wiki")
+                        e.currentTarget.style.backgroundColor = "transparent";
+                    }}
+                    onClick={() => setActiveTab("wiki")}
+                  >
+                    Wiki
+                  </button>
                 )}
-              </button>
-              {isMod && (
                 <button
                   className={`text-sm px-3 py-1 rounded-full transition-colors cursor-pointer ${
-                    activeTab === "settings"
+                    activeTab === "assets"
                       ? "bg-[var(--accent)] text-white"
                       : "text-[var(--text-muted)]"
                   }`}
-                  style={activeTab !== "settings" ? { backgroundColor: "transparent" } : undefined}
+                  style={activeTab !== "assets" ? { backgroundColor: "transparent" } : undefined}
                   onMouseEnter={(e) => {
-                    if (activeTab !== "settings")
+                    if (activeTab !== "assets")
                       e.currentTarget.style.backgroundColor = "var(--thumb-bg)";
                   }}
                   onMouseLeave={(e) => {
-                    if (activeTab !== "settings")
+                    if (activeTab !== "assets")
                       e.currentTarget.style.backgroundColor = "transparent";
                   }}
-                  onClick={() => setActiveTab("settings")}
+                  onClick={() => setActiveTab("assets")}
                 >
-                  Settings
+                  Assets
+                  {meta && (
+                    <span className="ml-1 opacity-70">{meta.assetCount.toLocaleString()}</span>
+                  )}
                 </button>
+                {isMod && (
+                  <button
+                    className={`text-sm px-3 py-1 rounded-full transition-colors cursor-pointer ${
+                      activeTab === "settings"
+                        ? "bg-[var(--accent)] text-white"
+                        : "text-[var(--text-muted)]"
+                    }`}
+                    style={
+                      activeTab !== "settings" ? { backgroundColor: "transparent" } : undefined
+                    }
+                    onMouseEnter={(e) => {
+                      if (activeTab !== "settings")
+                        e.currentTarget.style.backgroundColor = "var(--thumb-bg)";
+                    }}
+                    onMouseLeave={(e) => {
+                      if (activeTab !== "settings")
+                        e.currentTarget.style.backgroundColor = "transparent";
+                    }}
+                    onClick={() => setActiveTab("settings")}
+                  >
+                    Settings
+                  </button>
+                )}
+              </div>
+              {gameMismatch && (
+                <span className="text-[10px] text-red-600 truncate px-2">
+                  Expected '{gameMismatch.expected}' but detected '{gameMismatch.detected}'
+                </span>
               )}
-            </div>
-            {gameMismatch && (
-              <span className="text-[10px] text-red-600 truncate px-2">
-                Expected {gameMismatch.expected} but detected {gameMismatch.detected}
-              </span>
-            )}
-            <div className="flex items-center gap-3">
-              {isInline && (
+              <div className="flex items-center gap-3">
+                {isInline && (
+                  <button
+                    className="text-gray-400 hover:text-[var(--text-muted)] transition-colors cursor-pointer"
+                    title="Pop out"
+                    onClick={(e) => {
+                      void requestExpandedMode(e.nativeEvent, "default");
+                    }}
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                      />
+                    </svg>
+                  </button>
+                )}
                 <button
-                  className="text-gray-400 hover:text-[var(--text-muted)] transition-colors cursor-pointer"
-                  title="Pop out"
+                  className="text-sm px-3 py-1 rounded-full bg-red-600 text-white hover:bg-red-700 transition-colors cursor-pointer"
                   onClick={(e) => {
-                    void requestExpandedMode(e.nativeEvent, "default");
+                    if (isInline) {
+                      void handleWipe();
+                    } else {
+                      void handleWipe().then(() => exitExpandedMode(e.nativeEvent));
+                    }
                   }}
                 >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                    />
-                  </svg>
+                  Exit
                 </button>
-              )}
-              <button
-                className="text-xs px-3 py-1 rounded-full bg-red-600 text-white hover:bg-red-700 transition-colors cursor-pointer"
-                onClick={(e) => {
-                  if (isInline) {
-                    void handleWipe();
-                  } else {
-                    void handleWipe().then(() => exitExpandedMode(e.nativeEvent));
-                  }
-                }}
-              >
-                Exit
-              </button>
+              </div>
             </div>
+
+            {activeTab === "wiki" && (
+              <div
+                ref={breadcrumbBarRef}
+                className="absolute left-0 right-0 top-full flex items-center gap-1 px-4 py-1 text-xs border-b border-gray-100 transition-all duration-150 overflow-visible"
+                style={{
+                  backgroundColor: "var(--bg)",
+                  maxHeight: showBreadcrumb ? "40px" : "0px",
+                  paddingTop: showBreadcrumb ? undefined : "0px",
+                  paddingBottom: showBreadcrumb ? undefined : "0px",
+                  opacity: showBreadcrumb ? 1 : 0,
+                  borderBottomColor: showBreadcrumb ? undefined : "transparent",
+                }}
+                onMouseLeave={handleBreadcrumbBarLeave}
+              >
+                {wikiBreadcrumbs.map((crumb, i) => (
+                  <Fragment key={crumb.page}>
+                    {i > 0 && <span className="text-[var(--text-muted)] mx-0.5">&gt;</span>}
+                    <button
+                      className={`px-1.5 py-0.5 rounded transition-colors cursor-pointer ${
+                        i === wikiBreadcrumbs.length - 1
+                          ? "font-medium text-[var(--text)]"
+                          : "text-[var(--text-muted)] hover:text-[var(--text)]"
+                      }`}
+                      onClick={() => setWikiCurrentPage(crumb.page)}
+                    >
+                      {crumb.label}
+                    </button>
+                    {crumb.siblings.length > 0 && (
+                      <div className="relative">
+                        <button
+                          className="text-[var(--text-muted)] hover:text-[var(--text)] px-0.5 cursor-pointer"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setOpenBreadcrumbDropdown(openBreadcrumbDropdown === i ? null : i);
+                          }}
+                        >
+                          &#9662;
+                        </button>
+                        {openBreadcrumbDropdown === i && (
+                          <div
+                            className="absolute top-full left-0 z-50 mt-1 py-1 rounded-lg shadow-lg border border-gray-200 min-w-[140px]"
+                            style={{ backgroundColor: "var(--bg)" }}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {crumb.siblings.map((sib) => {
+                              const sibLabel = sib
+                                .split("/")
+                                .pop()!
+                                .replace(/_/g, " ")
+                                .replace(/\b\w/g, (c) => c.toUpperCase());
+                              return (
+                                <button
+                                  key={sib}
+                                  className="w-full text-left text-xs px-3 py-1.5 cursor-pointer text-[var(--text)]"
+                                  style={{ backgroundColor: "transparent" }}
+                                  onMouseEnter={(e) =>
+                                    (e.currentTarget.style.backgroundColor = "var(--thumb-bg)")
+                                  }
+                                  onMouseLeave={(e) =>
+                                    (e.currentTarget.style.backgroundColor = "transparent")
+                                  }
+                                  onClick={() => {
+                                    setWikiCurrentPage(sib);
+                                    setOpenBreadcrumbDropdown(null);
+                                  }}
+                                >
+                                  {sibLabel}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </Fragment>
+                ))}
+              </div>
+            )}
           </div>
 
           {error && (
@@ -2808,14 +3087,17 @@ export const App = () => {
           )}
 
           {activeTab === "wiki" && (
-            <div className="flex-1 overflow-auto">
-              <WikiView subredditName={subredditName} wikiFontSize={style.wikiFontSize} />
-            </div>
+            <WikiView
+              subredditName={subredditName}
+              wikiFontSize={style.wikiFontSize}
+              currentPage={wikiCurrentPage}
+              onPageChange={setWikiCurrentPage}
+            />
           )}
 
           {activeTab === "assets" && (
             <>
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 px-4 py-2 border-b border-gray-50">
+              <div className="flex items-center gap-1 px-4 py-2 border-b border-gray-100">
                 <FilterTabs
                   active={filter}
                   counts={counts}
@@ -2823,20 +3105,6 @@ export const App = () => {
                     setFilter(f);
                     setSubFilter(null);
                     setVisibleCount(PAGE_SIZE);
-                  }}
-                />
-                <input
-                  type="text"
-                  placeholder="Search assets..."
-                  value={search}
-                  onChange={(e) => {
-                    setSearch(e.target.value);
-                    setVisibleCount(PAGE_SIZE);
-                  }}
-                  className="flex-1 text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)]"
-                  style={{
-                    backgroundColor: "var(--control-bg)",
-                    color: "var(--control-text)",
                   }}
                 />
               </div>
@@ -2857,9 +3125,7 @@ export const App = () => {
               <div className="flex-1 overflow-auto px-4 py-3">
                 {filteredPaths.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 text-gray-400">
-                    <p className="text-sm">
-                      {search ? "No matching assets" : "No assets in this category"}
-                    </p>
+                    <p className="text-sm">No assets in this category</p>
                   </div>
                 ) : (
                   <>
@@ -2878,11 +3144,13 @@ export const App = () => {
                     {hasMore && (
                       <div className="flex justify-center py-4">
                         <button
-                          className="text-sm px-4 py-1.5 rounded-full bg-gray-100 text-[var(--text-muted)] hover:bg-gray-200 transition-colors cursor-pointer"
+                          className="text-xs px-2.5 py-1 rounded-full bg-[var(--accent)] text-white transition-opacity cursor-pointer hover:opacity-80"
                           onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
                         >
-                          Load more ({(filteredPaths.length - visibleCount).toLocaleString()}{" "}
-                          remaining)
+                          Load more
+                          <span className="ml-1 opacity-70">
+                            {(filteredPaths.length - visibleCount).toLocaleString()}
+                          </span>
                         </button>
                       </div>
                     )}

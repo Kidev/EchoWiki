@@ -140,3 +140,116 @@
   flex: 1;
   min-width: 0;
 }
+
+.prose blockquote {
+  font-style: normal;
+}
+
+.prose blockquote p:first-of-type::before,
+.prose blockquote p:last-of-type::after {
+  content: none;
+}
+
+.wiki-alert {
+  border-left: 3px solid var(--text-muted);
+  padding: 0.5em 1em;
+  margin: 1em 0;
+}
+
+.wiki-alert > *:first-child {
+  margin-top: 0;
+}
+
+.wiki-alert > *:last-child {
+  margin-bottom: 0;
+}
+
+.wiki-alert-title {
+  font-weight: 700;
+  font-size: 0.9em;
+  margin-bottom: 0.25em !important;
+  margin-top: 0 !important;
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  color: inherit;
+}
+
+.wiki-alert-title svg {
+  flex-shrink: 0;
+  fill: currentColor;
+}
+
+.wiki-infobox {
+  float: right;
+  clear: right;
+  width: 220px;
+  margin: 0 0 1em 1.5em;
+  border: 1px solid color-mix(in srgb, var(--text-muted) 50%, transparent);
+  border-radius: 8px;
+  overflow: hidden;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  background: var(--bg);
+}
+
+.wiki-infobox-header {
+  background: var(--accent);
+  color: white;
+  text-align: center;
+  padding: 0.35em 0.5em;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.wiki-infobox-image {
+  text-align: center;
+  padding: 0.75em;
+  background: var(--thumb-bg);
+}
+
+.wiki-infobox-image img {
+  margin: 0 auto !important;
+  display: block !important;
+  max-height: 180px;
+}
+
+.prose :where(img.echo-inline):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.wiki-infobox table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 !important;
+}
+
+.wiki-infobox th,
+.wiki-infobox td {
+  padding: 0.25em 0.5em !important;
+  border: none !important;
+  border-top: 1px solid color-mix(in srgb, var(--text-muted) 30%, transparent) !important;
+  text-align: left;
+  vertical-align: top;
+}
+
+.wiki-infobox th {
+  font-weight: 600;
+  white-space: nowrap;
+  width: 1%;
+  color: var(--text);
+  background: color-mix(in srgb, var(--text-muted) 8%, transparent);
+}
+
+.wiki-infobox td {
+  color: var(--text);
+}
+
+@media (max-width: 480px) {
+  .wiki-infobox {
+    float: none;
+    width: 100%;
+    margin: 0 0 1em 0;
+  }
+}

@@ -59,40 +59,59 @@ The asset preview lightbox includes interactive controls for applying editions. 
 
 Engine detection is automatic. Games using mkxp with RTP archives (.dat files) are also supported.
 
-## Wiki Integration
+## Wiki
 
-Wiki pages are fetched from the subreddit's wiki via the Reddit API. The dropdown only shows pages the current user has permission to view. Links within wiki pages work naturally:
+Wiki pages are fetched from the subreddit's wiki via the Reddit API. Navigating between pages happens in-app via a breadcrumb bar that slides down from the top menu when hovering the Wiki tab. The breadcrumb shows the current page path and dropdown arrows to navigate to sibling pages at each level.
 
-- **Wiki-internal links** (e.g. `/r/sub/wiki/page`) navigate within the app
-- **Anchor links** (`#section`) scroll to the heading within the current page
-- **External links** open in the browser tab
+Markdown rendering supports:
 
-Markdown features like blockquotes, tables, code blocks, lists, and horizontal rules are all themed to match the configured color scheme.
+- Standard GFM features: tables, code blocks, lists, blockquotes, horizontal rules
+- GitHub-style alerts (`> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]`, `> [!CAUTION]`) with colored borders, icons, and bold titles
+- HTML content via `rehype-raw`, used for floating infoboxes and layout grids
+- Echo links resolved inline as images or audio players
+- Anchor links scrolling within the current page
+- External links opening in the browser
+
+All wiki content is themed to match the configured color scheme.
 
 ## Asset Browser
 
-A gallery view with filter tabs (Images, Audio), subfolder navigation, search, and lazy pagination. Clicking any asset opens a full preview (image lightbox or audio player with frequency visualization). Right-clicking or using the copy button copies the echo markdown to the clipboard. When a filename mapping is configured, assets display mapped names.
+A gallery view with filter tabs (Images, Audio) and subfolder navigation. Long asset names scroll on hover. Clicking any asset opens a full preview with a close button (image lightbox or audio player with frequency visualization). Right-clicking or using the copy button copies the echo markdown to the clipboard. When a filename mapping is configured, assets display mapped names. Pagination loads more assets on demand.
 
 ## Mod Settings
 
-Moderators see a Settings tab with three sections:
+Moderators see a Settings tab with five sections and a single Save button in the tab bar.
 
 ### General
 
-- **Game Title**: Displayed to users during import. If the detected game title doesn't match, a dismissible warning is shown.
+- **Wiki Title**: Displayed on the home screen below the logo. Leave empty for default.
+- **Wiki Description**: Short text shown below the title.
+
+### Game
+
+- **Game Title**: Displayed to users during import. If the detected game title does not match, a warning is shown.
+- **Engine**: Select the engine type or leave on auto for automatic detection.
+- **Encryption Key**: Required for games with encrypted assets.
 
 ### Style
 
-- **Font**: System, Serif, or Mono.
 - **Card Size**: Compact, Normal, or Large thumbnails in the asset browser.
 - **Wiki Font Size**: Small, Normal, or Large.
-- **Colors**: Separate light and dark theme configuration with color pickers for Accent, Background, Text, Muted Text, Thumbnail Background, Control Background, and Control Text. Each color has preset swatches and a custom hex input. The app automatically follows the user's system light/dark preference.
+- **Font**: System, Serif, Mono, or Subreddit (uses the subreddit's configured font).
+- **Home Background**: Ripple animation, subreddit banner, both, or none.
+- **Home Logo**: EchoWiki logo or subreddit icon.
 
-### Filename Mapping
+### Theme
 
-A textarea where mods define `"original": "mapped"` pairs (one per line, comments supported). A live preview table shows the parsed mappings below the editor. Mapped names replace raw filenames in the asset browser and echo links. No code execution: parsing uses a simple regex to extract key-value pairs from the text.
+Separate light and dark mode configuration. Two-column layout with foreground colors (Accent, Links, Text, Muted Text) on the left and background colors (Background, Thumbnail Bg, Control Bg, Control Text) on the right. Each color has a reset button to restore the default derived from the subreddit's appearance settings. The app follows the user's system light/dark preference.
 
-When a mapping is changed or removed, any wiki echo links that referenced the old mapped name are automatically replaced with the original hash name. The moderator is shown a notification with the number of replacements and which pages were updated. This prevents stale mapped names from breaking wiki content.
+### Mapping
+
+Split-pane editor with a draggable divider. The top panel shows a live preview table of parsed mappings (Original / Mapped To) with a sticky header and scrollable rows. The bottom panel is a code editor with JS-style syntax highlighting for strings, colons, and comments.
+
+Mods define `"original": "mapped"` pairs (one per line, comments supported). Mapped names replace raw filenames in the asset browser and echo links.
+
+When a mapping is changed or removed, any wiki echo links that referenced the old mapped name are automatically replaced with the original hash name. A notification shows how many replacements were made and which pages were updated.
 
 Example:
 
