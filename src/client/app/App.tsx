@@ -1,5 +1,6 @@
 import {
   Fragment,
+  memo,
   type ChangeEvent,
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
@@ -23,6 +24,7 @@ import type {
   CardSize,
   ColorTheme,
   EngineType,
+  ErrorResponse,
   FontFamily,
   HomeBackground,
   HomeLogo,
@@ -35,6 +37,7 @@ import type {
   WikiFontSize,
   WikiResponse,
   WikiPagesResponse,
+  WikiUpdateRequest,
 } from "../../shared/types/api";
 import { hasAssets, getMeta, wipeAll, listAssetPaths, applyMapping } from "../lib/idb";
 import { importGameFiles } from "../lib/decrypt/index";
@@ -260,11 +263,38 @@ function extractWikiPage(href: string, subredditName: string): string | null {
   return null;
 }
 
-function EchoInlineImage({ url, alt }: { url: string; alt: string }) {
-  return <img src={url} alt={alt} className="echo-inline inline-block max-w-full rounded" />;
+function EchoInlineImage({
+  url,
+  alt,
+  style,
+  className: extraClass,
+}: {
+  url: string;
+  alt: string;
+  style?: CSSProperties | undefined;
+  className?: string | undefined;
+}) {
+  return (
+    <img
+      src={url}
+      alt={alt}
+      style={style}
+      className={`echo-inline inline-block max-w-full rounded${extraClass ? ` ${extraClass}` : ""}`}
+    />
+  );
 }
 
-function EchoInlineAsset({ path, children }: { path: string; children: ReactNode }) {
+function EchoInlineAsset({
+  path,
+  children,
+  style,
+  className,
+}: {
+  path: string;
+  children: ReactNode;
+  style?: CSSProperties | undefined;
+  className?: string | undefined;
+}) {
   const { url, loading } = useEchoUrl(path);
   const { basePath } = parseEditions(path);
   const name = getFileName(basePath);
@@ -288,7 +318,7 @@ function EchoInlineAsset({ path, children }: { path: string; children: ReactNode
   }
 
   if (isImagePath(basePath) && url) {
-    return <EchoInlineImage url={url} alt={name} />;
+    return <EchoInlineImage url={url} alt={name} style={style} className={className} />;
   }
 
   if (isAudioPath(basePath) && url) {
@@ -871,22 +901,363 @@ async function resolveOriginalBlob(path: string): Promise<Blob | null> {
   return asset?.blob ?? null;
 }
 
-function WikiView({
+function WikiMarkdownContent({
+  content,
+  subredditName,
+  wikiFontSize,
+  onPageChange,
+}: {
+  content: string;
+  subredditName: string;
+  wikiFontSize: WikiFontSize;
+  onPageChange: (page: string) => void;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const anchorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const proseSize =
+    wikiFontSize === "small" ? "prose-sm" : wikiFontSize === "large" ? "prose-lg" : "";
+
+  return (
+    <div ref={containerRef} className="px-4 py-4">
+      <div
+        className={`prose ${proseSize} max-w-none`}
+        style={
+          {
+            "--tw-prose-body": "var(--text)",
+            "--tw-prose-headings": "var(--text)",
+            "--tw-prose-bold": "var(--text)",
+            "--tw-prose-links": "var(--link-color)",
+            "--tw-prose-quotes": "var(--text-muted)",
+            "--tw-prose-quote-borders": "var(--accent)",
+            "--tw-prose-code": "var(--text)",
+            "--tw-prose-counters": "var(--text-muted)",
+            "--tw-prose-bullets": "var(--text-muted)",
+            "--tw-prose-hr": "var(--text-muted)",
+            "--tw-prose-th-borders": "var(--text-muted)",
+            "--tw-prose-td-borders": "var(--text-muted)",
+          } as CSSProperties
+        }
+      >
+        <Markdown
+          remarkPlugins={[remarkGfm]}
+          rehypePlugins={[rehypeRaw]}
+          urlTransform={(url) => (url.startsWith("echo://") ? url : defaultUrlTransform(url))}
+          components={{
+            h1: ({ children: c }: { children?: ReactNode }) => {
+              const text = typeof c === "string" ? c : "";
+              return <h1 id={slugify(text)}>{c}</h1>;
+            },
+            h2: ({ children: c }: { children?: ReactNode }) => {
+              const text = typeof c === "string" ? c : "";
+              return <h2 id={slugify(text)}>{c}</h2>;
+            },
+            h3: ({ children: c }: { children?: ReactNode }) => {
+              const text = typeof c === "string" ? c : "";
+              return <h3 id={slugify(text)}>{c}</h3>;
+            },
+            h4: ({ children: c }: { children?: ReactNode }) => {
+              const text = typeof c === "string" ? c : "";
+              return <h4 id={slugify(text)}>{c}</h4>;
+            },
+            h5: ({ children: c }: { children?: ReactNode }) => {
+              const text = typeof c === "string" ? c : "";
+              return <h5 id={slugify(text)}>{c}</h5>;
+            },
+            h6: ({ children: c }: { children?: ReactNode }) => {
+              const text = typeof c === "string" ? c : "";
+              return <h6 id={slugify(text)}>{c}</h6>;
+            },
+            p: ({ children, node }: { children?: ReactNode; node?: unknown }) => {
+              const n = node as
+                | {
+                    children?: {
+                      type: string;
+                      tagName?: string;
+                      properties?: Record<string, unknown>;
+                      value?: string;
+                    }[];
+                  }
+                | undefined;
+              const kids = n?.children ?? [];
+              const echoOnly =
+                kids.length > 0 &&
+                kids.every(
+                  (c) =>
+                    (c.type === "element" &&
+                      c.tagName === "img" &&
+                      typeof c.properties?.src === "string" &&
+                      (c.properties.src as string).startsWith("echo://")) ||
+                    (c.type === "element" &&
+                      c.tagName === "a" &&
+                      typeof c.properties?.href === "string" &&
+                      (c.properties.href as string).startsWith("echo://")) ||
+                    (c.type === "text" && !(c.value ?? "").trim()),
+                );
+              if (echoOnly) return <>{children}</>;
+              return <p>{children}</p>;
+            },
+            img: ({
+              src,
+              alt,
+              style,
+              className: imgClass,
+            }: {
+              src?: string | undefined;
+              alt?: string | undefined;
+              style?: CSSProperties | undefined;
+              className?: string | undefined;
+            }) => {
+              if (src?.startsWith("echo://")) {
+                const echoPath = src.slice("echo://".length).toLowerCase();
+                return (
+                  <EchoInlineAsset path={echoPath} style={style} className={imgClass}>
+                    {alt ?? getFileName(echoPath)}
+                  </EchoInlineAsset>
+                );
+              }
+              return <img src={src} alt={alt} style={style} className={imgClass} />;
+            },
+            a: ({
+              href,
+              children: linkChildren,
+            }: {
+              href?: string | undefined;
+              children?: ReactNode | undefined;
+            }) => {
+              if (!href) {
+                return <span>{linkChildren}</span>;
+              }
+
+              if (href.startsWith("echo://")) {
+                const echoPath = href.slice("echo://".length).toLowerCase();
+                return <EchoInlineAsset path={echoPath}>{linkChildren}</EchoInlineAsset>;
+              }
+
+              const wikiPage = extractWikiPage(href, subredditName);
+              if (wikiPage !== null) {
+                return (
+                  <a
+                    href={href}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      onPageChange(wikiPage);
+                    }}
+                    className="text-[var(--link-color)] hover:underline cursor-pointer"
+                  >
+                    {linkChildren}
+                  </a>
+                );
+              }
+
+              if (href.startsWith("#")) {
+                return (
+                  <a
+                    href={href}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      const id = href.slice(1);
+                      const target =
+                        containerRef.current?.querySelector(`[id="${CSS.escape(id)}"]`) ??
+                        containerRef.current?.querySelector(
+                          `[id="${CSS.escape(id.toLowerCase())}"]`,
+                        );
+                      if (target) {
+                        if (anchorTimerRef.current) clearTimeout(anchorTimerRef.current);
+                        target.scrollIntoView({ behavior: "instant", block: "start" });
+                        anchorTimerRef.current = setTimeout(() => {
+                          anchorTimerRef.current = null;
+                          target.scrollIntoView({ behavior: "smooth", block: "start" });
+                        }, 300);
+                      }
+                    }}
+                    className="text-[var(--link-color)] hover:underline cursor-pointer"
+                  >
+                    {linkChildren}
+                  </a>
+                );
+              }
+
+              const externalUrl =
+                href.startsWith("http://") || href.startsWith("https://")
+                  ? href
+                  : `https://www.reddit.com${href.startsWith("/") ? href : `/${href}`}`;
+              return (
+                <a
+                  href={externalUrl}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    try {
+                      navigateTo({ url: externalUrl });
+                    } catch {
+                      window.open(externalUrl, "_blank");
+                    }
+                  }}
+                  className="text-[var(--link-color)] hover:underline cursor-pointer"
+                >
+                  {linkChildren}
+                </a>
+              );
+            },
+            style: ({ children }: { children?: ReactNode }) => {
+              const css =
+                typeof children === "string"
+                  ? children
+                  : Array.isArray(children)
+                    ? (children as ReactNode[])
+                        .filter((c): c is string => typeof c === "string")
+                        .join("")
+                    : "";
+              if (!css.trim()) return null;
+              return <style dangerouslySetInnerHTML={{ __html: css }} />;
+            },
+          }}
+        >
+          {preprocessAlerts(content)}
+        </Markdown>
+      </div>
+    </div>
+  );
+}
+
+function ConfirmDialog({
+  title,
+  message,
+  confirmLabel,
+  isDanger,
+  onConfirm,
+  onDismiss,
+}: {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  isDanger?: boolean | undefined;
+  onConfirm: () => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={onDismiss}
+    >
+      <div
+        className="bg-[var(--bg)] rounded-lg shadow-2xl p-6 max-w-sm w-full mx-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="font-semibold text-[var(--text)] mb-2">{title}</h3>
+        <p className="text-sm text-[var(--text-muted)] mb-5">{message}</p>
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onDismiss}
+            className="text-sm px-3 py-1.5 rounded border border-gray-300 text-[var(--text-muted)] hover:bg-[var(--control-bg)] transition-colors cursor-pointer"
+          >
+            Keep editing
+          </button>
+          <button
+            onClick={onConfirm}
+            className={`text-sm px-3 py-1.5 rounded text-white transition-opacity cursor-pointer ${
+              isDanger === true
+                ? "bg-red-500 hover:opacity-90"
+                : "bg-[var(--accent)] hover:opacity-90"
+            }`}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WikiSaveDialog({
+  reason,
+  onReasonChange,
+  onConfirm,
+  onDismiss,
+  isSaving,
+  error,
+}: {
+  reason: string;
+  onReasonChange: (r: string) => void;
+  onConfirm: () => void;
+  onDismiss: () => void;
+  isSaving: boolean;
+  error: string | null;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={onDismiss}
+    >
+      <div
+        className="bg-[var(--bg)] rounded-lg shadow-2xl p-6 max-w-sm w-full mx-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="font-semibold text-[var(--text)] mb-1">Save changes</h3>
+        <p className="text-sm text-[var(--text-muted)] mb-4">
+          Summarize your edit for the revision history.
+        </p>
+        <input
+          type="text"
+          value={reason}
+          onChange={(e) => onReasonChange(e.target.value)}
+          placeholder="Reason for edit…"
+          autoFocus
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !isSaving && reason.trim()) onConfirm();
+          }}
+          className="w-full text-sm px-3 py-2 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)] mb-3"
+        />
+        {error !== null && <p className="text-xs text-red-500 mb-3">{error}</p>}
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onDismiss}
+            disabled={isSaving}
+            className="text-sm px-3 py-1.5 rounded border border-gray-300 text-[var(--text-muted)] hover:bg-[var(--control-bg)] transition-colors cursor-pointer disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={isSaving || !reason.trim()}
+            className="text-sm px-3 py-1.5 rounded bg-[var(--accent)] text-white hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50"
+          >
+            {isSaving ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const WikiView = memo(function WikiView({
   subredditName,
   wikiFontSize,
   currentPage,
   onPageChange,
+  isMod,
+  isExpanded,
+  username,
 }: {
   subredditName: string;
   wikiFontSize: WikiFontSize;
   currentPage: string;
   onPageChange: (page: string) => void;
+  isMod: boolean;
+  isExpanded: boolean;
+  username: string;
 }) {
   const [content, setContent] = useState<string | null | undefined>(undefined);
   const [loading, setLoading] = useState(true);
-  const wikiContainerRef = useRef<HTMLDivElement>(null);
-  const anchorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const readScrollRef = useRef<HTMLDivElement>(null);
   const lastPageRef = useRef(currentPage);
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [editContent, setEditContent] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [saveReason, setSaveReason] = useState("");
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -911,8 +1282,17 @@ function WikiView({
   useEffect(() => {
     if (currentPage !== lastPageRef.current) {
       lastPageRef.current = currentPage;
-      wikiContainerRef.current?.parentElement?.scrollTo(0, 0);
+      readScrollRef.current?.scrollTo(0, 0);
     }
+  }, [currentPage]);
+
+  useEffect(() => {
+    setIsEditing(false);
+    setEditContent("");
+    setSaveReason("");
+    setSaveError(null);
+    setShowSaveDialog(false);
+    setShowCancelDialog(false);
   }, [currentPage]);
 
   const handlePageChange = useCallback(
@@ -922,14 +1302,119 @@ function WikiView({
     [onPageChange],
   );
 
-  const proseSize =
-    wikiFontSize === "small" ? "prose-sm" : wikiFontSize === "large" ? "prose-lg" : "";
+  const handleEditClick = useCallback(() => {
+    setEditContent(content ?? "");
+    setIsEditing(true);
+  }, [content]);
+
+  const handleCancelConfirm = useCallback(() => {
+    setIsEditing(false);
+    setEditContent("");
+    setShowCancelDialog(false);
+    setSaveError(null);
+  }, []);
+
+  const handleSaveConfirm = useCallback(async () => {
+    if (!saveReason.trim()) {
+      setSaveError("Please enter a reason for the edit.");
+      return;
+    }
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      const body: WikiUpdateRequest = {
+        page: currentPage,
+        content: editContent,
+        reason: username ? `${username}: ${saveReason.trim()}` : saveReason.trim(),
+      };
+      const res = await fetch("/api/wiki/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = (await res.json()) as ErrorResponse;
+        setSaveError(err.message ?? "Failed to save changes.");
+        return;
+      }
+      setContent(editContent);
+      setIsEditing(false);
+      setShowSaveDialog(false);
+      setSaveReason("");
+    } catch {
+      setSaveError("Network error. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
+  }, [currentPage, editContent, saveReason, username]);
+
+  const canEdit = isMod && isExpanded && !loading;
 
   return (
-    <div className="flex-1 overflow-auto">
+    <div className="relative flex-1 flex flex-col overflow-hidden">
+      {canEdit && !isEditing && (
+        <button
+          onClick={handleEditClick}
+          title="Edit page"
+          className="absolute top-2 right-6 z-10 flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md bg-[var(--accent)] text-white hover:opacity-90 shadow-sm transition-opacity cursor-pointer"
+        >
+          <svg
+            className="w-3.5 h-3.5 shrink-0"
+            viewBox="0 0 16 16"
+            fill="currentColor"
+            aria-hidden="true"
+          >
+            <path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61Zm.176 4.823L9.75 4.81l-6.286 6.287a.253.253 0 0 0-.064.108l-.558 1.953 1.953-.558a.253.253 0 0 0 .108-.064Zm1.238-3.763a.25.25 0 0 0-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 0 0 0-.354Z" />
+          </svg>
+          Edit page
+        </button>
+      )}
+
       {loading ? (
         <div className="flex justify-center items-center py-16">
           <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+        </div>
+      ) : isEditing ? (
+        <div className="flex-1 flex overflow-hidden">
+          {/* Left pane: live preview */}
+          <div className="flex-1 overflow-auto border-r border-gray-100">
+            <WikiMarkdownContent
+              content={editContent}
+              subredditName={subredditName}
+              wikiFontSize={wikiFontSize}
+              onPageChange={handlePageChange}
+            />
+          </div>
+          {/* Right pane: markdown source editor */}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="px-3 py-1.5 text-xs bg-[var(--thumb-bg)] border-b border-gray-100 shrink-0 select-none flex items-center justify-between sticky top-0 z-10">
+              <span className="font-mono text-[var(--text-muted)]">Source</span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setShowCancelDialog(true)}
+                  className="px-2 py-0.5 rounded border border-gray-300 text-[var(--text-muted)] hover:bg-[var(--control-bg)] transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    setSaveError(null);
+                    setShowSaveDialog(true);
+                  }}
+                  className="px-2 py-0.5 rounded bg-[var(--accent)] text-white hover:opacity-90 transition-opacity cursor-pointer"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+            <textarea
+              className="flex-1 resize-none p-4 font-mono text-sm bg-[var(--bg)] text-[var(--text)] placeholder:text-[var(--text-muted)] outline-none"
+              value={editContent}
+              onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setEditContent(e.target.value)}
+              spellCheck={false}
+              placeholder="Write wiki markdown here…"
+            />
+          </div>
         </div>
       ) : content === null || content === undefined ? (
         <div className="flex flex-col items-center justify-center py-16 gap-3 text-center px-4">
@@ -944,188 +1429,43 @@ function WikiView({
           </a>
         </div>
       ) : (
-        <div ref={wikiContainerRef} className="px-4 py-4">
-          <div
-            className={`prose ${proseSize} max-w-none`}
-            style={
-              {
-                "--tw-prose-body": "var(--text)",
-                "--tw-prose-headings": "var(--text)",
-                "--tw-prose-bold": "var(--text)",
-                "--tw-prose-links": "var(--link-color)",
-                "--tw-prose-quotes": "var(--text-muted)",
-                "--tw-prose-quote-borders": "var(--accent)",
-                "--tw-prose-code": "var(--text)",
-                "--tw-prose-counters": "var(--text-muted)",
-                "--tw-prose-bullets": "var(--text-muted)",
-                "--tw-prose-hr": "var(--text-muted)",
-                "--tw-prose-th-borders": "var(--text-muted)",
-                "--tw-prose-td-borders": "var(--text-muted)",
-              } as CSSProperties
-            }
-          >
-            <Markdown
-              remarkPlugins={[remarkGfm]}
-              rehypePlugins={[rehypeRaw]}
-              urlTransform={(url) => (url.startsWith("echo://") ? url : defaultUrlTransform(url))}
-              components={{
-                h1: ({ children: c }: { children?: ReactNode }) => {
-                  const text = typeof c === "string" ? c : "";
-                  return <h1 id={slugify(text)}>{c}</h1>;
-                },
-                h2: ({ children: c }: { children?: ReactNode }) => {
-                  const text = typeof c === "string" ? c : "";
-                  return <h2 id={slugify(text)}>{c}</h2>;
-                },
-                h3: ({ children: c }: { children?: ReactNode }) => {
-                  const text = typeof c === "string" ? c : "";
-                  return <h3 id={slugify(text)}>{c}</h3>;
-                },
-                h4: ({ children: c }: { children?: ReactNode }) => {
-                  const text = typeof c === "string" ? c : "";
-                  return <h4 id={slugify(text)}>{c}</h4>;
-                },
-                h5: ({ children: c }: { children?: ReactNode }) => {
-                  const text = typeof c === "string" ? c : "";
-                  return <h5 id={slugify(text)}>{c}</h5>;
-                },
-                h6: ({ children: c }: { children?: ReactNode }) => {
-                  const text = typeof c === "string" ? c : "";
-                  return <h6 id={slugify(text)}>{c}</h6>;
-                },
-                p: ({ children, node }: { children?: ReactNode; node?: unknown }) => {
-                  const n = node as
-                    | {
-                        children?: {
-                          type: string;
-                          tagName?: string;
-                          properties?: Record<string, unknown>;
-                          value?: string;
-                        }[];
-                      }
-                    | undefined;
-                  const kids = n?.children ?? [];
-                  const echoOnly =
-                    kids.length > 0 &&
-                    kids.every(
-                      (c) =>
-                        (c.type === "element" &&
-                          c.tagName === "img" &&
-                          typeof c.properties?.src === "string" &&
-                          (c.properties.src as string).startsWith("echo://")) ||
-                        (c.type === "element" &&
-                          c.tagName === "a" &&
-                          typeof c.properties?.href === "string" &&
-                          (c.properties.href as string).startsWith("echo://")) ||
-                        (c.type === "text" && !(c.value ?? "").trim()),
-                    );
-                  if (echoOnly) return <>{children}</>;
-                  return <p>{children}</p>;
-                },
-                img: ({ src, alt }: { src?: string | undefined; alt?: string | undefined }) => {
-                  if (src?.startsWith("echo://")) {
-                    const echoPath = src.slice("echo://".length).toLowerCase();
-                    return (
-                      <EchoInlineAsset path={echoPath}>
-                        {alt ?? getFileName(echoPath)}
-                      </EchoInlineAsset>
-                    );
-                  }
-                  return <img src={src} alt={alt} />;
-                },
-                a: ({
-                  href,
-                  children: linkChildren,
-                }: {
-                  href?: string | undefined;
-                  children?: ReactNode | undefined;
-                }) => {
-                  if (!href) {
-                    return <span>{linkChildren}</span>;
-                  }
-
-                  if (href.startsWith("echo://")) {
-                    const echoPath = href.slice("echo://".length).toLowerCase();
-                    return <EchoInlineAsset path={echoPath}>{linkChildren}</EchoInlineAsset>;
-                  }
-
-                  const wikiPage = extractWikiPage(href, subredditName);
-                  if (wikiPage !== null) {
-                    return (
-                      <a
-                        href={href}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          void handlePageChange(wikiPage);
-                        }}
-                        className="text-[var(--link-color)] hover:underline cursor-pointer"
-                      >
-                        {linkChildren}
-                      </a>
-                    );
-                  }
-
-                  if (href.startsWith("#")) {
-                    return (
-                      <a
-                        href={href}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          const id = href.slice(1);
-                          const target =
-                            wikiContainerRef.current?.querySelector(`[id="${CSS.escape(id)}"]`) ??
-                            wikiContainerRef.current?.querySelector(
-                              `[id="${CSS.escape(id.toLowerCase())}"]`,
-                            );
-                          if (target) {
-                            if (anchorTimerRef.current) clearTimeout(anchorTimerRef.current);
-
-                            target.scrollIntoView({ behavior: "instant", block: "start" });
-
-                            anchorTimerRef.current = setTimeout(() => {
-                              anchorTimerRef.current = null;
-                              target.scrollIntoView({ behavior: "smooth", block: "start" });
-                            }, 300);
-                          }
-                        }}
-                        className="text-[var(--link-color)] hover:underline cursor-pointer"
-                      >
-                        {linkChildren}
-                      </a>
-                    );
-                  }
-
-                  const externalUrl =
-                    href.startsWith("http://") || href.startsWith("https://")
-                      ? href
-                      : `https://www.reddit.com${href.startsWith("/") ? href : `/${href}`}`;
-                  return (
-                    <a
-                      href={externalUrl}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        try {
-                          navigateTo({ url: externalUrl });
-                        } catch {
-                          window.open(externalUrl, "_blank");
-                        }
-                      }}
-                      className="text-[var(--link-color)] hover:underline cursor-pointer"
-                    >
-                      {linkChildren}
-                    </a>
-                  );
-                },
-              }}
-            >
-              {preprocessAlerts(content)}
-            </Markdown>
-          </div>
+        <div ref={readScrollRef} className="flex-1 overflow-auto">
+          <WikiMarkdownContent
+            content={content}
+            subredditName={subredditName}
+            wikiFontSize={wikiFontSize}
+            onPageChange={handlePageChange}
+          />
         </div>
+      )}
+
+      {showCancelDialog && (
+        <ConfirmDialog
+          title="Discard changes?"
+          message="Your unsaved changes will be lost."
+          confirmLabel="Discard"
+          isDanger
+          onConfirm={handleCancelConfirm}
+          onDismiss={() => setShowCancelDialog(false)}
+        />
+      )}
+
+      {showSaveDialog && (
+        <WikiSaveDialog
+          reason={saveReason}
+          onReasonChange={setSaveReason}
+          onConfirm={() => void handleSaveConfirm()}
+          onDismiss={() => {
+            setShowSaveDialog(false);
+            setSaveError(null);
+          }}
+          isSaving={isSaving}
+          error={saveError}
+        />
       )}
     </div>
   );
-}
+});
 
 function AssetNameLabel({ displayName, hovered }: { displayName: string; hovered: boolean }) {
   const measureRef = useRef<HTMLSpanElement>(null);
@@ -2154,6 +2494,7 @@ export const App = () => {
   const [subredditName, setSubredditName] = useState("");
   const [config, setConfig] = useState<GameConfig | null>(null);
   const [isMod, setIsMod] = useState(false);
+  const [username, setUsername] = useState("");
   const [meta, setMeta] = useState<EchoMeta | null>(null);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -2202,6 +2543,43 @@ export const App = () => {
   const [openBreadcrumbDropdown, setOpenBreadcrumbDropdown] = useState<number | null>(null);
   const breadcrumbBarRef = useRef<HTMLDivElement>(null);
   const topBarRef = useRef<HTMLDivElement>(null);
+  const breadcrumbHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cancelBreadcrumbHide = useCallback(() => {
+    if (breadcrumbHideTimerRef.current) {
+      clearTimeout(breadcrumbHideTimerRef.current);
+      breadcrumbHideTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleBreadcrumbHide = useCallback(() => {
+    if (breadcrumbHideTimerRef.current) clearTimeout(breadcrumbHideTimerRef.current);
+    breadcrumbHideTimerRef.current = setTimeout(() => {
+      breadcrumbHideTimerRef.current = null;
+      setShowBreadcrumb(false);
+      setOpenBreadcrumbDropdown(null);
+    }, 1000);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (breadcrumbHideTimerRef.current) clearTimeout(breadcrumbHideTimerRef.current);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const handleAppLeave = () => {
+      if (breadcrumbHideTimerRef.current) {
+        clearTimeout(breadcrumbHideTimerRef.current);
+        breadcrumbHideTimerRef.current = null;
+      }
+      setShowBreadcrumb(false);
+      setOpenBreadcrumbDropdown(null);
+    };
+    document.documentElement.addEventListener("mouseleave", handleAppLeave);
+    return () => document.documentElement.removeEventListener("mouseleave", handleAppLeave);
+  }, []);
 
   useEffect(() => {
     void (async () => {
@@ -2242,13 +2620,18 @@ export const App = () => {
     });
   }, [wikiCurrentPage, wikiPages]);
 
-  const handleBreadcrumbBarLeave = useCallback((e: ReactMouseEvent) => {
-    const topBar = topBarRef.current;
-    const related = e.relatedTarget as Node | null;
-    if (topBar && related && topBar.contains(related)) return;
-    setShowBreadcrumb(false);
-    setOpenBreadcrumbDropdown(null);
-  }, []);
+  const handleBreadcrumbBarLeave = useCallback(
+    (e: ReactMouseEvent) => {
+      const topBar = topBarRef.current;
+      const related = e.relatedTarget as Node | null;
+      if (topBar && related && topBar.contains(related)) {
+        cancelBreadcrumbHide();
+        return;
+      }
+      scheduleBreadcrumbHide();
+    },
+    [cancelBreadcrumbHide, scheduleBreadcrumbHide],
+  );
 
   const colors: ColorTheme = isDark ? style.dark : style.light;
 
@@ -2315,6 +2698,7 @@ export const App = () => {
         setSubredditName(data.subredditName);
         setConfig(data.config);
         setIsMod(data.isMod);
+        setUsername(data.username);
         setAppearance(data.appearance);
         initConfig = data.config;
       } catch {}
@@ -2863,12 +3247,15 @@ export const App = () => {
             <div
               ref={topBarRef}
               className={`flex items-center justify-between px-4 py-2 border-b ${showBreadcrumb && activeTab === "wiki" ? "border-transparent" : "border-gray-100"}`}
+              onMouseEnter={cancelBreadcrumbHide}
               onMouseLeave={(e) => {
                 const bar = breadcrumbBarRef.current;
                 const related = e.relatedTarget as Node | null;
-                if (bar && related && bar.contains(related)) return;
-                setShowBreadcrumb(false);
-                setOpenBreadcrumbDropdown(null);
+                if (bar && related && bar.contains(related)) {
+                  cancelBreadcrumbHide();
+                  return;
+                }
+                scheduleBreadcrumbHide();
               }}
             >
               <div className="flex items-center gap-1">
@@ -2984,15 +3371,15 @@ export const App = () => {
             {activeTab === "wiki" && (
               <div
                 ref={breadcrumbBarRef}
-                className="absolute left-0 right-0 top-full flex items-center gap-1 px-4 py-1 text-xs border-b border-gray-100 transition-all duration-150 overflow-visible"
+                className="absolute left-0 right-0 top-full flex items-center gap-1 px-4 py-1 text-xs border-b border-gray-100 overflow-visible"
                 style={{
                   backgroundColor: "var(--bg)",
-                  maxHeight: showBreadcrumb ? "40px" : "0px",
-                  paddingTop: showBreadcrumb ? undefined : "0px",
-                  paddingBottom: showBreadcrumb ? undefined : "0px",
                   opacity: showBreadcrumb ? 1 : 0,
+                  pointerEvents: showBreadcrumb ? "auto" : "none",
+                  transition: "opacity 0.15s ease",
                   borderBottomColor: showBreadcrumb ? undefined : "transparent",
                 }}
+                onMouseEnter={cancelBreadcrumbHide}
                 onMouseLeave={handleBreadcrumbBarLeave}
               >
                 {wikiBreadcrumbs.map((crumb, i) => (
@@ -3092,6 +3479,9 @@ export const App = () => {
               wikiFontSize={style.wikiFontSize}
               currentPage={wikiCurrentPage}
               onPageChange={setWikiCurrentPage}
+              isMod={isMod}
+              isExpanded={!isInline}
+              username={username}
             />
           )}
 

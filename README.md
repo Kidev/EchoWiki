@@ -74,6 +74,12 @@ Markdown rendering supports:
 
 All wiki content is themed to match the configured color scheme.
 
+### Editing
+
+Moderators can edit wiki pages directly inside the app. An edit button appears in the top-right corner of the wiki view when in expanded mode. Clicking it opens a split-pane editor: the left pane shows a live Markdown preview and the right pane is a raw Markdown textarea. Saving requires entering a reason for the change; the reason is prefixed with the moderator's username and stored in the Reddit wiki revision history. Navigating away while editing prompts for confirmation before discarding changes.
+
+HTML `style` attributes on echo image tags (e.g. `<img src="echo://..." style="width: 120px">`) are applied client-side, allowing fine-grained layout control from wiki source.
+
 ## Asset Browser
 
 A gallery view with filter tabs (Images, Audio) and subfolder navigation. Long asset names scroll on hover. Clicking any asset opens a full preview with a close button (image lightbox or audio player with frequency visualization). Right-clicking or using the copy button copies the echo markdown to the clipboard. When a filename mapping is configured, assets display mapped names. Pagination loads more assets on demand.
