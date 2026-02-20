@@ -18,27 +18,35 @@ export type EchoMeta = {
   assetCount: number;
 };
 
-function openDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
+let dbPromise: Promise<IDBDatabase> | null = null;
 
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(ASSETS_STORE)) {
-        db.createObjectStore(ASSETS_STORE, { keyPath: "path" });
-      }
-      if (!db.objectStoreNames.contains(META_STORE)) {
-        db.createObjectStore(META_STORE, { keyPath: "key" });
-      }
-    };
+function getDB(): Promise<IDBDatabase> {
+  if (!dbPromise) {
+    dbPromise = new Promise((resolve, reject) => {
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
 
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(ASSETS_STORE)) {
+          db.createObjectStore(ASSETS_STORE, { keyPath: "path" });
+        }
+        if (!db.objectStoreNames.contains(META_STORE)) {
+          db.createObjectStore(META_STORE, { keyPath: "key" });
+        }
+      };
+
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => {
+        dbPromise = null;
+        reject(request.error);
+      };
+    });
+  }
+  return dbPromise;
 }
 
 export async function storeAsset(path: string, blob: Blob, mimeType: string): Promise<void> {
-  const db = await openDB();
+  const db = await getDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(ASSETS_STORE, "readwrite");
     const store = tx.objectStore(ASSETS_STORE);
@@ -46,14 +54,13 @@ export async function storeAsset(path: string, blob: Blob, mimeType: string): Pr
     const request = store.put(asset);
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error);
-    tx.oncomplete = () => db.close();
   });
 }
 
 export async function storeAssetBatch(
   assets: ReadonlyArray<{ path: string; blob: Blob; mimeType: string }>,
 ): Promise<void> {
-  const db = await openDB();
+  const db = await getDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(ASSETS_STORE, "readwrite");
     const store = tx.objectStore(ASSETS_STORE);
@@ -64,96 +71,79 @@ export async function storeAssetBatch(
         mimeType: a.mimeType,
       } satisfies EchoAsset);
     }
-    tx.oncomplete = () => {
-      db.close();
-      resolve();
-    };
-    tx.onerror = () => {
-      db.close();
-      reject(tx.error);
-    };
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
   });
 }
 
 export async function getAsset(path: string): Promise<EchoAsset | undefined> {
-  const db = await openDB();
+  const db = await getDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(ASSETS_STORE, "readonly");
     const store = tx.objectStore(ASSETS_STORE);
     const request = store.get(path);
     request.onsuccess = () => resolve(request.result as EchoAsset | undefined);
     request.onerror = () => reject(request.error);
-    tx.oncomplete = () => db.close();
   });
 }
 
 export async function hasAssets(): Promise<boolean> {
-  const db = await openDB();
+  const db = await getDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(ASSETS_STORE, "readonly");
     const store = tx.objectStore(ASSETS_STORE);
     const request = store.count();
     request.onsuccess = () => resolve(request.result > 0);
     request.onerror = () => reject(request.error);
-    tx.oncomplete = () => db.close();
   });
 }
 
 export async function getAssetCount(): Promise<number> {
-  const db = await openDB();
+  const db = await getDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(ASSETS_STORE, "readonly");
     const store = tx.objectStore(ASSETS_STORE);
     const request = store.count();
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
-    tx.oncomplete = () => db.close();
   });
 }
 
 export async function wipeAll(): Promise<void> {
-  const db = await openDB();
+  const db = await getDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction([ASSETS_STORE, META_STORE], "readwrite");
     tx.objectStore(ASSETS_STORE).clear();
     tx.objectStore(META_STORE).clear();
-    tx.oncomplete = () => {
-      db.close();
-      resolve();
-    };
-    tx.onerror = () => {
-      db.close();
-      reject(tx.error);
-    };
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
   });
 }
 
 export async function listAssetPaths(): Promise<string[]> {
-  const db = await openDB();
+  const db = await getDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(ASSETS_STORE, "readonly");
     const store = tx.objectStore(ASSETS_STORE);
     const request = store.getAllKeys();
     request.onsuccess = () => resolve(request.result as string[]);
     request.onerror = () => reject(request.error);
-    tx.oncomplete = () => db.close();
   });
 }
 
 export async function getMeta(): Promise<EchoMeta | undefined> {
-  const db = await openDB();
+  const db = await getDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(META_STORE, "readonly");
     const store = tx.objectStore(META_STORE);
     const request = store.get("config");
     request.onsuccess = () => resolve(request.result as EchoMeta | undefined);
     request.onerror = () => reject(request.error);
-    tx.oncomplete = () => db.close();
   });
 }
 
 export async function setMeta(meta: Omit<EchoMeta, "key">): Promise<void> {
-  const db = await openDB();
+  const db = await getDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(META_STORE, "readwrite");
     const store = tx.objectStore(META_STORE);
@@ -161,12 +151,11 @@ export async function setMeta(meta: Omit<EchoMeta, "key">): Promise<void> {
     const request = store.put(record);
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error);
-    tx.oncomplete = () => db.close();
   });
 }
 
 export async function applyMapping(mapping: Record<string, string>): Promise<Map<string, string>> {
-  const db = await openDB();
+  const db = await getDB();
   const entries = Object.entries(mapping);
   const result = new Map<string, string>();
 
@@ -197,13 +186,7 @@ export async function applyMapping(mapping: Record<string, string>): Promise<Map
     };
 
     request.onerror = () => reject(request.error);
-    tx.oncomplete = () => {
-      db.close();
-      resolve(result);
-    };
-    tx.onerror = () => {
-      db.close();
-      reject(tx.error);
-    };
+    tx.oncomplete = () => resolve(result);
+    tx.onerror = () => reject(tx.error);
   });
 }
