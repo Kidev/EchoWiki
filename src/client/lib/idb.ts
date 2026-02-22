@@ -87,6 +87,29 @@ export async function getAsset(path: string): Promise<EchoAsset | undefined> {
   });
 }
 
+export async function getAssets(
+  paths: string[],
+  onProgress?: () => void,
+): Promise<Map<string, EchoAsset>> {
+  if (paths.length === 0) return new Map();
+  const db = await getDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(ASSETS_STORE, "readonly");
+    const store = tx.objectStore(ASSETS_STORE);
+    const result = new Map<string, EchoAsset>();
+    let pending = paths.length;
+    for (const path of paths) {
+      const req = store.get(path);
+      req.onsuccess = () => {
+        if (req.result != null) result.set(path, req.result as EchoAsset);
+        onProgress?.();
+        if (--pending === 0) resolve(result);
+      };
+      req.onerror = () => reject(req.error);
+    }
+  });
+}
+
 export async function hasAssets(): Promise<boolean> {
   const db = await getDB();
   return new Promise((resolve, reject) => {

@@ -109,16 +109,114 @@ export function revokeAllBlobUrls(): void {
   audioEditionParamsCache.clear();
 }
 
-export async function preloadPaths(paths: string[]): Promise<void> {
-  await Promise.all(paths.map((p) => resolveEchoPath(p)));
+const PRELOAD_CONCURRENCY = 6;
+
+export async function preloadPaths(
+  paths: string[],
+  onProgress?: (loaded: number, total: number) => void,
+): Promise<void> {
+  if (paths.length === 0) return;
+
+  type Task = () => Promise<void>;
+  const storedToNormals = new Map<string, string[]>();
+  const tasks: Task[] = [];
+
+  for (const p of paths) {
+    const normalized = p.toLowerCase();
+    const { basePath, editions } = parseEditions(normalized);
+
+    if (editions.length > 0) {
+      if (getEditionBlobUrl(normalized) === undefined) {
+        tasks.push(async () => resolveEchoPath(normalized).then(() => undefined));
+      }
+      continue;
+    }
+
+    if (blobUrlCache.has(basePath)) continue;
+    const storedKey = reverseMapping?.get(basePath) ?? basePath;
+    if (!storedToNormals.has(storedKey)) {
+      storedToNormals.set(storedKey, []);
+
+      tasks.push(async () => {
+        const asset = await getAsset(storedKey);
+        if (asset) {
+          const url = URL.createObjectURL(asset.blob);
+          for (const norm of storedToNormals.get(storedKey)!) {
+            if (!blobUrlCache.has(norm)) blobUrlCache.set(norm, url);
+          }
+        }
+      });
+    }
+    storedToNormals.get(storedKey)!.push(basePath);
+  }
+
+  const total = tasks.length;
+  if (total === 0) return;
+  let loaded = 0;
+
+  let i = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(PRELOAD_CONCURRENCY, total) }, async () => {
+      let idx: number;
+      while ((idx = i++) < total) {
+        await tasks[idx]!();
+        onProgress?.(++loaded, total);
+      }
+    }),
+  );
+}
+
+export function planPreload(paths: string[]): number {
+  const storedKeys = new Set<string>();
+  let editionCount = 0;
+  for (const p of paths) {
+    const normalized = p.toLowerCase();
+    const { basePath, editions } = parseEditions(normalized);
+    if (editions.length > 0) {
+      if (getEditionBlobUrl(normalized) === undefined) editionCount++;
+      continue;
+    }
+    if (!blobUrlCache.has(basePath)) {
+      const storedKey = reverseMapping?.get(basePath) ?? basePath;
+      storedKeys.add(storedKey);
+    }
+  }
+  return storedKeys.size + editionCount;
+}
+
+export function areCached(paths: string[]): boolean {
+  for (const p of paths) {
+    const normalized = p.toLowerCase();
+    const { editions } = parseEditions(normalized);
+    if (editions.length === 0) {
+      if (!blobUrlCache.has(normalized)) return false;
+    } else {
+      if (getEditionBlobUrl(normalized) === undefined) return false;
+    }
+  }
+  return true;
 }
 
 export function useEchoUrl(echoPath: string | null): {
   url: string | null;
   loading: boolean;
 } {
-  const [url, setUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(echoPath !== null);
+  const [url, setUrl] = useState<string | null>(() => {
+    if (!echoPath) return null;
+    const normalized = echoPath.toLowerCase();
+    const { editions } = parseEditions(normalized);
+    return (
+      (editions.length === 0 ? blobUrlCache.get(normalized) : getEditionBlobUrl(normalized)) ?? null
+    );
+  });
+  const [loading, setLoading] = useState<boolean>(() => {
+    if (!echoPath) return false;
+    const normalized = echoPath.toLowerCase();
+    const { editions } = parseEditions(normalized);
+    return editions.length === 0
+      ? !blobUrlCache.has(normalized)
+      : getEditionBlobUrl(normalized) === undefined;
+  });
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -131,6 +229,20 @@ export function useEchoUrl(echoPath: string | null): {
   useEffect(() => {
     if (!echoPath) {
       setUrl(null);
+      setLoading(false);
+      return;
+    }
+
+    const normalized = echoPath.toLowerCase();
+    const { editions } = parseEditions(normalized);
+
+    if (editions.length === 0 && blobUrlCache.has(normalized)) {
+      setUrl(blobUrlCache.get(normalized) ?? null);
+      setLoading(false);
+      return;
+    }
+    if (editions.length > 0 && getEditionBlobUrl(normalized) !== undefined) {
+      setUrl(getEditionBlobUrl(normalized) ?? null);
       setLoading(false);
       return;
     }

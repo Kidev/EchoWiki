@@ -49,6 +49,9 @@ import {
   useEchoUrl,
   setReverseMapping,
   getAudioEditionParamsForPath,
+  preloadPaths,
+  planPreload,
+  areCached,
 } from "../lib/echo";
 import {
   parseEditions,
@@ -69,6 +72,7 @@ type FilterType = "images" | "audio";
 type EchoLinkTarget = { type: "wiki"; page: string; anchor: string | null } | { type: "assets" };
 
 const PAGE_SIZE = 60;
+const INIT_PRELOAD_COUNT = 20;
 
 const DEFAULT_STYLE: StyleConfig = {
   cardSize: "normal",
@@ -225,6 +229,16 @@ const ALERT_META: Record<string, { color: string; icon: string }> = {
     icon: '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M4.47.22A.749.749 0 0 1 5 0h6c.199 0 .389.079.53.22l4.25 4.25c.141.14.22.331.22.53v6a.749.749 0 0 1-.22.53l-4.25 4.25A.749.749 0 0 1 11 16H5a.749.749 0 0 1-.53-.22L.22 11.53A.749.749 0 0 1 0 11V5c0-.199.079-.389.22-.53Zm.84 1.28L1.5 5.31v5.38l3.81 3.81h5.38l3.81-3.81V5.31L10.69 1.5ZM8 4a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 8 4Zm0 8a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>',
   },
 };
+
+function extractEchoPathsFromMarkdown(content: string): string[] {
+  const paths: string[] = [];
+  const re = /echo:\/\/([^\s)"'>\]]+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(content)) !== null) {
+    if (m[1]) paths.push(m[1]);
+  }
+  return [...new Set(paths)];
+}
 
 function preprocessAlerts(md: string): string {
   return md.replace(
@@ -808,7 +822,7 @@ function AssetPreview({
               className="flex items-center justify-center m-1 mb-0 rounded"
               style={{ backgroundColor: "var(--thumb-bg)", minWidth: 120, minHeight: 120 }}
             >
-              <div className="w-8 h-8 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+              <div className="w-8 h-8 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
             </div>
           ) : category === "images" && showUrl ? (
             <div
@@ -1495,6 +1509,9 @@ const WikiView = memo(function WikiView({
         const res = await fetch(`/api/wiki?page=${encodeURIComponent(currentPage)}`);
         if (res.ok) {
           const data: WikiResponse = await res.json();
+
+          const echoPaths = data.content ? extractEchoPathsFromMarkdown(data.content) : [];
+          if (echoPaths.length > 0) await preloadPaths(echoPaths);
           setContent(data.content);
         } else {
           setContent(null);
@@ -1600,8 +1617,8 @@ const WikiView = memo(function WikiView({
       )}
 
       {loading ? (
-        <div className="flex justify-center items-center py-16">
-          <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+        <div className="flex justify-center items-center min-h-64">
+          <div className="w-10 h-10 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
         </div>
       ) : isEditing ? (
         <div className="flex-1 flex overflow-hidden">
@@ -1813,7 +1830,7 @@ function AssetCard({
       >
         {category === "images" ? (
           loading ? (
-            <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+            <div className="w-4 h-4 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
           ) : url ? (
             <img src={url} alt={name} className="w-full h-full object-contain" />
           ) : (
@@ -2763,6 +2780,11 @@ export const App = () => {
   const [style, setStyle] = useState<StyleConfig>({ ...DEFAULT_STYLE });
   const [appearance, setAppearance] = useState<SubredditAppearance>({ ...DEFAULT_APPEARANCE });
   const [initResolved, setInitResolved] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [isReturningUser, setIsReturningUser] = useState<boolean | null>(null);
+  const [displayedProgress, setDisplayedProgress] = useState(0);
+  const [readyToTransition, setReadyToTransition] = useState(false);
+  const [isWiping, setIsWiping] = useState(false);
   const [isDark, setIsDark] = useState(
     () => window.matchMedia("(prefers-color-scheme: dark)").matches,
   );
@@ -2787,6 +2809,8 @@ export const App = () => {
   const [showEchoLinkDialog, setShowEchoLinkDialog] = useState(false);
   const [echoLinkInput, setEchoLinkInput] = useState("");
   const [echoLinkError, setEchoLinkError] = useState<string | null>(null);
+  const [assetsGridReady, setAssetsGridReady] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [showBreadcrumb, setShowBreadcrumb] = useState(false);
   const [openBreadcrumbDropdown, setOpenBreadcrumbDropdown] = useState<number | null>(null);
   const breadcrumbBarRef = useRef<HTMLDivElement>(null);
@@ -2935,7 +2959,30 @@ export const App = () => {
   );
 
   useEffect(() => {
+    if (displayedProgress >= loadingProgress) return;
+    const id = requestAnimationFrame(() => {
+      setDisplayedProgress((prev) => {
+        const diff = loadingProgress - prev;
+        if (diff <= 0) return prev;
+        const step = readyToTransition ? diff : Math.max(0.5, Math.min(diff * 0.15, 4));
+        return Math.min(prev + step, loadingProgress);
+      });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [displayedProgress, loadingProgress, readyToTransition]);
+
+  useEffect(() => {
+    if (!readyToTransition || displayedProgress < 100) return;
+    const id = setTimeout(() => {
+      setReadyToTransition(false);
+      setAppState("ready");
+    }, 200);
+    return () => clearTimeout(id);
+  }, [readyToTransition, displayedProgress]);
+
+  useEffect(() => {
     const init = async () => {
+      const hasAssetsPromise = hasAssets();
       const stylePromise = fetch("/api/style").catch(() => null);
       let initConfig: GameConfig | null = null;
 
@@ -2959,17 +3006,23 @@ export const App = () => {
         }
       } catch {}
 
+      const imported = await hasAssetsPromise;
+      setIsReturningUser(imported);
       setInitResolved(true);
 
-      const imported = await hasAssets();
       if (imported) {
+        setLoadingProgress(5);
+
         const mappingPromise = fetch("/api/mapping").catch(() => null);
+        const wikiIndexPromise = fetch("/api/wiki?page=index").catch(() => null);
 
         const m = await getMeta();
         setMeta(m ?? null);
         const allPaths = await listAssetPaths();
         setPaths(allPaths);
+        setLoadingProgress(12);
 
+        let pathToMappedInit = new Map<string, string>();
         try {
           const mappingRes = await mappingPromise;
           if (mappingRes?.ok) {
@@ -2978,11 +3031,49 @@ export const App = () => {
             setMappingText(data.text);
             if (data.mapping) {
               const result = await applyMapping(data.mapping);
+              pathToMappedInit = result;
               setPathToMapped(result);
               setReverseMapping(result);
             }
           }
         } catch {}
+        setLoadingProgress(22);
+
+        try {
+          const wikiIndexRes = await wikiIndexPromise;
+          if (wikiIndexRes?.ok) {
+            const data: WikiResponse = await wikiIndexRes.json();
+            if (data.content) {
+              const echoPaths = extractEchoPathsFromMarkdown(data.content);
+              const wikiN = planPreload(echoPaths);
+              setLoadingProgress(25);
+              if (wikiN > 0) {
+                await preloadPaths(echoPaths, (loaded) => {
+                  setLoadingProgress(25 + Math.round((loaded / wikiN) * 15));
+                });
+              }
+            }
+          }
+        } catch {}
+        setLoadingProgress(40);
+
+        const sortedImages = allPaths
+          .filter(isImagePath)
+          .sort((a, b) =>
+            naturalSortKey(a, pathToMappedInit).localeCompare(
+              naturalSortKey(b, pathToMappedInit),
+              undefined,
+              { numeric: true, sensitivity: "base" },
+            ),
+          );
+        const firstPage = sortedImages.slice(0, INIT_PRELOAD_COUNT);
+        const assetsN = planPreload(firstPage);
+        if (assetsN > 0) {
+          await preloadPaths(firstPage, (loaded) => {
+            setLoadingProgress(40 + Math.round((loaded / assetsN) * 58));
+          });
+        }
+        setLoadingProgress(100);
 
         if (
           initConfig?.gameName &&
@@ -2993,7 +3084,7 @@ export const App = () => {
           setActiveTab("assets");
         }
 
-        setAppState("ready");
+        setReadyToTransition(true);
       } else {
         setAppState("no-assets");
       }
@@ -3048,6 +3139,17 @@ export const App = () => {
     }
   }, [subcategories, subFilter]);
 
+  useEffect(() => {
+    if (appState !== "ready" || activeTab !== "assets") return;
+    const imagePaths = visiblePaths.filter(isImagePath);
+    if (imagePaths.length === 0 || areCached(imagePaths)) {
+      setAssetsGridReady(true);
+      return;
+    }
+    setAssetsGridReady(false);
+    void preloadPaths(imagePaths).then(() => setAssetsGridReady(true));
+  }, [appState, activeTab, visiblePaths]);
+
   const counts = useMemo(
     () => ({
       images: paths.filter(isImagePath).length,
@@ -3075,11 +3177,14 @@ export const App = () => {
       const files = Array.from(fileList);
       setAppState("importing");
       setError(null);
+      setLoadingProgress(3);
 
       const controller = new AbortController();
       abortRef.current = controller;
 
       const mappingPromise = fetch("/api/mapping").catch(() => null);
+
+      const wikiIndexPromise = fetch("/api/wiki?page=index").catch(() => null);
 
       const applyMappingFromPromise = async () => {
         try {
@@ -3107,9 +3212,20 @@ export const App = () => {
           keyOverride: config?.encryptionKey || undefined,
           onProgress: (p) => {
             progressRef.current = p;
+
+            if (p.phase === "decrypting" && p.processed > 0) {
+              const pct = Math.round(45 * (1 - Math.pow(0.92, p.processed / 20)));
+              setLoadingProgress((prev) => Math.max(prev, pct));
+            }
+
+            if (p.phase === "storing" && p.total > 0) {
+              const pct = 45 + Math.round((p.processed / p.total) * 45);
+              setLoadingProgress((prev) => Math.max(prev, pct));
+            }
           },
           signal: controller.signal,
         });
+        setLoadingProgress(93);
         const m = await getMeta();
         setMeta(m ?? null);
         const allPaths = await listAssetPaths();
@@ -3120,6 +3236,23 @@ export const App = () => {
         setVisibleCount(PAGE_SIZE);
 
         await applyMappingFromPromise();
+
+        try {
+          const wikiIndexRes = await wikiIndexPromise;
+          if (wikiIndexRes?.ok) {
+            const data: WikiResponse = await wikiIndexRes.json();
+            if (data.content) {
+              const echoPaths = extractEchoPathsFromMarkdown(data.content);
+              const wikiN = planPreload(echoPaths);
+              if (wikiN > 0) {
+                await preloadPaths(echoPaths, (loaded) => {
+                  setLoadingProgress(93 + Math.round((loaded / wikiN) * 5));
+                });
+              }
+            }
+          }
+        } catch {}
+        setLoadingProgress(100);
 
         if (
           config?.gameName &&
@@ -3143,6 +3276,10 @@ export const App = () => {
             await applyMappingFromPromise();
             setAppState("ready");
           } else {
+            setLoadingProgress(0);
+            setDisplayedProgress(0);
+            setReadyToTransition(false);
+            setIsReturningUser(false);
             setAppState("no-assets");
           }
         } else {
@@ -3154,6 +3291,10 @@ export const App = () => {
             await applyMappingFromPromise();
             setAppState("ready");
           } else {
+            setLoadingProgress(0);
+            setDisplayedProgress(0);
+            setReadyToTransition(false);
+            setIsReturningUser(false);
             setAppState("no-assets");
           }
         }
@@ -3203,6 +3344,10 @@ export const App = () => {
     setPreviewPath(null);
     setActiveTab("wiki");
     setGameMismatch(null);
+    setLoadingProgress(0);
+    setDisplayedProgress(0);
+    setReadyToTransition(false);
+    setIsReturningUser(false);
     setAppState("no-assets");
   }, []);
 
@@ -3366,6 +3511,10 @@ export const App = () => {
           setPaths([]);
           setActiveTab("wiki");
           setGameMismatch(null);
+          setLoadingProgress(0);
+          setDisplayedProgress(0);
+          setReadyToTransition(false);
+          setIsReturningUser(false);
           setAppState("no-assets");
         }
       });
@@ -3473,9 +3622,10 @@ export const App = () => {
           {}
           <div
             className={
-              appState === "importing"
+              appState === "importing" || (appState === "loading" && isReturningUser === true)
                 ? "ripple-container ripple-inward"
                 : initResolved &&
+                    isReturningUser === false &&
                     (config?.homeBackground === "ripple" || config?.homeBackground === "both")
                   ? "ripple-container"
                   : "ripple-container ripple-hidden"
@@ -3527,16 +3677,16 @@ export const App = () => {
                   {config?.wikiDescription && (
                     <span
                       className="text-xs text-[var(--text-muted)] whitespace-nowrap title-crossfade"
-                      style={{ opacity: appState !== "importing" ? 1 : 0 }}
+                      style={{ opacity: loadingProgress === 0 ? 1 : 0 }}
                     >
                       {config.wikiDescription}
                     </span>
                   )}
                   <span
-                    className={`text-xs text-[var(--text-muted)] whitespace-nowrap title-crossfade${config?.wikiDescription ? " absolute" : ""}`}
-                    style={{ opacity: appState === "importing" ? 1 : 0 }}
+                    className={`text-xs text-[var(--text-muted)] whitespace-nowrap title-crossfade tabular-nums${config?.wikiDescription ? " absolute" : ""}`}
+                    style={{ opacity: loadingProgress > 0 ? 1 : 0 }}
                   >
-                    Loading
+                    {Math.round(displayedProgress)}%
                   </span>
                 </span>
               </p>
@@ -3719,8 +3869,10 @@ export const App = () => {
                   </button>
                 )}
                 <button
-                  className="text-sm px-3 py-1 rounded-full bg-red-600 text-white hover:bg-red-700 transition-colors cursor-pointer"
+                  className="text-sm px-3 py-1 rounded-full bg-red-600 text-white hover:bg-red-700 transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                  disabled={isWiping}
                   onClick={(e) => {
+                    setIsWiping(true);
                     if (isInline) {
                       void handleWipe();
                     } else {
@@ -3728,7 +3880,14 @@ export const App = () => {
                     }
                   }}
                 >
-                  Exit
+                  {isWiping ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin inline-block" />
+                      Clearing…
+                    </span>
+                  ) : (
+                    "Exit"
+                  )}
                 </button>
               </div>
             </div>
@@ -3896,6 +4055,12 @@ export const App = () => {
                   <div className="flex flex-col items-center justify-center py-12 text-gray-400">
                     <p className="text-sm">No assets in this category</p>
                   </div>
+                ) : !assetsGridReady ? (
+                  <div className="flex justify-center items-center py-16">
+                    <div className="relative w-14 h-14">
+                      <div className="absolute inset-0 rounded-full border-2 border-[var(--accent)] border-t-transparent animate-spin" />
+                    </div>
+                  </div>
                 ) : (
                   <>
                     <div className={`grid ${gridClass} gap-1`}>
@@ -3913,13 +4078,32 @@ export const App = () => {
                     {hasMore && (
                       <div className="flex justify-center py-4">
                         <button
-                          className="text-xs px-2.5 py-1 rounded-full bg-[var(--accent)] text-white transition-opacity cursor-pointer hover:opacity-80"
-                          onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+                          className="text-xs px-2.5 py-1 rounded-full bg-[var(--accent)] text-white transition-opacity cursor-pointer hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
+                          disabled={loadingMore}
+                          onClick={async () => {
+                            const newCount = visibleCount + PAGE_SIZE;
+                            const newPaths = filteredPaths
+                              .slice(visibleCount, newCount)
+                              .filter(isImagePath);
+                            setLoadingMore(true);
+                            await preloadPaths(newPaths);
+                            setLoadingMore(false);
+                            setVisibleCount(newCount);
+                          }}
                         >
-                          Load more
-                          <span className="ml-1 opacity-70">
-                            {(filteredPaths.length - visibleCount).toLocaleString()}
-                          </span>
+                          {loadingMore ? (
+                            <span className="inline-flex items-center gap-1.5">
+                              <span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin inline-block" />
+                              Loading…
+                            </span>
+                          ) : (
+                            <>
+                              Load more
+                              <span className="ml-1 opacity-70">
+                                {(filteredPaths.length - visibleCount).toLocaleString()}
+                              </span>
+                            </>
+                          )}
                         </button>
                       </div>
                     )}
