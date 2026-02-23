@@ -180,6 +180,66 @@ function getCategory(p: string): "images" | "audio" | "data" {
   return "data";
 }
 
+function getPrefixes(stem: string): string[] {
+  const lower = stem.toLowerCase();
+  const positions: number[] = [];
+  for (let i = 1; i < lower.length - 1; i++) {
+    if (lower[i] === "_" || lower[i] === "-") positions.push(i);
+  }
+  return positions.map((pos) => lower.slice(0, pos));
+}
+
+function getAssignedGroup(stem: string, groups: readonly string[]): string | null {
+  if (groups.length === 0) return null;
+  const valid = new Set(groups);
+  let longest: string | null = null;
+  for (const prefix of getPrefixes(stem.toLowerCase())) {
+    if (valid.has(prefix)) longest = prefix;
+  }
+  return longest;
+}
+
+function groupLabel(g: string): string {
+  const s = g.replace(/-/g, " ");
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function detectGroupsForFolder(
+  folderPaths: readonly string[],
+  effectiveStem?: (p: string) => string,
+): string[] {
+  const stems = folderPaths.map((p) =>
+    (effectiveStem ? effectiveStem(p) : getStem(p)).toLowerCase(),
+  );
+
+  const supersetCounts = new Map<string, number>();
+  for (const stem of stems) {
+    for (const prefix of getPrefixes(stem)) {
+      supersetCounts.set(prefix, (supersetCounts.get(prefix) ?? 0) + 1);
+    }
+  }
+
+  const validPrefixes = new Set(
+    [...supersetCounts.entries()].filter(([, c]) => c >= 3).map(([p]) => p),
+  );
+  if (validPrefixes.size < 2) return [];
+
+  const assignedCounts = new Map<string, number>();
+  for (const stem of stems) {
+    let longest: string | null = null;
+    for (const prefix of getPrefixes(stem)) {
+      if (validPrefixes.has(prefix)) longest = prefix;
+    }
+    if (longest !== null) assignedCounts.set(longest, (assignedCounts.get(longest) ?? 0) + 1);
+  }
+
+  const groups = [...assignedCounts.entries()].filter(([, c]) => c >= 3).map(([p]) => p);
+
+  return groups.length >= 2
+    ? groups.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
+    : [];
+}
+
 function getSubfolder(p: string): string | null {
   const parts = p.split("/");
   if (parts.length < 2) return null;
@@ -1938,34 +1998,121 @@ function FilterTabs({
 function SubFilterTabs({
   active,
   subcategories,
+  groups,
+  activeGroup,
+  foldersWithGroups,
   onChange,
+  onGroupChange,
 }: {
   active: string | null;
   subcategories: readonly { name: string; count: number }[];
+  groups: readonly string[];
+  activeGroup: string | null;
+  foldersWithGroups: ReadonlySet<string>;
   onChange: (name: string) => void;
+  onGroupChange: (group: string | null) => void;
 }) {
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+
+  useEffect(() => {
+    setDropdownOpen(false);
+  }, [active]);
+
+  useEffect(() => {
+    if (!dropdownOpen) return;
+    const handler = () => setDropdownOpen(false);
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, [dropdownOpen]);
+
   if (subcategories.length <= 1) return null;
   return (
     <div className="flex flex-wrap gap-1">
-      {subcategories.map((s) => (
-        <button
-          key={s.name}
-          className={`text-[10px] px-2 py-0.5 rounded-full transition-colors cursor-pointer ${
-            active === s.name ? "bg-[var(--accent)] text-white" : "text-[var(--text-muted)]"
-          }`}
-          style={active !== s.name ? { backgroundColor: "transparent" } : undefined}
-          onMouseEnter={(e) => {
-            if (active !== s.name) e.currentTarget.style.backgroundColor = "var(--thumb-bg)";
-          }}
-          onMouseLeave={(e) => {
-            if (active !== s.name) e.currentTarget.style.backgroundColor = "transparent";
-          }}
-          onClick={() => onChange(s.name)}
-        >
-          {s.name.charAt(0).toUpperCase() + s.name.slice(1)}
-          <span className="ml-0.5 opacity-70">{s.count}</span>
-        </button>
-      ))}
+      {subcategories.map((s) => {
+        const isActive = active === s.name;
+
+        const folderHasGroups = foldersWithGroups.has(s.name);
+
+        const dropdownEnabled = isActive && groups.length > 0;
+        return (
+          <div key={s.name} className="relative">
+            <button
+              className={`text-[10px] px-2 py-0.5 rounded-full transition-colors cursor-pointer inline-flex items-center gap-0.5 ${
+                isActive ? "bg-[var(--accent)] text-white" : "text-[var(--text-muted)]"
+              }`}
+              style={!isActive ? { backgroundColor: "transparent" } : undefined}
+              onMouseEnter={(e) => {
+                if (!isActive) e.currentTarget.style.backgroundColor = "var(--thumb-bg)";
+              }}
+              onMouseLeave={(e) => {
+                if (!isActive) e.currentTarget.style.backgroundColor = "transparent";
+              }}
+              onClick={() => {
+                onChange(s.name);
+                setDropdownOpen(false);
+              }}
+              onContextMenu={(e) => {
+                if (dropdownEnabled) {
+                  e.preventDefault();
+                  setDropdownOpen((o) => !o);
+                }
+              }}
+            >
+              {s.name.charAt(0).toUpperCase() + s.name.slice(1)}
+              <span className="opacity-70">{s.count}</span>
+              {folderHasGroups && (
+                <span
+                  className={`text-[7px] leading-none px-1 py-0.5 -my-0.5 ${
+                    dropdownEnabled ? "opacity-70 cursor-pointer" : "opacity-30"
+                  }`}
+                  onClick={(e) => {
+                    if (!dropdownEnabled) return;
+                    e.stopPropagation();
+                    setDropdownOpen((o) => !o);
+                  }}
+                >
+                  &#9662;
+                </span>
+              )}
+            </button>
+            {dropdownEnabled && dropdownOpen && (
+              <div
+                className="absolute top-full left-0 z-50 mt-1 py-1 rounded-lg shadow-lg border border-gray-200 min-w-[140px] max-h-48 overflow-y-auto"
+                style={{ backgroundColor: "var(--bg)" }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {([null, ...groups] as (string | null)[]).map((g) => {
+                  const label = g === null ? "All" : groupLabel(g);
+                  const isActiveGroup = activeGroup === g;
+                  return (
+                    <button
+                      key={g ?? "__all"}
+                      className="w-full text-left text-xs px-3 py-1.5 cursor-pointer text-[var(--text)]"
+                      style={{
+                        backgroundColor: isActiveGroup ? "var(--thumb-bg)" : "transparent",
+                      }}
+                      onMouseEnter={(e) =>
+                        (e.currentTarget.style.backgroundColor = "var(--thumb-bg)")
+                      }
+                      onMouseLeave={(e) =>
+                        (e.currentTarget.style.backgroundColor = isActiveGroup
+                          ? "var(--thumb-bg)"
+                          : "transparent")
+                      }
+                      onClick={() => {
+                        onGroupChange(g);
+                        setDropdownOpen(false);
+                      }}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -2072,156 +2219,211 @@ function parseMappingText(text: string): Array<[string, string]> {
   return results;
 }
 
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-function highlightMappingSyntax(text: string): string {
-  return text
-    .split("\n")
-    .map((line) => {
-      if (/^\s*\/\//.test(line)) {
-        return `<span style="color:#6a9955">${escapeHtml(line)}</span>`;
-      }
-      return line.replace(
-        /("(?:[^"\\]|\\.)*")|(:)|(\/\/[^\n]*)/g,
-        (m, str?: string, colon?: string, comment?: string) => {
-          if (comment) return `<span style="color:#6a9955">${escapeHtml(comment)}</span>`;
-          if (str) return `<span style="color:#ce9178">${escapeHtml(str)}</span>`;
-          if (colon) return `<span style="color:#d4d4d4">:</span>`;
-          return escapeHtml(m);
-        },
-      );
-    })
-    .join("\n");
-}
-
 function MappingPanel({
-  text,
-  setText,
-  parsedEntries,
-  status,
+  mappingText,
+  paths,
+  onSave,
 }: {
-  text: string;
-  setText: (v: string) => void;
-  parsedEntries: Array<[string, string]>;
-  status: { ok: boolean; message: string } | null;
+  mappingText: string;
+  paths: readonly string[];
+  onSave: (newText: string) => Promise<void>;
 }) {
-  const [splitRatio, setSplitRatio] = useState(0.6);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const dragging = useRef(false);
-  const codeRef = useRef<HTMLTextAreaElement>(null);
-  const preRef = useRef<HTMLPreElement>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [draftText, setDraftText] = useState(mappingText);
+  const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<{ ok: boolean; message: string } | null>(null);
 
-  const handlePointerDown = useCallback((e: ReactMouseEvent) => {
-    e.preventDefault();
-    dragging.current = true;
-    document.body.style.cursor = "row-resize";
-    document.body.style.userSelect = "none";
-  }, []);
+  const parsedEntries = useMemo(() => parseMappingText(mappingText), [mappingText]);
 
-  useEffect(() => {
-    const onMove = (e: PointerEvent) => {
-      if (!dragging.current || !containerRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
-      const ratio = Math.min(0.85, Math.max(0.15, (e.clientY - rect.top) / rect.height));
-      setSplitRatio(ratio);
-    };
-    const onUp = () => {
-      if (dragging.current) {
-        dragging.current = false;
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
+  const stemToGroup = useMemo(() => {
+    const origToMapped = new Map<string, string>(parsedEntries);
+    const folderToPaths = new Map<string, string[]>();
+    for (const p of paths) {
+      const folder = getSubfolder(p);
+      if (folder) {
+        const existing = folderToPaths.get(folder);
+        if (existing) existing.push(p);
+        else folderToPaths.set(folder, [p]);
       }
-    };
-    document.addEventListener("pointermove", onMove);
-    document.addEventListener("pointerup", onUp);
-    return () => {
-      document.removeEventListener("pointermove", onMove);
-      document.removeEventListener("pointerup", onUp);
-    };
+    }
+    const result = new Map<string, string>();
+    for (const [, folderPs] of folderToPaths) {
+      const groups = detectGroupsForFolder(folderPs, (p) => {
+        const origStem = getStem(p).toLowerCase();
+        return origToMapped.get(origStem) ?? origStem;
+      });
+      if (groups.length === 0) continue;
+      for (const p of folderPs) {
+        const origStem = getStem(p).toLowerCase();
+        const effectiveStem = origToMapped.get(origStem) ?? origStem;
+        const group = getAssignedGroup(effectiveStem, groups);
+        if (group) result.set(origStem, group);
+      }
+    }
+    return result;
+  }, [paths, parsedEntries]);
+
+  const handleOpen = useCallback(() => {
+    setDraftText(mappingText);
+    setSaveStatus(null);
+    setModalOpen(true);
+  }, [mappingText]);
+
+  const handleCancel = useCallback(() => {
+    setModalOpen(false);
+    setSaveStatus(null);
   }, []);
 
-  const handleScroll = useCallback(() => {
-    if (codeRef.current && preRef.current) {
-      preRef.current.scrollTop = codeRef.current.scrollTop;
-      preRef.current.scrollLeft = codeRef.current.scrollLeft;
+  const handleApply = useCallback(async () => {
+    setSaving(true);
+    setSaveStatus(null);
+    try {
+      await onSave(draftText);
+      setSaveStatus({ ok: true, message: "Saved" });
+      setModalOpen(false);
+    } catch (err) {
+      setSaveStatus({ ok: false, message: err instanceof Error ? err.message : "Save failed" });
+    } finally {
+      setSaving(false);
     }
-  }, []);
+  }, [draftText, onSave]);
 
   return (
-    <div ref={containerRef} className="flex flex-col flex-1 min-h-0">
-      <div className="flex flex-col min-h-0" style={{ flex: `${splitRatio} 1 0%` }}>
-        <div style={{ backgroundColor: "var(--thumb-bg)" }}>
-          <table className="w-full text-xs">
+    <div className="flex flex-col flex-1 min-h-0">
+      {}
+      <div
+        className="flex items-center justify-between px-3 py-2 border-b border-gray-100 flex-shrink-0"
+        style={{ backgroundColor: "var(--thumb-bg)" }}
+      >
+        <span className="text-xs text-[var(--text-muted)]">
+          {parsedEntries.length} mapping{parsedEntries.length !== 1 ? "s" : ""}
+        </span>
+        <button
+          className="text-xs px-2.5 py-1 rounded-full bg-[var(--accent)] text-white cursor-pointer hover:opacity-80 transition-opacity"
+          onClick={handleOpen}
+        >
+          Update Mapping
+        </button>
+      </div>
+
+      {}
+      <div className="flex-1 overflow-auto" style={{ scrollbarGutter: "stable both-edges" }}>
+        {parsedEntries.length > 0 ? (
+          <table className="w-full table-fixed text-[11px]">
             <thead>
-              <tr>
-                <th className="text-left px-3 py-1.5 font-medium text-[var(--text-muted)]">
+              <tr style={{ backgroundColor: "var(--thumb-bg)" }}>
+                <th className="text-left px-2 py-1.5 font-medium text-[var(--text-muted)] w-[38%]">
                   Original
                 </th>
-                <th className="text-left px-3 py-1.5 font-medium text-[var(--text-muted)]">
+                <th className="text-left px-2 py-1.5 font-medium text-[var(--text-muted)] w-[38%]">
                   Mapped To
+                </th>
+                <th className="text-left px-2 py-1.5 font-medium text-[var(--text-muted)] w-[24%]">
+                  Group
                 </th>
               </tr>
             </thead>
-          </table>
-        </div>
-        <div className="flex-1 overflow-auto" style={{ scrollbarGutter: "stable both-edges" }}>
-          {parsedEntries.length > 0 ? (
-            <table className="w-full text-xs">
-              <tbody>
-                {parsedEntries.map(([key, val], i) => (
+            <tbody>
+              {parsedEntries.map(([key, val], i) => {
+                const group = stemToGroup.get(key);
+                return (
                   <tr key={i} className="border-t border-gray-100">
-                    <td className="px-3 py-1 font-mono text-[var(--text)]">{key}</td>
-                    <td className="px-3 py-1 font-mono text-[var(--text)]">{val}</td>
+                    <td className="px-2 py-1 font-mono text-[var(--text)] overflow-hidden">
+                      <span className="block truncate">{key}</span>
+                    </td>
+                    <td className="px-2 py-1 font-mono text-[var(--text)] overflow-hidden">
+                      <span className="block truncate">{val}</span>
+                    </td>
+                    <td className="px-2 py-1 text-[var(--text-muted)] overflow-hidden">
+                      <span className="block truncate">{group ? groupLabel(group) : ""}</span>
+                    </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <p className="px-3 py-3 text-xs text-[var(--text-muted)]">No valid mappings found</p>
-          )}
-        </div>
-        {status && (
-          <div className="px-3 py-1.5 border-t border-gray-100">
-            <span className={`text-xs ${status.ok ? "text-green-600" : "text-red-600"}`}>
-              {status.message}
-            </span>
-          </div>
+                );
+              })}
+            </tbody>
+          </table>
+        ) : (
+          <p className="px-3 py-6 text-xs text-center text-[var(--text-muted)]">
+            No mappings yet. Click "Update Mapping" to add.
+          </p>
         )}
       </div>
-      <div
-        className="h-1.5 cursor-row-resize flex-shrink-0 flex items-center justify-center hover:bg-[var(--thumb-bg)] transition-colors"
-        style={{
-          backgroundColor: "var(--control-bg)",
-          borderTop: "1px solid var(--thumb-bg)",
-          borderBottom: "1px solid var(--thumb-bg)",
-        }}
-        onPointerDown={handlePointerDown}
-      >
-        <div className="w-8 h-0.5 rounded-full bg-[var(--text-muted)] opacity-40" />
-      </div>
-      <div
-        className="relative min-h-0"
-        style={{ flex: `${1 - splitRatio} 1 0%`, backgroundColor: "var(--control-bg)" }}
-      >
-        <pre
-          ref={preRef}
-          className="absolute inset-0 text-sm font-mono px-3 py-2 overflow-hidden pointer-events-none whitespace-pre-wrap break-words m-0"
-          aria-hidden
-          dangerouslySetInnerHTML={{ __html: highlightMappingSyntax(text) + "\n" }}
-        />
-        <textarea
-          ref={codeRef}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onScroll={handleScroll}
-          spellCheck={false}
-          placeholder={`// Map original filenames to custom names\n"actor1": "hero_sprite"\n"dungeon_a1": "cave_tileset"`}
-          className="relative w-full h-full text-sm font-mono px-3 py-2 focus:outline-none resize-none bg-transparent"
-          style={{ color: "transparent", caretColor: "var(--text)" }}
-        />
-      </div>
+
+      {}
+      {modalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+          onClick={handleCancel}
+        >
+          <div
+            className="flex flex-col w-full max-w-lg rounded-xl shadow-2xl overflow-hidden"
+            style={{ backgroundColor: "var(--bg)", maxHeight: "75vh" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 flex-shrink-0">
+              <span className="text-sm font-medium text-[var(--text)]">Update Mapping</span>
+              <button
+                className="text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
+                onClick={handleCancel}
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+
+            {}
+            <textarea
+              value={draftText}
+              onChange={(e) => setDraftText(e.target.value)}
+              spellCheck={false}
+              autoFocus
+              placeholder={`// Map original filenames to custom names\n"actor1": "hero_sprite"\n"dungeon_a1": "cave_tileset"`}
+              className="flex-1 min-h-0 w-full text-sm font-mono px-3 py-2 focus:outline-none resize-none"
+              style={{
+                backgroundColor: "var(--control-bg)",
+                color: "var(--text)",
+                minHeight: "240px",
+              }}
+            />
+
+            {}
+            <div className="flex items-center gap-3 px-4 py-3 border-t border-gray-100 flex-shrink-0">
+              <span className="text-[10px] text-[var(--text-muted)] flex-1 leading-tight">
+                Groups are computed locally from your asset filenames.
+              </span>
+              {saveStatus && (
+                <span
+                  className={`text-xs flex-shrink-0 ${saveStatus.ok ? "text-green-600" : "text-red-500"}`}
+                >
+                  {saveStatus.message}
+                </span>
+              )}
+              <button
+                onClick={handleCancel}
+                className="text-xs px-3 py-1.5 rounded-full cursor-pointer text-[var(--text-muted)] flex-shrink-0"
+                style={{ backgroundColor: "var(--thumb-bg)" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void handleApply()}
+                disabled={saving}
+                className="text-xs px-3 py-1.5 rounded-full bg-[var(--accent)] text-white cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+              >
+                {saving ? "Saving…" : "Apply"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2234,6 +2436,7 @@ function SettingsView({
   config,
   appearance,
   subredditName,
+  paths,
   onMappingSaved,
   onStyleChanged,
   onConfigChanged,
@@ -2243,14 +2446,12 @@ function SettingsView({
   config: GameConfig;
   appearance: SubredditAppearance;
   subredditName: string;
+  paths: readonly string[];
   onMappingSaved: (text: string, mapping: Record<string, string> | null) => void;
   onStyleChanged: (style: StyleConfig) => void;
   onConfigChanged: (config: GameConfig) => void;
 }) {
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
-  const [text, setText] = useState(mappingText);
-  const [saving, setSaving] = useState(false);
-  const [status, setStatus] = useState<{ ok: boolean; message: string } | null>(null);
   const [editingMode, setEditingMode] = useState<"light" | "dark">("light");
   const [gameTitle, setGameTitle] = useState(config.gameName);
   const [wikiTitleField, setWikiTitleField] = useState(config.wikiTitle);
@@ -2274,8 +2475,6 @@ function SettingsView({
   }, [isTcoaalDetected]);
 
   const editingColors = editingMode === "light" ? style.light : style.dark;
-
-  const parsedEntries = useMemo(() => parseMappingText(text), [text]);
 
   const configDirty =
     gameTitle !== config.gameName ||
@@ -2321,36 +2520,27 @@ function SettingsView({
     onConfigChanged,
   ]);
 
-  const handleSaveMapping = useCallback(async () => {
-    setSaving(true);
-    setStatus(null);
-    try {
-      const entries = parseMappingText(text);
+  const handleSaveMappingCallback = useCallback(
+    async (newText: string) => {
+      const entries = parseMappingText(newText);
       const res = await fetch("/api/mapping", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          text,
+          text: newText,
           entries: entries.length > 0 ? entries : undefined,
         }),
       });
       if (res.ok) {
         const data: MappingResponse = await res.json();
         onMappingSaved(data.text, data.mapping);
-        setStatus({ ok: true, message: "Mapping saved" });
       } else {
-        const err = await res.json();
-        setStatus({
-          ok: false,
-          message: (err as { message?: string }).message ?? "Save failed",
-        });
+        const err = (await res.json()) as { message?: string };
+        throw new Error(err.message ?? "Save failed");
       }
-    } catch {
-      setStatus({ ok: false, message: "Network error" });
-    } finally {
-      setSaving(false);
-    }
-  }, [text, onMappingSaved]);
+    },
+    [onMappingSaved],
+  );
 
   const saveStyle = useCallback(
     async (update: Record<string, string>) => {
@@ -2376,13 +2566,11 @@ function SettingsView({
     [saveStyle, editingMode],
   );
 
-  const mappingDirty = text !== mappingText;
-  const anyDirty = configDirty || mappingDirty;
+  const anyDirty = configDirty;
 
   const handleSaveAll = useCallback(async () => {
     if (configDirty) void handleSaveConfig();
-    if (mappingDirty) void handleSaveMapping();
-  }, [configDirty, mappingDirty, handleSaveConfig, handleSaveMapping]);
+  }, [configDirty, handleSaveConfig]);
 
   const defaultColors = useMemo(() => {
     const accent = appearance.keyColor ?? "#d93900";
@@ -2451,10 +2639,10 @@ function SettingsView({
         </div>
         <button
           onClick={() => void handleSaveAll()}
-          disabled={!anyDirty || savingConfig || saving}
+          disabled={!anyDirty || savingConfig}
           className="text-xs px-[10px] py-[4px] rounded-full bg-[var(--accent)] text-white transition-colors cursor-pointer disabled:opacity-30"
         >
-          {savingConfig || saving ? "Saving..." : "Save"}
+          {savingConfig ? "Saving..." : "Save"}
         </button>
       </div>
 
@@ -2738,10 +2926,9 @@ function SettingsView({
 
         {settingsTab === "mapping" && (
           <MappingPanel
-            text={text}
-            setText={setText}
-            parsedEntries={parsedEntries}
-            status={status}
+            mappingText={mappingText}
+            paths={paths}
+            onSave={handleSaveMappingCallback}
           />
         )}
       </div>
@@ -2764,6 +2951,7 @@ export const App = () => {
   const [paths, setPaths] = useState<string[]>([]);
   const [filter, setFilter] = useState<FilterType>("images");
   const [subFilter, setSubFilter] = useState<string | null>(null);
+  const [groupFilter, setGroupFilter] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
@@ -2782,6 +2970,7 @@ export const App = () => {
   const [initResolved, setInitResolved] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [isReturningUser, setIsReturningUser] = useState<boolean | null>(null);
+  const [isGameIndependent, setIsGameIndependent] = useState(false);
   const [displayedProgress, setDisplayedProgress] = useState(0);
   const [readyToTransition, setReadyToTransition] = useState(false);
   const [isWiping, setIsWiping] = useState(false);
@@ -3007,6 +3196,15 @@ export const App = () => {
       } catch {}
 
       const imported = await hasAssetsPromise;
+
+      if (initConfig !== null && !initConfig.gameName) {
+        setIsGameIndependent(true);
+        setIsReturningUser(true);
+        setInitResolved(true);
+        setAppState("ready");
+        return;
+      }
+
       setIsReturningUser(imported);
       setInitResolved(true);
 
@@ -3092,10 +3290,26 @@ export const App = () => {
     void init();
   }, []);
 
+  const currentFolderGroups = useMemo(() => {
+    if (!subFilter) return [];
+    const folderPaths = paths.filter(
+      (p) =>
+        (filter === "images" ? isImagePath(p) : isAudioPath(p)) && getSubfolder(p) === subFilter,
+    );
+    return detectGroupsForFolder(folderPaths, (p) => getStem(pathToMapped.get(p) ?? p));
+  }, [paths, filter, subFilter, pathToMapped]);
+
   const filteredPaths = useMemo(() => {
     let result = filter === "images" ? paths.filter(isImagePath) : paths.filter(isAudioPath);
     if (subFilter) {
       result = result.filter((p) => getSubfolder(p) === subFilter);
+    }
+    if (groupFilter) {
+      const gf = groupFilter;
+      result = result.filter((p) => {
+        const stem = getStem(pathToMapped.get(p) ?? p).toLowerCase();
+        return getAssignedGroup(stem, currentFolderGroups) === gf;
+      });
     }
     if (search) {
       const q = search.toLowerCase();
@@ -3112,7 +3326,7 @@ export const App = () => {
         sensitivity: "base",
       }),
     );
-  }, [paths, filter, subFilter, search, pathToMapped]);
+  }, [paths, filter, subFilter, groupFilter, currentFolderGroups, search, pathToMapped]);
 
   const subcategories = useMemo(() => {
     const categoryPaths =
@@ -3129,6 +3343,14 @@ export const App = () => {
       .sort(([a], [b]) => a.localeCompare(b, undefined, { sensitivity: "base" }))
       .map(([name, count]) => ({ name, count }));
   }, [paths, filter]);
+
+  useEffect(() => {
+    setGroupFilter(null);
+  }, [subFilter]);
+
+  useEffect(() => {
+    if (activeTab !== "assets") setGroupFilter(null);
+  }, [activeTab]);
 
   const visiblePaths = filteredPaths.slice(0, visibleCount);
   const hasMore = visibleCount < filteredPaths.length;
@@ -3149,6 +3371,20 @@ export const App = () => {
     setAssetsGridReady(false);
     void preloadPaths(imagePaths).then(() => setAssetsGridReady(true));
   }, [appState, activeTab, visiblePaths]);
+
+  const foldersWithGroups = useMemo(() => {
+    const result = new Set<string>();
+    for (const s of subcategories) {
+      const folderPaths = paths.filter(
+        (p) =>
+          (filter === "images" ? isImagePath(p) : isAudioPath(p)) && getSubfolder(p) === s.name,
+      );
+      if (detectGroupsForFolder(folderPaths, (p) => getStem(pathToMapped.get(p) ?? p)).length > 0) {
+        result.add(s.name);
+      }
+    }
+    return result;
+  }, [subcategories, paths, filter, pathToMapped]);
 
   const counts = useMemo(
     () => ({
@@ -3351,6 +3587,24 @@ export const App = () => {
     setAppState("no-assets");
   }, []);
 
+  const handleConfigChanged = useCallback(
+    async (newConfig: GameConfig) => {
+      const gameNameChanged = config?.gameName !== newConfig.gameName;
+      setConfig(newConfig);
+      if (gameNameChanged) {
+        await handleWipe();
+        if (!newConfig.gameName) {
+          setIsGameIndependent(true);
+          setIsReturningUser(true);
+          setAppState("ready");
+        } else {
+          setIsGameIndependent(false);
+        }
+      }
+    },
+    [config?.gameName, handleWipe],
+  );
+
   const handleMappingSaved = useCallback(
     (newText: string, newMapping: Record<string, string> | null) => {
       const oldMapping = mappingRef.current;
@@ -3502,7 +3756,7 @@ export const App = () => {
   const isInline = getWebViewMode() === "inline";
 
   useEffect(() => {
-    if (!isInline || appState !== "ready") return;
+    if (!isInline || appState !== "ready" || isGameIndependent) return;
     const onFocus = () => {
       void hasAssets().then((still) => {
         if (!still) {
@@ -3521,7 +3775,7 @@ export const App = () => {
     };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-  }, [isInline, appState]);
+  }, [isInline, appState, isGameIndependent]);
 
   return (
     <div
@@ -3780,28 +4034,30 @@ export const App = () => {
                     Wiki
                   </button>
                 )}
-                <button
-                  className={`text-sm px-3 py-1 rounded-full transition-colors cursor-pointer ${
-                    activeTab === "assets"
-                      ? "bg-[var(--accent)] text-white"
-                      : "text-[var(--text-muted)]"
-                  }`}
-                  style={activeTab !== "assets" ? { backgroundColor: "transparent" } : undefined}
-                  onMouseEnter={(e) => {
-                    if (activeTab !== "assets")
-                      e.currentTarget.style.backgroundColor = "var(--thumb-bg)";
-                  }}
-                  onMouseLeave={(e) => {
-                    if (activeTab !== "assets")
-                      e.currentTarget.style.backgroundColor = "transparent";
-                  }}
-                  onClick={() => setActiveTab("assets")}
-                >
-                  Assets
-                  {meta && (
-                    <span className="ml-1 opacity-70">{meta.assetCount.toLocaleString()}</span>
-                  )}
-                </button>
+                {!isGameIndependent && (
+                  <button
+                    className={`text-sm px-3 py-1 rounded-full transition-colors cursor-pointer ${
+                      activeTab === "assets"
+                        ? "bg-[var(--accent)] text-white"
+                        : "text-[var(--text-muted)]"
+                    }`}
+                    style={activeTab !== "assets" ? { backgroundColor: "transparent" } : undefined}
+                    onMouseEnter={(e) => {
+                      if (activeTab !== "assets")
+                        e.currentTarget.style.backgroundColor = "var(--thumb-bg)";
+                    }}
+                    onMouseLeave={(e) => {
+                      if (activeTab !== "assets")
+                        e.currentTarget.style.backgroundColor = "transparent";
+                    }}
+                    onClick={() => setActiveTab("assets")}
+                  >
+                    Assets
+                    {meta && (
+                      <span className="ml-1 opacity-70">{meta.assetCount.toLocaleString()}</span>
+                    )}
+                  </button>
+                )}
                 {isMod && (
                   <button
                     className={`text-sm px-3 py-1 rounded-full transition-colors cursor-pointer ${
@@ -3868,27 +4124,29 @@ export const App = () => {
                     </svg>
                   </button>
                 )}
-                <button
-                  className="text-sm px-3 py-1 rounded-full bg-red-600 text-white hover:bg-red-700 transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-                  disabled={isWiping}
-                  onClick={(e) => {
-                    setIsWiping(true);
-                    if (isInline) {
-                      void handleWipe();
-                    } else {
-                      void handleWipe().then(() => exitExpandedMode(e.nativeEvent));
-                    }
-                  }}
-                >
-                  {isWiping ? (
-                    <span className="inline-flex items-center gap-1.5">
-                      <span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin inline-block" />
-                      Clearing…
-                    </span>
-                  ) : (
-                    "Exit"
-                  )}
-                </button>
+                {!isGameIndependent && (
+                  <button
+                    className="text-sm px-3 py-1 rounded-full bg-red-600 text-white hover:bg-red-700 transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                    disabled={isWiping}
+                    onClick={(e) => {
+                      setIsWiping(true);
+                      if (isInline) {
+                        void handleWipe();
+                      } else {
+                        void handleWipe().then(() => exitExpandedMode(e.nativeEvent));
+                      }
+                    }}
+                  >
+                    {isWiping ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin inline-block" />
+                        Clearing…
+                      </span>
+                    ) : (
+                      "Exit"
+                    )}
+                  </button>
+                )}
               </div>
             </div>
 
@@ -3918,7 +4176,11 @@ export const App = () => {
                       onClick={() => setWikiCurrentPage(crumb.page)}
                       onContextMenu={(e) => {
                         e.preventDefault();
-                        handleCopyEchoLink(`echolink://r/${subredditName}/wiki/${crumb.page}`);
+                        if (crumb.siblings.length > 0) {
+                          setOpenBreadcrumbDropdown(openBreadcrumbDropdown === i ? null : i);
+                        } else {
+                          handleCopyEchoLink(`echolink://r/${subredditName}/wiki/${crumb.page}`);
+                        }
                       }}
                     >
                       {crumb.label}
@@ -3926,8 +4188,13 @@ export const App = () => {
                     {crumb.siblings.length > 0 && (
                       <div className="relative">
                         <button
-                          className="text-[var(--text-muted)] hover:text-[var(--text)] px-0.5 cursor-pointer"
+                          className="text-[var(--text-muted)] hover:text-[var(--text)] px-1.5 py-0.5 -my-0.5 cursor-pointer"
                           onClick={(e) => {
+                            e.stopPropagation();
+                            setOpenBreadcrumbDropdown(openBreadcrumbDropdown === i ? null : i);
+                          }}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
                             e.stopPropagation();
                             setOpenBreadcrumbDropdown(openBreadcrumbDropdown === i ? null : i);
                           }}
@@ -4039,8 +4306,15 @@ export const App = () => {
                   <SubFilterTabs
                     active={subFilter}
                     subcategories={subcategories}
+                    groups={currentFolderGroups}
+                    activeGroup={groupFilter}
+                    foldersWithGroups={foldersWithGroups}
                     onChange={(name) => {
                       setSubFilter(name);
+                      setVisibleCount(PAGE_SIZE);
+                    }}
+                    onGroupChange={(g) => {
+                      setGroupFilter(g);
                       setVisibleCount(PAGE_SIZE);
                     }}
                   />
@@ -4120,9 +4394,10 @@ export const App = () => {
               config={config}
               appearance={appearance}
               subredditName={subredditName}
+              paths={paths}
               onMappingSaved={handleMappingSaved}
               onStyleChanged={handleStyleChanged}
-              onConfigChanged={setConfig}
+              onConfigChanged={handleConfigChanged}
             />
           )}
         </>

@@ -5,19 +5,30 @@ import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { hasAssets, getMeta } from "../lib/idb";
 import type { EchoMeta } from "../lib/idb";
+import type { ConfigResponse } from "../../shared/types/api";
 
 export const Splash = () => {
   const [imported, setImported] = useState(false);
   const [meta, setMeta] = useState<EchoMeta | null>(null);
   const [ready, setReady] = useState(false);
+  const [isGameIndependent, setIsGameIndependent] = useState(false);
 
   useEffect(() => {
     const check = async () => {
-      const has = await hasAssets();
+      const [has, configRes] = await Promise.all([
+        hasAssets(),
+        fetch("/api/config").catch(() => null),
+      ]);
       setImported(has);
       if (has) {
         const m = await getMeta();
         setMeta(m ?? null);
+      }
+      if (configRes?.ok) {
+        try {
+          const data: ConfigResponse = await configRes.json();
+          setIsGameIndependent(!data.config.gameName);
+        } catch {}
       }
       setReady(true);
     };
@@ -46,29 +57,33 @@ export const Splash = () => {
             Hey {context.username ?? "user"}
           </p>
 
-          {imported && meta ? (
-            <div className="flex flex-col items-center gap-2">
-              <div className="flex items-center gap-2 text-sm text-green-400">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M5 13l4 4L19 7"
-                  />
-                </svg>
-                <span>{meta.assetCount.toLocaleString()} echoes loaded</span>
-              </div>
-              {meta.gameTitle && (
-                <p className="text-xs" style={{ color: "#677db7" }}>
-                  {meta.gameTitle}
+          {!isGameIndependent && (
+            <>
+              {imported && meta ? (
+                <div className="flex flex-col items-center gap-2">
+                  <div className="flex items-center gap-2 text-sm text-green-400">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                    <span>{meta.assetCount.toLocaleString()} echoes loaded</span>
+                  </div>
+                  {meta.gameTitle && (
+                    <p className="text-xs" style={{ color: "#677db7" }}>
+                      {meta.gameTitle}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm" style={{ color: "#677db7" }}>
+                  No game assets imported yet
                 </p>
               )}
-            </div>
-          ) : (
-            <p className="text-sm" style={{ color: "#677db7" }}>
-              No game assets imported yet
-            </p>
+            </>
           )}
 
           <button
@@ -76,7 +91,7 @@ export const Splash = () => {
             style={{ backgroundColor: "#6a5cff" }}
             onClick={(e) => requestExpandedMode(e.nativeEvent, "app")}
           >
-            {imported ? "Browse Echoes" : "Import Game Files"}
+            {isGameIndependent ? "Open Wiki" : imported ? "Browse Echoes" : "Import Game Files"}
           </button>
         </>
       )}
