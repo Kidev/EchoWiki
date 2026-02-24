@@ -1,12 +1,18 @@
 import express from "express";
 import type { Response } from "express";
 import type {
+  AdvancedContributorRequest,
+  AdvancedContributorResponse,
   CardSize,
+  CollabInfoResponse,
   ColorTheme,
   ConfigResponse,
   ConfigUpdateRequest,
   ConfigUpdateResponse,
+  EquipFlairRequest,
+  EquipFlairResponse,
   ErrorResponse,
+  FlairTemplateInfo,
   FontFamily,
   GameConfig,
   HomeBackground,
@@ -14,12 +20,24 @@ import type {
   InitResponse,
   MappingResponse,
   MappingUpdateRequest,
+  MyFlairsResponse,
   StyleConfig,
   StyleResponse,
   StyleUpdateRequest,
   SubredditAppearance,
+  SuggestionFlairRequest,
+  SuggestionFlairResponse,
   WikiFontSize,
   WikiPagesResponse,
+  WikiSuggestion,
+  WikiSuggestionActionRequest,
+  WikiSuggestionActionResponse,
+  WikiSuggestionRequest,
+  WikiSuggestionResponse,
+  WikiSuggestionsResponse,
+  WikiBanRequest,
+  WikiBanResponse,
+  WikiBansResponse,
   WikiResponse,
   WikiUpdateRequest,
   WikiUpdateResponse,
@@ -44,6 +62,9 @@ const DEFAULT_CONFIG: GameConfig = {
   wikiDescription: "",
   homeBackground: "ripple",
   homeLogo: "subreddit",
+  collaborativeMode: false,
+  minKarma: 0,
+  minAccountAgeDays: 0,
 };
 
 const VALID_HOME_BACKGROUNDS = new Set<string>(["ripple", "banner", "both", "none"]);
@@ -70,7 +91,45 @@ async function getConfig(): Promise<GameConfig> {
       raw["homeLogo"] && VALID_HOME_LOGOS.has(raw["homeLogo"]!)
         ? (raw["homeLogo"] as HomeLogo)
         : DEFAULT_CONFIG.homeLogo,
+    collaborativeMode: raw["collaborativeMode"] === "true",
+    minKarma: Math.max(0, parseInt(raw["minKarma"] ?? "0", 10) || 0),
+    minAccountAgeDays: Math.max(0, parseInt(raw["minAccountAgeDays"] ?? "0", 10) || 0),
   };
+}
+
+async function checkIsMod(username: string): Promise<boolean> {
+  if (!context.subredditName) return false;
+  try {
+    const mods = reddit.getModerators({ subredditName: context.subredditName, username });
+    const modList = await mods.all();
+    return modList.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function checkEligibility(
+  username: string,
+  minKarma: number,
+  minAccountAgeDays: number,
+): Promise<boolean> {
+  if (minKarma === 0 && minAccountAgeDays === 0) return true;
+  try {
+    const user = await reddit.getUserByUsername(username);
+    if (!user) return true;
+    if (minKarma > 0) {
+      const totalKarma = user.linkKarma + user.commentKarma;
+      if (totalKarma < minKarma) return false;
+    }
+    if (minAccountAgeDays > 0) {
+      const ageMs = Date.now() - user.createdAt.getTime();
+      const ageDays = ageMs / (1000 * 60 * 60 * 24);
+      if (ageDays < minAccountAgeDays) return false;
+    }
+    return true;
+  } catch {
+    return true;
+  }
 }
 
 async function getSubredditAppearance(): Promise<SubredditAppearance> {
@@ -158,6 +217,28 @@ router.get<Record<string, never>, InitResponse | ErrorResponse>(
         } catch {}
       }
 
+      let canSuggest = false;
+      if (config.collaborativeMode && username && username !== "anonymous" && !isMod) {
+        try {
+          const subredditName = context.subredditName ?? "";
+          const bannedList = await reddit
+            .getBannedWikiContributors({ subredditName, username })
+            .all()
+            .catch(() => []);
+          if (bannedList.length > 0) {
+            canSuggest = false;
+          } else {
+            canSuggest = await checkEligibility(
+              username,
+              config.minKarma,
+              config.minAccountAgeDays,
+            );
+          }
+        } catch {
+          canSuggest = true;
+        }
+      }
+
       res.json({
         type: "init",
         postId,
@@ -166,6 +247,8 @@ router.get<Record<string, never>, InitResponse | ErrorResponse>(
         isMod,
         config,
         appearance,
+        collaborativeMode: config.collaborativeMode,
+        canSuggest,
       });
     } catch (error) {
       const message =
@@ -216,6 +299,15 @@ router.post<Record<string, never>, ConfigUpdateResponse | ErrorResponse, ConfigU
       }
       if (body.homeLogo && VALID_HOME_LOGOS.has(body.homeLogo)) {
         fields["homeLogo"] = body.homeLogo;
+      }
+      if (body.collaborativeMode !== undefined) {
+        fields["collaborativeMode"] = body.collaborativeMode ? "true" : "false";
+      }
+      if (body.minKarma !== undefined) {
+        fields["minKarma"] = String(Math.max(0, Math.floor(body.minKarma)));
+      }
+      if (body.minAccountAgeDays !== undefined) {
+        fields["minAccountAgeDays"] = String(Math.max(0, Math.floor(body.minAccountAgeDays)));
       }
 
       if (Object.keys(fields).length > 0) {
@@ -577,6 +669,557 @@ router.post<Record<string, never>, WikiUpdateResponse | ErrorResponse, WikiUpdat
     } catch (error) {
       const message =
         error instanceof Error ? `Failed to update wiki: ${error.message}` : "Unknown error";
+      res.status(400).json({ status: "error", message });
+    }
+  },
+);
+
+router.get<Record<string, never>, WikiSuggestionResponse | ErrorResponse>(
+  "/api/wiki/suggestion",
+  async (_req, res): Promise<void> => {
+    try {
+      const username = await reddit.getCurrentUsername();
+      if (!username) {
+        res.json({ type: "wiki-suggestion", suggestion: null });
+        return;
+      }
+      const raw = await redis.get(`suggestion:${username}`);
+      const suggestion = raw ? (JSON.parse(raw) as WikiSuggestion) : null;
+      res.json({ type: "wiki-suggestion", suggestion });
+    } catch {
+      res.json({ type: "wiki-suggestion", suggestion: null });
+    }
+  },
+);
+
+router.post<Record<string, never>, WikiSuggestionResponse | ErrorResponse, WikiSuggestionRequest>(
+  "/api/wiki/suggestion",
+  async (req, res): Promise<void> => {
+    try {
+      const username = await reddit.getCurrentUsername();
+      if (!username) {
+        res.status(401).json({ status: "error", message: "Not logged in" });
+        return;
+      }
+      const config = await getConfig();
+      if (!config.collaborativeMode) {
+        res.status(403).json({ status: "error", message: "Collaborative mode is not enabled." });
+        return;
+      }
+
+      const subreddit = context.subredditName;
+      if (!subreddit) {
+        res.status(400).json({ status: "error", message: "Subreddit context not available" });
+        return;
+      }
+
+      const body = req.body as WikiSuggestionRequest;
+
+      const bannedList = await reddit
+        .getBannedWikiContributors({ subredditName: subreddit, username })
+        .all()
+        .catch(() => []);
+
+      if (bannedList.length > 0) {
+        res
+          .status(403)
+          .json({ status: "error", message: "You are banned from editing this wiki." });
+        return;
+      }
+
+      const eligible = await checkEligibility(username, config.minKarma, config.minAccountAgeDays);
+      if (!eligible) {
+        const parts: string[] = [];
+        if (config.minKarma > 0) parts.push(`${config.minKarma.toLocaleString()} karma`);
+        if (config.minAccountAgeDays > 0)
+          parts.push(`account at least ${config.minAccountAgeDays} days old`);
+        res.status(403).json({
+          status: "error",
+          message: `You don't meet the requirements to suggest changes: ${parts.join(" and ")}.`,
+        });
+        return;
+      }
+
+      const suggestion: WikiSuggestion = {
+        username,
+        page: body.page,
+        content: body.content,
+        description: body.description,
+        createdAt: Date.now(),
+      };
+      await Promise.all([
+        redis.set(`suggestion:${username}`, JSON.stringify(suggestion)),
+        redis.zAdd("suggestions", { member: username, score: Date.now() }),
+      ]);
+      res.json({ type: "wiki-suggestion", suggestion });
+    } catch (error) {
+      const message =
+        error instanceof Error ? `Failed to submit suggestion: ${error.message}` : "Unknown error";
+      res.status(400).json({ status: "error", message });
+    }
+  },
+);
+
+router.delete<Record<string, never>, WikiSuggestionActionResponse | ErrorResponse>(
+  "/api/wiki/suggestion",
+  async (_req, res): Promise<void> => {
+    try {
+      const username = await reddit.getCurrentUsername();
+      if (!username) {
+        res.status(401).json({ status: "error", message: "Not logged in" });
+        return;
+      }
+      await Promise.all([
+        redis.del(`suggestion:${username}`),
+        redis.zRem("suggestions", [username]),
+      ]);
+      res.json({ type: "wiki-suggestion-action" });
+    } catch (error) {
+      const message =
+        error instanceof Error ? `Failed to delete suggestion: ${error.message}` : "Unknown error";
+      res.status(400).json({ status: "error", message });
+    }
+  },
+);
+
+router.get<Record<string, never>, WikiSuggestionsResponse | ErrorResponse>(
+  "/api/wiki/suggestions",
+  async (_req, res): Promise<void> => {
+    try {
+      const username = await reddit.getCurrentUsername();
+      if (!username) {
+        res.status(401).json({ status: "error", message: "Not logged in" });
+        return;
+      }
+      const isMod = await checkIsMod(username);
+      if (!isMod) {
+        res.status(403).json({ status: "error", message: "Not authorized" });
+        return;
+      }
+      const members = await redis.zRange("suggestions", 0, -1);
+      const suggestions: WikiSuggestion[] = [];
+      for (const m of members) {
+        const raw = await redis.get(`suggestion:${m.member}`);
+        if (raw) {
+          try {
+            suggestions.push(JSON.parse(raw) as WikiSuggestion);
+          } catch {}
+        }
+      }
+      res.json({ type: "wiki-suggestions", suggestions });
+    } catch (error) {
+      const message =
+        error instanceof Error ? `Failed to list suggestions: ${error.message}` : "Unknown error";
+      res.status(400).json({ status: "error", message });
+    }
+  },
+);
+
+router.post<
+  Record<string, never>,
+  WikiSuggestionActionResponse | ErrorResponse,
+  WikiSuggestionActionRequest
+>("/api/wiki/suggestion/accept", async (req, res): Promise<void> => {
+  try {
+    const modUsername = await reddit.getCurrentUsername();
+    if (!modUsername) {
+      res.status(401).json({ status: "error", message: "Not logged in" });
+      return;
+    }
+    const isMod = await checkIsMod(modUsername);
+    if (!isMod) {
+      res.status(403).json({ status: "error", message: "Not authorized" });
+      return;
+    }
+    const subreddit = context.subredditName;
+    if (!subreddit) {
+      res.status(400).json({ status: "error", message: "Subreddit context not available" });
+      return;
+    }
+    const body = req.body as WikiSuggestionActionRequest;
+    const raw = await redis.get(`suggestion:${body.username}`);
+    if (!raw) {
+      res.status(404).json({ status: "error", message: "Suggestion not found" });
+      return;
+    }
+    const suggestion = JSON.parse(raw) as WikiSuggestion;
+    await reddit.updateWikiPage({
+      subredditName: subreddit,
+      page: suggestion.page,
+      content: suggestion.content,
+      reason: `${modUsername} accepted suggestion by ${suggestion.username}: ${suggestion.description}`,
+    });
+    const [, , newCount, basicFlairId, advCountRaw, advFlairId] = await Promise.all([
+      redis.del(`suggestion:${body.username}`),
+      redis.zRem("suggestions", [body.username]),
+      redis.incrBy(`acceptedCount:${suggestion.username}`, 1),
+      redis.get("suggestionFlairTemplateId").catch(() => null),
+      redis.get("advancedContributorCount").catch(() => null),
+      redis.get("advancedContributorFlairTemplateId").catch(() => null),
+    ]);
+
+    const advancedCount = Math.max(0, parseInt(advCountRaw ?? "0", 10) || 0);
+    const earnedKey = `earnedFlairIds:${suggestion.username}`;
+    try {
+      const rawEarned = await redis.get(earnedKey);
+      const earnedIds: string[] = rawEarned ? (JSON.parse(rawEarned) as string[]) : [];
+
+      if (basicFlairId && !earnedIds.includes(basicFlairId)) {
+        earnedIds.push(basicFlairId);
+      }
+
+      if (
+        advancedCount > 0 &&
+        newCount >= advancedCount &&
+        advFlairId &&
+        !earnedIds.includes(advFlairId)
+      ) {
+        earnedIds.push(advFlairId);
+      }
+      if (earnedIds.length > 0) {
+        await redis.set(earnedKey, JSON.stringify(earnedIds));
+      }
+    } catch {}
+    res.json({ type: "wiki-suggestion-action" });
+  } catch (error) {
+    const message =
+      error instanceof Error ? `Failed to accept suggestion: ${error.message}` : "Unknown error";
+    res.status(400).json({ status: "error", message });
+  }
+});
+
+router.post<
+  Record<string, never>,
+  WikiSuggestionActionResponse | ErrorResponse,
+  WikiSuggestionActionRequest
+>("/api/wiki/suggestion/deny", async (req, res): Promise<void> => {
+  try {
+    const modUsername = await reddit.getCurrentUsername();
+    if (!modUsername) {
+      res.status(401).json({ status: "error", message: "Not logged in" });
+      return;
+    }
+    const isMod = await checkIsMod(modUsername);
+    if (!isMod) {
+      res.status(403).json({ status: "error", message: "Not authorized" });
+      return;
+    }
+    const body = req.body as WikiSuggestionActionRequest;
+    await Promise.all([
+      redis.del(`suggestion:${body.username}`),
+      redis.zRem("suggestions", [body.username]),
+    ]);
+    res.json({ type: "wiki-suggestion-action" });
+  } catch (error) {
+    const message =
+      error instanceof Error ? `Failed to deny suggestion: ${error.message}` : "Unknown error";
+    res.status(400).json({ status: "error", message });
+  }
+});
+
+router.get<Record<string, never>, CollabInfoResponse | ErrorResponse>(
+  "/api/wiki/collab-info",
+  async (_req, res): Promise<void> => {
+    try {
+      const modUsername = await reddit.getCurrentUsername();
+      if (!modUsername) {
+        res.status(401).json({ status: "error", message: "Not logged in" });
+        return;
+      }
+      const isMod = await checkIsMod(modUsername);
+      if (!isMod) {
+        res.status(403).json({ status: "error", message: "Not authorized" });
+        return;
+      }
+      const subreddit = context.subredditName;
+      if (!subreddit) {
+        res.status(400).json({ status: "error", message: "Subreddit context not available" });
+        return;
+      }
+
+      const [bannedUsers, flairTemplatesRaw, subInfo, storedFlairId, advCountRaw, advFlairId] =
+        await Promise.all([
+          reddit
+            .getBannedWikiContributors({ subredditName: subreddit })
+            .all()
+            .catch(() => []),
+          reddit.getUserFlairTemplates(subreddit).catch(() => []),
+          reddit.getSubredditInfoByName(subreddit).catch(() => null),
+          redis.get("suggestionFlairTemplateId"),
+          redis.get("advancedContributorCount"),
+          redis.get("advancedContributorFlairTemplateId"),
+        ]);
+
+      const banned = bannedUsers.map((u) => u.username);
+      const flairTemplates: FlairTemplateInfo[] = flairTemplatesRaw.map((t) => ({
+        id: t.id,
+        text: t.text,
+        textColor: t.textColor,
+        backgroundColor: t.backgroundColor,
+      }));
+      const wikiEditMode = subInfo?.wikiSettings?.wikiEditMode ?? null;
+
+      res.json({
+        type: "collab-info",
+        wikiEditMode,
+        banned,
+        flairTemplateId: storedFlairId ?? null,
+        flairTemplates,
+        advancedContributorCount: Math.max(0, parseInt(advCountRaw ?? "0", 10) || 0),
+        advancedContributorFlairTemplateId: advFlairId ?? null,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? `Failed to get collab info: ${error.message}` : "Unknown error";
+      res.status(400).json({ status: "error", message });
+    }
+  },
+);
+
+router.post<Record<string, never>, SuggestionFlairResponse | ErrorResponse, SuggestionFlairRequest>(
+  "/api/wiki/suggestion-flair",
+  async (req, res): Promise<void> => {
+    try {
+      const modUsername = await reddit.getCurrentUsername();
+      if (!modUsername) {
+        res.status(401).json({ status: "error", message: "Not logged in" });
+        return;
+      }
+      const isMod = await checkIsMod(modUsername);
+      if (!isMod) {
+        res.status(403).json({ status: "error", message: "Not authorized" });
+        return;
+      }
+      const body = req.body as SuggestionFlairRequest;
+      if (body.flairTemplateId) {
+        await redis.set("suggestionFlairTemplateId", body.flairTemplateId);
+      } else {
+        await redis.del("suggestionFlairTemplateId");
+      }
+      res.json({ type: "suggestion-flair", flairTemplateId: body.flairTemplateId });
+    } catch (error) {
+      const message =
+        error instanceof Error ? `Failed to save flair setting: ${error.message}` : "Unknown error";
+      res.status(400).json({ status: "error", message });
+    }
+  },
+);
+
+router.post<
+  Record<string, never>,
+  AdvancedContributorResponse | ErrorResponse,
+  AdvancedContributorRequest
+>("/api/wiki/advanced-contributor", async (req, res): Promise<void> => {
+  try {
+    const modUsername = await reddit.getCurrentUsername();
+    if (!modUsername) {
+      res.status(401).json({ status: "error", message: "Not logged in" });
+      return;
+    }
+    const isMod = await checkIsMod(modUsername);
+    if (!isMod) {
+      res.status(403).json({ status: "error", message: "Not authorized" });
+      return;
+    }
+    const body = req.body as AdvancedContributorRequest;
+    const count = Math.max(0, Math.floor(body.count ?? 0));
+    if (count > 0) {
+      await redis.set("advancedContributorCount", String(count));
+    } else {
+      await redis.del("advancedContributorCount");
+    }
+    if (body.flairTemplateId) {
+      await redis.set("advancedContributorFlairTemplateId", body.flairTemplateId);
+    } else {
+      await redis.del("advancedContributorFlairTemplateId");
+    }
+    res.json({ type: "advanced-contributor", count, flairTemplateId: body.flairTemplateId });
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? `Failed to save advanced contributor settings: ${error.message}`
+        : "Unknown error";
+    res.status(400).json({ status: "error", message });
+  }
+});
+
+router.get<Record<string, never>, MyFlairsResponse | ErrorResponse>(
+  "/api/wiki/my-flairs",
+  async (_req, res): Promise<void> => {
+    try {
+      const username = await reddit.getCurrentUsername();
+      if (!username || username === "anonymous") {
+        res.json({ type: "my-flairs", earned: [], equipped: null });
+        return;
+      }
+      const [rawEarned, equipped, flairTemplatesRaw] = await Promise.all([
+        redis.get(`earnedFlairIds:${username}`).catch(() => null),
+        redis.get(`equippedFlairId:${username}`).catch(() => null),
+        reddit.getUserFlairTemplates(context.subredditName ?? "").catch(() => []),
+      ]);
+      const earnedIds: string[] = rawEarned ? (JSON.parse(rawEarned) as string[]) : [];
+      const earnedSet = new Set(earnedIds);
+      const earned: FlairTemplateInfo[] = flairTemplatesRaw
+        .filter((t) => earnedSet.has(t.id))
+        .map((t) => ({
+          id: t.id,
+          text: t.text,
+          textColor: t.textColor,
+          backgroundColor: t.backgroundColor,
+        }));
+      res.json({ type: "my-flairs", earned, equipped: equipped ?? null });
+    } catch (error) {
+      const message =
+        error instanceof Error ? `Failed to get flairs: ${error.message}` : "Unknown error";
+      res.status(400).json({ status: "error", message });
+    }
+  },
+);
+
+router.post<Record<string, never>, EquipFlairResponse | ErrorResponse, EquipFlairRequest>(
+  "/api/wiki/equip-flair",
+  async (req, res): Promise<void> => {
+    try {
+      const username = await reddit.getCurrentUsername();
+      if (!username || username === "anonymous") {
+        res.status(401).json({ status: "error", message: "Not logged in" });
+        return;
+      }
+      const subreddit = context.subredditName;
+      if (!subreddit) {
+        res.status(400).json({ status: "error", message: "Subreddit context not available" });
+        return;
+      }
+      const body = req.body as EquipFlairRequest;
+      if (body.flairTemplateId !== null) {
+        const rawEarned = await redis.get(`earnedFlairIds:${username}`).catch(() => null);
+        const earnedIds: string[] = rawEarned ? (JSON.parse(rawEarned) as string[]) : [];
+        if (!earnedIds.includes(body.flairTemplateId)) {
+          res.status(403).json({ status: "error", message: "You have not earned this flair." });
+          return;
+        }
+        await reddit.setUserFlair({
+          subredditName: subreddit,
+          username,
+          flairTemplateId: body.flairTemplateId,
+        });
+        await redis.set(`equippedFlairId:${username}`, body.flairTemplateId);
+      } else {
+        await reddit.setUserFlair({ subredditName: subreddit, username, flairTemplateId: "" });
+        await redis.del(`equippedFlairId:${username}`);
+      }
+      res.json({ type: "equip-flair", flairTemplateId: body.flairTemplateId });
+    } catch (error) {
+      const message =
+        error instanceof Error ? `Failed to equip flair: ${error.message}` : "Unknown error";
+      res.status(400).json({ status: "error", message });
+    }
+  },
+);
+
+router.post<Record<string, never>, WikiBanResponse | ErrorResponse, WikiBanRequest>(
+  "/api/wiki/ban",
+  async (req, res): Promise<void> => {
+    try {
+      const modUsername = await reddit.getCurrentUsername();
+      if (!modUsername) {
+        res.status(401).json({ status: "error", message: "Not logged in" });
+        return;
+      }
+      const isMod = await checkIsMod(modUsername);
+      if (!isMod) {
+        res.status(403).json({ status: "error", message: "Not authorized" });
+        return;
+      }
+      const subreddit = context.subredditName;
+      if (!subreddit) {
+        res.status(400).json({ status: "error", message: "Subreddit context not available" });
+        return;
+      }
+      const body = req.body as WikiBanRequest;
+      const username = body.username?.trim();
+      if (!username) {
+        res.status(400).json({ status: "error", message: "Username required" });
+        return;
+      }
+      await reddit.banWikiContributor({ username, subredditName: subreddit });
+
+      await Promise.all([
+        redis.del(`suggestion:${username}`),
+        redis.zRem("suggestions", [username]),
+      ]);
+      res.json({ type: "wiki-ban" });
+    } catch (error) {
+      const message =
+        error instanceof Error ? `Failed to ban user: ${error.message}` : "Unknown error";
+      res.status(400).json({ status: "error", message });
+    }
+  },
+);
+
+router.delete<Record<string, never>, WikiBanResponse | ErrorResponse>(
+  "/api/wiki/ban",
+  async (req, res): Promise<void> => {
+    try {
+      const modUsername = await reddit.getCurrentUsername();
+      if (!modUsername) {
+        res.status(401).json({ status: "error", message: "Not logged in" });
+        return;
+      }
+      const isMod = await checkIsMod(modUsername);
+      if (!isMod) {
+        res.status(403).json({ status: "error", message: "Not authorized" });
+        return;
+      }
+      const subreddit = context.subredditName;
+      if (!subreddit) {
+        res.status(400).json({ status: "error", message: "Subreddit context not available" });
+        return;
+      }
+      const body = req.body as WikiBanRequest;
+      const username = body.username?.trim();
+      if (!username) {
+        res.status(400).json({ status: "error", message: "Username required" });
+        return;
+      }
+      await reddit.unbanWikiContributor(username, subreddit);
+      res.json({ type: "wiki-ban" });
+    } catch (error) {
+      const message =
+        error instanceof Error ? `Failed to unban user: ${error.message}` : "Unknown error";
+      res.status(400).json({ status: "error", message });
+    }
+  },
+);
+
+router.get<Record<string, never>, WikiBansResponse | ErrorResponse>(
+  "/api/wiki/bans",
+  async (_req, res): Promise<void> => {
+    try {
+      const modUsername = await reddit.getCurrentUsername();
+      if (!modUsername) {
+        res.status(401).json({ status: "error", message: "Not logged in" });
+        return;
+      }
+      const isMod = await checkIsMod(modUsername);
+      if (!isMod) {
+        res.status(403).json({ status: "error", message: "Not authorized" });
+        return;
+      }
+      const subreddit = context.subredditName;
+      if (!subreddit) {
+        res.status(400).json({ status: "error", message: "Subreddit context not available" });
+        return;
+      }
+      const bannedUsers = await reddit
+        .getBannedWikiContributors({ subredditName: subreddit })
+        .all()
+        .catch(() => []);
+      const banned = bannedUsers.map((u) => u.username);
+      res.json({ type: "wiki-bans", banned });
+    } catch (error) {
+      const message =
+        error instanceof Error ? `Failed to list wiki bans: ${error.message}` : "Unknown error";
       res.status(400).json({ status: "error", message });
     }
   },

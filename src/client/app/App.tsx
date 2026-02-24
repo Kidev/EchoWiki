@@ -23,20 +23,34 @@ import {
   showToast,
 } from "@devvit/web/client";
 import type {
+  AdvancedContributorRequest,
+  AdvancedContributorResponse,
   CardSize,
+  CollabInfoResponse,
   ColorTheme,
   EngineType,
+  EquipFlairRequest,
+  EquipFlairResponse,
   ErrorResponse,
+  FlairTemplateInfo,
   FontFamily,
   HomeBackground,
   HomeLogo,
   InitResponse,
   GameConfig,
   MappingResponse,
+  MyFlairsResponse,
   StyleConfig,
   StyleResponse,
   SubredditAppearance,
+  SuggestionFlairRequest,
+  WikiBanRequest,
   WikiFontSize,
+  WikiSuggestion,
+  WikiSuggestionActionRequest,
+  WikiSuggestionRequest,
+  WikiSuggestionResponse,
+  WikiSuggestionsResponse,
   WikiResponse,
   WikiPagesResponse,
   WikiUpdateRequest,
@@ -65,7 +79,7 @@ import type { EchoMeta } from "../lib/idb";
 
 type AppState = "loading" | "no-assets" | "importing" | "ready";
 
-type ActiveTab = "wiki" | "assets" | "settings";
+type ActiveTab = "wiki" | "assets" | "submissions" | "settings";
 
 type FilterType = "images" | "audio";
 
@@ -1526,6 +1540,122 @@ function WikiSaveDialog({
   );
 }
 
+function WikiSuggestDialog({
+  description,
+  onDescriptionChange,
+  onConfirm,
+  onDismiss,
+  isSaving,
+  error,
+}: {
+  description: string;
+  onDescriptionChange: (d: string) => void;
+  onConfirm: () => void;
+  onDismiss: () => void;
+  isSaving: boolean;
+  error: string | null;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={onDismiss}
+    >
+      <div
+        className="bg-[var(--bg)] rounded-lg shadow-2xl p-6 max-w-sm w-full mx-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="font-semibold text-[var(--text)] mb-1">Submit suggestion</h3>
+        <p className="text-sm text-[var(--text-muted)] mb-4">
+          Describe your changes so moderators can understand what you&apos;re suggesting.
+        </p>
+        <input
+          type="text"
+          value={description}
+          onChange={(e) => onDescriptionChange(e.target.value)}
+          placeholder="Description of changes…"
+          autoFocus
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !isSaving && description.trim()) onConfirm();
+          }}
+          className="w-full text-sm px-3 py-2 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)] mb-3"
+        />
+        {error !== null && <p className="text-xs text-red-500 mb-3">{error}</p>}
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onDismiss}
+            disabled={isSaving}
+            className="text-sm px-3 py-1.5 rounded border border-gray-300 text-[var(--text-muted)] hover:bg-[var(--control-bg)] transition-colors cursor-pointer disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={isSaving || !description.trim()}
+            className="text-sm px-3 py-1.5 rounded bg-[var(--accent)] text-white hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50"
+          >
+            {isSaving ? "Submitting…" : "Submit"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WikiExistingSuggestionDialog({
+  existingPage,
+  onSee,
+  onDelete,
+  onCancel,
+  isDeleting,
+}: {
+  existingPage: string;
+  onSee: () => void;
+  onDelete: () => void;
+  onCancel: () => void;
+  isDeleting: boolean;
+}) {
+  const pageLabel = existingPage.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={onCancel}
+    >
+      <div
+        className="bg-[var(--bg)] rounded-lg shadow-2xl p-6 max-w-sm w-full mx-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="font-semibold text-[var(--text)] mb-1">Already have a suggestion</h3>
+        <p className="text-sm text-[var(--text-muted)] mb-4">
+          You already have a pending suggestion on{" "}
+          <span className="font-medium text-[var(--text)]">{pageLabel}</span>. You can only have one
+          suggestion at a time.
+        </p>
+        <div className="flex flex-col gap-2">
+          <button
+            onClick={onSee}
+            className="text-sm px-3 py-2 rounded bg-[var(--accent)] text-white hover:opacity-90 transition-opacity cursor-pointer text-left"
+          >
+            See current suggestion
+          </button>
+          <button
+            onClick={onDelete}
+            disabled={isDeleting}
+            className="text-sm px-3 py-2 rounded border border-red-300 text-red-600 hover:bg-red-50 transition-colors cursor-pointer disabled:opacity-50 text-left"
+          >
+            {isDeleting ? "Deleting…" : "Delete current suggestion"}
+          </button>
+          <button
+            onClick={onCancel}
+            className="text-sm px-3 py-2 rounded border border-gray-300 text-[var(--text-muted)] hover:bg-[var(--control-bg)] transition-colors cursor-pointer text-left"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const WikiView = memo(function WikiView({
   subredditName,
   wikiFontSize,
@@ -1537,6 +1667,10 @@ const WikiView = memo(function WikiView({
   onCopyEchoLink,
   targetAnchor,
   onAnchorConsumed,
+  canSuggest,
+  suggestionToLoad,
+  onSuggestionLoaded,
+  onNavigateToSuggestion,
 }: {
   subredditName: string;
   wikiFontSize: WikiFontSize;
@@ -1548,6 +1682,10 @@ const WikiView = memo(function WikiView({
   onCopyEchoLink: (link: string) => void;
   targetAnchor?: string | null | undefined;
   onAnchorConsumed?: (() => void) | undefined;
+  canSuggest: boolean;
+  suggestionToLoad?: string | null | undefined;
+  onSuggestionLoaded?: (() => void) | undefined;
+  onNavigateToSuggestion?: ((page: string, content: string) => void) | undefined;
 }) {
   const [content, setContent] = useState<string | null | undefined>(undefined);
   const [loading, setLoading] = useState(true);
@@ -1555,12 +1693,20 @@ const WikiView = memo(function WikiView({
   const lastPageRef = useRef(currentPage);
 
   const [isEditing, setIsEditing] = useState(false);
+  const [isProposeMode, setIsProposeMode] = useState(false);
   const [editContent, setEditContent] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [saveReason, setSaveReason] = useState("");
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  const [suggestDescription, setSuggestDescription] = useState("");
+  const [suggestError, setSuggestError] = useState<string | null>(null);
+  const [showSuggestDialog, setShowSuggestDialog] = useState(false);
+  const [existingSuggestion, setExistingSuggestion] = useState<WikiSuggestion | null>(null);
+  const [isDeletingSuggestion, setIsDeletingSuggestion] = useState(false);
+  const [showDiff, setShowDiff] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -1594,12 +1740,27 @@ const WikiView = memo(function WikiView({
 
   useEffect(() => {
     setIsEditing(false);
+    setIsProposeMode(false);
     setEditContent("");
     setSaveReason("");
     setSaveError(null);
     setShowSaveDialog(false);
     setShowCancelDialog(false);
+    setSuggestDescription("");
+    setSuggestError(null);
+    setShowSuggestDialog(false);
+    setExistingSuggestion(null);
+    setShowDiff(false);
   }, [currentPage]);
+
+  useEffect(() => {
+    if (suggestionToLoad != null) {
+      setEditContent(suggestionToLoad);
+      setIsEditing(true);
+      setIsProposeMode(true);
+      onSuggestionLoaded?.();
+    }
+  }, [suggestionToLoad, onSuggestionLoaded]);
 
   const handlePageChange = useCallback(
     (page: string) => {
@@ -1611,13 +1772,41 @@ const WikiView = memo(function WikiView({
   const handleEditClick = useCallback(() => {
     setEditContent(content ?? "");
     setIsEditing(true);
+    setIsProposeMode(false);
   }, [content]);
+
+  const handleSuggestClick = useCallback(async () => {
+    try {
+      const res = await fetch("/api/wiki/suggestion");
+      if (res.ok) {
+        const data: WikiSuggestionResponse = await res.json();
+        if (data.suggestion) {
+          if (data.suggestion.page === currentPage) {
+            setEditContent(data.suggestion.content);
+            setIsEditing(true);
+            setIsProposeMode(true);
+          } else {
+            setExistingSuggestion(data.suggestion);
+          }
+          return;
+        }
+      }
+    } catch {}
+
+    setEditContent(content ?? "");
+    setIsEditing(true);
+    setIsProposeMode(true);
+  }, [currentPage, content]);
 
   const handleCancelConfirm = useCallback(() => {
     setIsEditing(false);
+    setIsProposeMode(false);
     setEditContent("");
     setShowCancelDialog(false);
     setSaveError(null);
+    setSuggestDescription("");
+    setSuggestError(null);
+    setShowSuggestDialog(false);
   }, []);
 
   const handleSaveConfirm = useCallback(async () => {
@@ -1654,7 +1843,64 @@ const WikiView = memo(function WikiView({
     }
   }, [currentPage, editContent, saveReason, username]);
 
+  const handleSuggestConfirm = useCallback(async () => {
+    if (!suggestDescription.trim()) {
+      setSuggestError("Please describe your changes.");
+      return;
+    }
+    setIsSaving(true);
+    setSuggestError(null);
+    try {
+      const body: WikiSuggestionRequest = {
+        page: currentPage,
+        content: editContent,
+        description: suggestDescription.trim(),
+      };
+      const res = await fetch("/api/wiki/suggestion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = (await res.json()) as ErrorResponse;
+        setSuggestError(err.message ?? "Failed to submit suggestion.");
+        return;
+      }
+      setIsEditing(false);
+      setIsProposeMode(false);
+      setShowSuggestDialog(false);
+      setSuggestDescription("");
+      showToast("Suggestion submitted!");
+    } catch {
+      setSuggestError("Network error. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
+  }, [currentPage, editContent, suggestDescription]);
+
+  const handleExistingSuggestionSee = useCallback(() => {
+    if (!existingSuggestion) return;
+    setExistingSuggestion(null);
+    onNavigateToSuggestion?.(existingSuggestion.page, existingSuggestion.content);
+  }, [existingSuggestion, onNavigateToSuggestion]);
+
+  const handleExistingSuggestionDelete = useCallback(async () => {
+    setIsDeletingSuggestion(true);
+    try {
+      await fetch("/api/wiki/suggestion", { method: "DELETE" });
+      setExistingSuggestion(null);
+
+      setEditContent(content ?? "");
+      setIsEditing(true);
+      setIsProposeMode(true);
+    } catch {
+    } finally {
+      setIsDeletingSuggestion(false);
+    }
+  }, [content]);
+
   const canEdit = isMod && isExpanded && !loading;
+  const canSuggestHere = canSuggest && isExpanded && !loading;
 
   return (
     <div className="relative flex-1 flex flex-col overflow-hidden">
@@ -1676,30 +1922,80 @@ const WikiView = memo(function WikiView({
         </button>
       )}
 
+      {canSuggestHere && !isEditing && (
+        <button
+          onClick={() => void handleSuggestClick()}
+          title="Suggest change"
+          className="absolute top-2 right-6 z-10 flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md bg-[var(--thumb-bg)] text-[var(--text)] hover:opacity-80 shadow-sm transition-opacity cursor-pointer border border-gray-200"
+        >
+          <svg
+            className="w-3.5 h-3.5 shrink-0"
+            viewBox="0 0 16 16"
+            fill="currentColor"
+            aria-hidden="true"
+          >
+            <path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61Zm.176 4.823L9.75 4.81l-6.286 6.287a.253.253 0 0 0-.064.108l-.558 1.953 1.953-.558a.253.253 0 0 0 .108-.064Zm1.238-3.763a.25.25 0 0 0-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 0 0 0-.354Z" />
+          </svg>
+          Suggest change
+        </button>
+      )}
+
       {loading ? (
         <div className="flex justify-center items-center min-h-64">
           <div className="w-10 h-10 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
         </div>
       ) : isEditing ? (
         <div className="flex-1 flex overflow-hidden">
-          {/* Left pane: live preview */}
-          <div
-            className="flex-1 overflow-auto border-r border-gray-100"
-            style={{ scrollbarGutter: "stable both-edges" }}
-          >
-            <WikiMarkdownContent
-              content={editContent}
-              subredditName={subredditName}
-              currentPage={currentPage}
-              wikiFontSize={wikiFontSize}
-              onPageChange={handlePageChange}
-              onCopyEchoLink={onCopyEchoLink}
-            />
+          {}
+          <div className="flex-1 flex flex-col overflow-hidden border-r border-gray-100">
+            {isProposeMode && (
+              <div className="px-3 py-1 bg-[var(--thumb-bg)] border-b border-gray-100 shrink-0 flex items-center gap-1">
+                <button
+                  onClick={() => setShowDiff(false)}
+                  className={`text-[10px] px-2 py-0.5 rounded transition-colors cursor-pointer ${
+                    !showDiff
+                      ? "bg-[var(--accent)] text-white"
+                      : "text-[var(--text-muted)] hover:bg-[var(--control-bg)]"
+                  }`}
+                >
+                  Preview
+                </button>
+                <button
+                  onClick={() => setShowDiff(true)}
+                  className={`text-[10px] px-2 py-0.5 rounded transition-colors cursor-pointer flex items-center gap-1 ${
+                    showDiff
+                      ? "bg-amber-500 text-white"
+                      : "text-[var(--text-muted)] hover:bg-[var(--control-bg)]"
+                  }`}
+                >
+                  Highlight changes
+                </button>
+              </div>
+            )}
+            {isProposeMode && showDiff ? (
+              <DiffView original={content ?? ""} proposed={editContent} />
+            ) : (
+              <div
+                className="flex-1 overflow-auto"
+                style={{ scrollbarGutter: "stable both-edges" }}
+              >
+                <WikiMarkdownContent
+                  content={editContent}
+                  subredditName={subredditName}
+                  currentPage={currentPage}
+                  wikiFontSize={wikiFontSize}
+                  onPageChange={handlePageChange}
+                  onCopyEchoLink={onCopyEchoLink}
+                />
+              </div>
+            )}
           </div>
           {/* Right pane: markdown source editor */}
           <div className="flex-1 flex flex-col overflow-hidden">
             <div className="px-3 py-1.5 text-xs bg-[var(--thumb-bg)] border-b border-gray-100 shrink-0 select-none flex items-center justify-between sticky top-0 z-10">
-              <span className="font-mono text-[var(--text-muted)]">Source</span>
+              <span className="font-mono text-[var(--text-muted)]">
+                {isProposeMode ? "Suggesting changes" : "Source"}
+              </span>
               <div className="flex items-center gap-1.5">
                 <button
                   onClick={() => setShowCancelDialog(true)}
@@ -1707,15 +2003,27 @@ const WikiView = memo(function WikiView({
                 >
                   Cancel
                 </button>
-                <button
-                  onClick={() => {
-                    setSaveError(null);
-                    setShowSaveDialog(true);
-                  }}
-                  className="px-2 py-0.5 rounded bg-[var(--accent)] text-white hover:opacity-90 transition-opacity cursor-pointer"
-                >
-                  Save
-                </button>
+                {isProposeMode ? (
+                  <button
+                    onClick={() => {
+                      setSuggestError(null);
+                      setShowSuggestDialog(true);
+                    }}
+                    className="px-2 py-0.5 rounded bg-[var(--accent)] text-white hover:opacity-90 transition-opacity cursor-pointer"
+                  >
+                    Submit
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setSaveError(null);
+                      setShowSaveDialog(true);
+                    }}
+                    className="px-2 py-0.5 rounded bg-[var(--accent)] text-white hover:opacity-90 transition-opacity cursor-pointer"
+                  >
+                    Save
+                  </button>
+                )}
               </div>
             </div>
             <textarea
@@ -1781,6 +2089,30 @@ const WikiView = memo(function WikiView({
           }}
           isSaving={isSaving}
           error={saveError}
+        />
+      )}
+
+      {showSuggestDialog && (
+        <WikiSuggestDialog
+          description={suggestDescription}
+          onDescriptionChange={setSuggestDescription}
+          onConfirm={() => void handleSuggestConfirm()}
+          onDismiss={() => {
+            setShowSuggestDialog(false);
+            setSuggestError(null);
+          }}
+          isSaving={isSaving}
+          error={suggestError}
+        />
+      )}
+
+      {existingSuggestion !== null && (
+        <WikiExistingSuggestionDialog
+          existingPage={existingSuggestion.page}
+          onSee={handleExistingSuggestionSee}
+          onDelete={() => void handleExistingSuggestionDelete()}
+          onCancel={() => setExistingSuggestion(null)}
+          isDeleting={isDeletingSuggestion}
         />
       )}
     </div>
@@ -2428,7 +2760,862 @@ function MappingPanel({
   );
 }
 
-type SettingsTab = "general" | "game" | "style" | "theme" | "mapping";
+type DiffLine = { type: "equal" | "add" | "remove"; line: string };
+
+function computeLineDiff(a: string, b: string): DiffLine[] {
+  const aLines = a.split("\n");
+  const bLines = b.split("\n");
+  const m = aLines.length;
+  const n = bLines.length;
+
+  const stride = n + 1;
+  const dp = new Int32Array((m + 1) * stride);
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (aLines[i - 1] === bLines[j - 1]) {
+        dp[i * stride + j] = dp[(i - 1) * stride + (j - 1)]! + 1;
+      } else {
+        const up = dp[(i - 1) * stride + j]!;
+        const left = dp[i * stride + (j - 1)]!;
+        dp[i * stride + j] = up > left ? up : left;
+      }
+    }
+  }
+
+  const result: DiffLine[] = [];
+  let i = m;
+  let j = n;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && aLines[i - 1] === bLines[j - 1]) {
+      result.unshift({ type: "equal", line: aLines[i - 1]! });
+      i--;
+      j--;
+    } else if (j > 0 && (i === 0 || dp[i * stride + (j - 1)]! >= dp[(i - 1) * stride + j]!)) {
+      result.unshift({ type: "add", line: bLines[j - 1]! });
+      j--;
+    } else {
+      result.unshift({ type: "remove", line: aLines[i - 1]! });
+      i--;
+    }
+  }
+  return result;
+}
+
+const DIFF_CONTEXT = 3;
+
+function collapseDiff(diff: DiffLine[]): Array<DiffLine | { type: "ellipsis"; count: number }> {
+  type Out = DiffLine | { type: "ellipsis"; count: number };
+  const result: Out[] = [];
+
+  const isNearChange = diff.map((_, idx) => {
+    for (
+      let k = Math.max(0, idx - DIFF_CONTEXT);
+      k <= Math.min(diff.length - 1, idx + DIFF_CONTEXT);
+      k++
+    ) {
+      if (diff[k]!.type !== "equal") return true;
+    }
+    return false;
+  });
+
+  let i = 0;
+  while (i < diff.length) {
+    const line = diff[i]!;
+    if (line.type === "equal" && !isNearChange[i]) {
+      let count = 0;
+      while (i < diff.length && diff[i]!.type === "equal" && !isNearChange[i]) {
+        count++;
+        i++;
+      }
+      if (count > 0) result.push({ type: "ellipsis", count });
+    } else {
+      result.push(line);
+      i++;
+    }
+  }
+  return result;
+}
+
+const DIFF_LINE_LIMIT = 6000;
+
+function DiffView({ original, proposed }: { original: string; proposed: string }) {
+  const tooLarge = useMemo(
+    () => original.split("\n").length + proposed.split("\n").length > DIFF_LINE_LIMIT,
+    [original, proposed],
+  );
+  const diff = useMemo(
+    () => (tooLarge ? [] : computeLineDiff(original, proposed)),
+    [tooLarge, original, proposed],
+  );
+  const collapsed = useMemo(() => collapseDiff(diff), [diff]);
+  const hasChanges = diff.some((l) => l.type !== "equal");
+
+  if (tooLarge) {
+    return (
+      <div className="flex items-center justify-center py-8 text-sm text-[var(--text-muted)] px-6 text-center">
+        Content too large to diff. Use the side-by-side view to review changes.
+      </div>
+    );
+  }
+
+  if (!hasChanges) {
+    return (
+      <div className="flex items-center justify-center py-8 text-sm text-[var(--text-muted)]">
+        No changes
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="font-mono text-xs overflow-auto h-full"
+      style={{ scrollbarGutter: "stable both-edges" }}
+    >
+      {collapsed.map((entry, idx) => {
+        if (entry.type === "ellipsis") {
+          return (
+            <div
+              key={idx}
+              className="px-3 py-0.5 text-[var(--text-muted)] select-none bg-[var(--thumb-bg)] opacity-60"
+            >
+              ··· {entry.count} unchanged line{entry.count !== 1 ? "s" : ""}
+            </div>
+          );
+        }
+        const line = entry as DiffLine;
+        const bgClass =
+          line.type === "add"
+            ? "bg-green-50 text-green-900"
+            : line.type === "remove"
+              ? "bg-red-50 text-red-800 line-through opacity-75"
+              : "text-[var(--text)]";
+        const prefix = line.type === "add" ? "+ " : line.type === "remove" ? "- " : "  ";
+        return (
+          <div key={idx} className={`whitespace-pre-wrap leading-5 px-3 py-0 ${bgClass}`}>
+            <span className="select-none opacity-60">{prefix}</span>
+            {line.line || "\u00a0"}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function SuggestionReviewModal({
+  suggestion,
+  currentContent,
+  subredditName,
+  wikiFontSize,
+  onAccept,
+  onDeny,
+  onClose,
+  isActing,
+  actError,
+}: {
+  suggestion: WikiSuggestion;
+  currentContent: string | null;
+  subredditName: string;
+  wikiFontSize: WikiFontSize;
+  onAccept: () => void;
+  onDeny: () => void;
+  onClose: () => void;
+  isActing: boolean;
+  actError: string | null;
+}) {
+  const pageLabel = suggestion.page.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const dateStr = new Date(suggestion.createdAt).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+  const [highlightChanges, setHighlightChanges] = useState(false);
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col bg-[var(--bg)]">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100 shrink-0">
+        <div className="flex flex-col min-w-0">
+          <span className="text-sm font-semibold text-[var(--text)] truncate">
+            Suggestion by <span className="text-[var(--accent)]">u/{suggestion.username}</span> on{" "}
+            <span className="italic">{pageLabel}</span>
+          </span>
+          <span className="text-xs text-[var(--text-muted)] truncate">
+            &ldquo;{suggestion.description}&rdquo; &middot; {dateStr}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 shrink-0 ml-4">
+          {actError && <span className="text-xs text-red-500">{actError}</span>}
+          <button
+            onClick={() => setHighlightChanges((v) => !v)}
+            title="Toggle diff view"
+            className={`text-xs px-2.5 py-1.5 rounded border transition-colors cursor-pointer flex items-center gap-1.5 ${
+              highlightChanges
+                ? "bg-amber-50 border-amber-300 text-amber-700"
+                : "border-gray-300 text-[var(--text-muted)] hover:bg-[var(--control-bg)]"
+            }`}
+          >
+            <svg
+              className="w-3.5 h-3.5 shrink-0"
+              viewBox="0 0 16 16"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path d="M8 1a.75.75 0 0 1 .75.75V6h4.25a.75.75 0 0 1 0 1.5H8.75v4.25a.75.75 0 0 1-1.5 0V7.5H3a.75.75 0 0 1 0-1.5h4.25V1.75A.75.75 0 0 1 8 1Zm-5 9.25a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1-.75-.75Zm8 0a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1-.75-.75Z" />
+            </svg>
+            Highlight changes
+          </button>
+          <button
+            onClick={onDeny}
+            disabled={isActing}
+            className="text-xs px-3 py-1.5 rounded border border-red-300 text-red-600 hover:bg-red-50 transition-colors cursor-pointer disabled:opacity-50"
+          >
+            Deny
+          </button>
+          <button
+            onClick={onAccept}
+            disabled={isActing}
+            className="text-xs px-3 py-1.5 rounded bg-[var(--accent)] text-white hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50"
+          >
+            {isActing ? "Applying…" : "Accept"}
+          </button>
+          <button
+            onClick={onClose}
+            disabled={isActing}
+            className="text-xs px-2 py-1.5 rounded border border-gray-300 text-[var(--text-muted)] hover:bg-[var(--control-bg)] transition-colors cursor-pointer disabled:opacity-50"
+            title="Close"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+          </button>
+        </div>
+      </div>
+      {highlightChanges ? (
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="px-3 py-1 text-[10px] font-medium text-amber-700 bg-amber-50 border-b border-amber-100 shrink-0 flex items-center gap-1.5">
+            <svg className="w-3 h-3" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M8 1a.75.75 0 0 1 .75.75V6h4.25a.75.75 0 0 1 0 1.5H8.75v4.25a.75.75 0 0 1-1.5 0V7.5H3a.75.75 0 0 1 0-1.5h4.25V1.75A.75.75 0 0 1 8 1Zm-5 9.25a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1-.75-.75Zm8 0a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1-.75-.75Z" />
+            </svg>
+            DIFF — <span className="text-red-600">removed</span> /{" "}
+            <span className="text-green-700">added</span>
+          </div>
+          <DiffView original={currentContent ?? ""} proposed={suggestion.content} />
+        </div>
+      ) : (
+        <div className="flex-1 flex overflow-hidden">
+          <div className="flex-1 flex flex-col overflow-hidden border-r border-gray-100">
+            <div className="px-3 py-1 text-[10px] font-medium text-[var(--text-muted)] bg-[var(--thumb-bg)] border-b border-gray-100 shrink-0">
+              CURRENT
+            </div>
+            <div className="flex-1 overflow-auto" style={{ scrollbarGutter: "stable both-edges" }}>
+              {currentContent ? (
+                <WikiMarkdownContent
+                  content={currentContent}
+                  subredditName={subredditName}
+                  currentPage={suggestion.page}
+                  wikiFontSize={wikiFontSize}
+                  onPageChange={() => undefined}
+                  onCopyEchoLink={() => undefined}
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full text-sm text-[var(--text-muted)]">
+                  No existing content
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="px-3 py-1 text-[10px] font-medium text-[var(--accent)] bg-[var(--thumb-bg)] border-b border-gray-100 shrink-0">
+              SUGGESTED
+            </div>
+            <div className="flex-1 overflow-auto" style={{ scrollbarGutter: "stable both-edges" }}>
+              <WikiMarkdownContent
+                content={suggestion.content}
+                subredditName={subredditName}
+                currentPage={suggestion.page}
+                wikiFontSize={wikiFontSize}
+                onPageChange={() => undefined}
+                onCopyEchoLink={() => undefined}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CollaborativePanel({
+  config,
+  onConfigChanged,
+}: {
+  config: GameConfig;
+  onConfigChanged: (config: GameConfig) => void;
+}) {
+  const collaborativeMode = config.collaborativeMode;
+  const [isTogglingMode, setIsTogglingMode] = useState(false);
+
+  const [minKarmaField, setMinKarmaField] = useState(String(config.minKarma));
+  const [minAgeDaysField, setMinAgeDaysField] = useState(String(config.minAccountAgeDays));
+  const [isSavingThresholds, setIsSavingThresholds] = useState(false);
+  const thresholdsDirty =
+    minKarmaField !== String(config.minKarma) ||
+    minAgeDaysField !== String(config.minAccountAgeDays);
+
+  const [flairTemplateId, setFlairTemplateId] = useState<string | null>(null);
+  const [flairTemplates, setFlairTemplates] = useState<FlairTemplateInfo[]>([]);
+  const [isSavingFlair, setIsSavingFlair] = useState(false);
+
+  const [advCountField, setAdvCountField] = useState("0");
+  const [advFlairTemplateId, setAdvFlairTemplateId] = useState<string | null>(null);
+  const [isSavingAdv, setIsSavingAdv] = useState(false);
+
+  const [banned, setBanned] = useState<string[]>([]);
+  const [banInput, setBanInput] = useState("");
+  const [isBanning, setIsBanning] = useState(false);
+  const [banError, setBanError] = useState<string | null>(null);
+
+  const [loadingInfo, setLoadingInfo] = useState(false);
+
+  const loadCollabInfo = useCallback(async () => {
+    setLoadingInfo(true);
+    try {
+      const res = await fetch("/api/wiki/collab-info");
+      if (res.ok) {
+        const data: CollabInfoResponse = await res.json();
+        setBanned(data.banned);
+        setFlairTemplateId(data.flairTemplateId);
+        setFlairTemplates(data.flairTemplates);
+        setAdvCountField(String(data.advancedContributorCount));
+        setAdvFlairTemplateId(data.advancedContributorFlairTemplateId);
+      }
+    } catch {
+    } finally {
+      setLoadingInfo(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadCollabInfo();
+  }, [loadCollabInfo]);
+
+  const handleToggleMode = useCallback(async () => {
+    setIsTogglingMode(true);
+    try {
+      const res = await fetch("/api/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ collaborativeMode: !collaborativeMode }),
+      });
+      if (res.ok) {
+        onConfigChanged({ ...config, collaborativeMode: !collaborativeMode });
+      }
+    } catch {
+    } finally {
+      setIsTogglingMode(false);
+    }
+  }, [collaborativeMode, config, onConfigChanged]);
+
+  const handleSaveThresholds = useCallback(async () => {
+    const minKarma = Math.max(0, parseInt(minKarmaField, 10) || 0);
+    const minAccountAgeDays = Math.max(0, parseInt(minAgeDaysField, 10) || 0);
+    setIsSavingThresholds(true);
+    try {
+      const res = await fetch("/api/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ minKarma, minAccountAgeDays }),
+      });
+      if (res.ok) {
+        setMinKarmaField(String(minKarma));
+        setMinAgeDaysField(String(minAccountAgeDays));
+        onConfigChanged({ ...config, minKarma, minAccountAgeDays });
+      }
+    } catch {
+    } finally {
+      setIsSavingThresholds(false);
+    }
+  }, [minKarmaField, minAgeDaysField, config, onConfigChanged]);
+
+  const handleFlairChange = useCallback(async (templateId: string | null) => {
+    setIsSavingFlair(true);
+    try {
+      const body: SuggestionFlairRequest = { flairTemplateId: templateId };
+      const res = await fetch("/api/wiki/suggestion-flair", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        setFlairTemplateId(templateId);
+      }
+    } catch {
+    } finally {
+      setIsSavingFlair(false);
+    }
+  }, []);
+
+  const handleSaveAdvanced = useCallback(async () => {
+    const count = Math.max(0, parseInt(advCountField, 10) || 0);
+    setIsSavingAdv(true);
+    try {
+      const body: AdvancedContributorRequest = {
+        count,
+        flairTemplateId: advFlairTemplateId,
+      };
+      const res = await fetch("/api/wiki/advanced-contributor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        const data: AdvancedContributorResponse = await res.json();
+        setAdvCountField(String(data.count));
+        setAdvFlairTemplateId(data.flairTemplateId);
+      }
+    } catch {
+    } finally {
+      setIsSavingAdv(false);
+    }
+  }, [advCountField, advFlairTemplateId]);
+
+  const handleBan = useCallback(async () => {
+    const username = banInput.trim().replace(/^u\//, "");
+    if (!username) return;
+    setBanError(null);
+    setIsBanning(true);
+    try {
+      const body: WikiBanRequest = { username };
+      const res = await fetch("/api/wiki/ban", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        setBanned((prev) => (prev.includes(username) ? prev : [...prev, username]));
+        setBanInput("");
+      } else {
+        const err = (await res.json()) as ErrorResponse;
+        setBanError(err.message ?? "Failed to ban user");
+      }
+    } catch {
+      setBanError("Network error");
+    } finally {
+      setIsBanning(false);
+    }
+  }, [banInput]);
+
+  const handleUnban = useCallback(async (username: string) => {
+    try {
+      const body: WikiBanRequest = { username };
+      await fetch("/api/wiki/ban", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      setBanned((prev) => prev.filter((u) => u !== username));
+    } catch {}
+  }, []);
+
+  const inputCls =
+    "text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)] disabled:opacity-50";
+  const inputStyle = { backgroundColor: "var(--control-bg)", color: "var(--control-text)" };
+
+  return (
+    <div className="flex flex-col gap-3 max-w-lg">
+      {}
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-col min-w-0">
+          <span className="text-xs font-medium">Collaborative editing</span>
+          <span className="text-[10px] text-[var(--text-muted)]">
+            Community members suggest changes; mods approve before they go live
+          </span>
+        </div>
+        <button
+          onClick={() => void handleToggleMode()}
+          disabled={isTogglingMode}
+          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none disabled:opacity-50 ${
+            collaborativeMode ? "bg-[var(--accent)]" : "bg-gray-300"
+          }`}
+        >
+          <span
+            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+              collaborativeMode ? "translate-x-4" : "translate-x-0"
+            }`}
+          />
+        </button>
+      </div>
+
+      {collaborativeMode && (
+        <>
+          <div className="border-t border-gray-100" />
+
+          {}
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wide">
+              Eligibility
+            </span>
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-[var(--text-muted)] w-20 shrink-0">Min. karma</label>
+              <input
+                type="number"
+                min="0"
+                value={minKarmaField}
+                onChange={(e) => setMinKarmaField(e.target.value)}
+                placeholder="0"
+                className={`${inputCls} w-20`}
+                style={inputStyle}
+              />
+              <label className="text-xs text-[var(--text-muted)] w-24 shrink-0 ml-2">
+                Min. age (days)
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={minAgeDaysField}
+                onChange={(e) => setMinAgeDaysField(e.target.value)}
+                placeholder="0"
+                className={`${inputCls} w-20`}
+                style={inputStyle}
+              />
+              <button
+                onClick={() => void handleSaveThresholds()}
+                disabled={!thresholdsDirty || isSavingThresholds}
+                className="ml-auto text-xs px-2.5 py-1 rounded-full bg-[var(--accent)] text-white cursor-pointer disabled:opacity-30 shrink-0"
+              >
+                {isSavingThresholds ? "Saving…" : "Apply"}
+              </button>
+            </div>
+          </div>
+
+          {}
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wide">
+              Contributor flair
+            </span>
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-[var(--text-muted)] w-20 shrink-0">On accept</label>
+              <select
+                value={flairTemplateId ?? ""}
+                onChange={(e) => void handleFlairChange(e.target.value || null)}
+                disabled={isSavingFlair || loadingInfo}
+                className={`${inputCls} flex-1`}
+                style={inputStyle}
+              >
+                <option value="">No flair</option>
+                {flairTemplates.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.text || "(no label)"}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {}
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wide">
+              Advanced contributor flair
+            </span>
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-[var(--text-muted)] w-20 shrink-0">After</label>
+              <input
+                type="number"
+                min="0"
+                value={advCountField}
+                onChange={(e) => setAdvCountField(e.target.value)}
+                placeholder="0"
+                className={`${inputCls} w-16`}
+                style={inputStyle}
+              />
+              <span className="text-xs text-[var(--text-muted)] shrink-0">accepted</span>
+              <select
+                value={advFlairTemplateId ?? ""}
+                onChange={(e) => setAdvFlairTemplateId(e.target.value || null)}
+                disabled={loadingInfo}
+                className={`${inputCls} flex-1`}
+                style={inputStyle}
+              >
+                <option value="">No flair</option>
+                {flairTemplates.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.text || "(no label)"}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => void handleSaveAdvanced()}
+                disabled={isSavingAdv}
+                className="text-xs px-2.5 py-1 rounded-full bg-[var(--accent)] text-white cursor-pointer disabled:opacity-30 shrink-0"
+              >
+                {isSavingAdv ? "Saving…" : "Apply"}
+              </button>
+            </div>
+          </div>
+
+          {}
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wide">
+              Banned editors{banned.length > 0 ? ` (${banned.length})` : ""}
+            </span>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={banInput}
+                onChange={(e) => {
+                  setBanInput(e.target.value);
+                  setBanError(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void handleBan();
+                }}
+                placeholder="username"
+                className={`${inputCls} flex-1`}
+                style={inputStyle}
+              />
+              <button
+                onClick={() => void handleBan()}
+                disabled={isBanning || !banInput.trim()}
+                className="text-xs px-3 py-1 rounded border border-red-300 text-red-600 hover:bg-red-50 transition-colors cursor-pointer disabled:opacity-40 shrink-0"
+              >
+                {isBanning ? "Banning…" : "Ban"}
+              </button>
+            </div>
+            {banError && <span className="text-xs text-red-500">{banError}</span>}
+            {banned.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-0.5">
+                {banned.map((u) => (
+                  <div
+                    key={u}
+                    className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs border border-gray-200"
+                    style={{ backgroundColor: "var(--control-bg)" }}
+                  >
+                    <span className="text-[var(--text)]">u/{u}</span>
+                    <button
+                      onClick={() => void handleUnban(u)}
+                      className="text-[var(--text-muted)] hover:text-red-500 transition-colors cursor-pointer leading-none"
+                      title="Unban"
+                    >
+                      &times;
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function SubmissionsPanel({
+  subredditName,
+  wikiFontSize,
+}: {
+  subredditName: string;
+  wikiFontSize: WikiFontSize;
+}) {
+  const [suggestions, setSuggestions] = useState<WikiSuggestion[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [reviewSuggestion, setReviewSuggestion] = useState<WikiSuggestion | null>(null);
+  const [reviewCurrentContent, setReviewCurrentContent] = useState<string | null>(null);
+  const [isActing, setIsActing] = useState(false);
+  const [actError, setActError] = useState<string | null>(null);
+
+  const loadSuggestions = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/wiki/suggestions");
+      if (res.ok) {
+        const data: WikiSuggestionsResponse = await res.json();
+        setSuggestions(data.suggestions);
+      }
+    } catch {
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadSuggestions();
+  }, [loadSuggestions]);
+
+  const handleReview = useCallback(async (suggestion: WikiSuggestion) => {
+    setReviewSuggestion(suggestion);
+    setActError(null);
+    try {
+      const res = await fetch(`/api/wiki?page=${encodeURIComponent(suggestion.page)}`);
+      if (res.ok) {
+        const data: WikiResponse = await res.json();
+        setReviewCurrentContent(data.content);
+      } else {
+        setReviewCurrentContent(null);
+      }
+    } catch {
+      setReviewCurrentContent(null);
+    }
+  }, []);
+
+  const handleAccept = useCallback(async () => {
+    if (!reviewSuggestion) return;
+    setIsActing(true);
+    setActError(null);
+    try {
+      const body: WikiSuggestionActionRequest = { username: reviewSuggestion.username };
+      const res = await fetch("/api/wiki/suggestion/accept", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = (await res.json()) as ErrorResponse;
+        setActError(err.message ?? "Failed to accept");
+        return;
+      }
+      setReviewSuggestion(null);
+      setSuggestions((prev) => prev.filter((s) => s.username !== reviewSuggestion.username));
+    } catch {
+      setActError("Network error");
+    } finally {
+      setIsActing(false);
+    }
+  }, [reviewSuggestion]);
+
+  const handleDeny = useCallback(async () => {
+    if (!reviewSuggestion) return;
+    setIsActing(true);
+    setActError(null);
+    try {
+      const body: WikiSuggestionActionRequest = { username: reviewSuggestion.username };
+      const res = await fetch("/api/wiki/suggestion/deny", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = (await res.json()) as ErrorResponse;
+        setActError(err.message ?? "Failed to deny");
+        return;
+      }
+      setReviewSuggestion(null);
+      setSuggestions((prev) => prev.filter((s) => s.username !== reviewSuggestion.username));
+    } catch {
+      setActError("Network error");
+    } finally {
+      setIsActing(false);
+    }
+  }, [reviewSuggestion]);
+
+  const handleQuickDeny = useCallback(async (username: string) => {
+    try {
+      const body: WikiSuggestionActionRequest = { username };
+      await fetch("/api/wiki/suggestion/deny", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      setSuggestions((prev) => prev.filter((s) => s.username !== username));
+    } catch {}
+  }, []);
+
+  return (
+    <>
+      {reviewSuggestion && (
+        <SuggestionReviewModal
+          suggestion={reviewSuggestion}
+          currentContent={reviewCurrentContent}
+          subredditName={subredditName}
+          wikiFontSize={wikiFontSize}
+          onAccept={() => void handleAccept()}
+          onDeny={() => void handleDeny()}
+          onClose={() => setReviewSuggestion(null)}
+          isActing={isActing}
+          actError={actError}
+        />
+      )}
+
+      <div
+        className="flex-1 overflow-auto px-4 py-4"
+        style={{ scrollbarGutter: "stable both-edges" }}
+      >
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-sm font-medium text-[var(--text)]">
+            Pending submissions{suggestions.length > 0 ? ` (${suggestions.length})` : ""}
+          </span>
+          <button
+            onClick={() => void loadSuggestions()}
+            className="text-xs text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
+          >
+            Refresh
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="flex items-center gap-2 text-sm text-[var(--text-muted)] py-4">
+            <div className="w-3.5 h-3.5 border border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+            Loading…
+          </div>
+        ) : suggestions.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 gap-2">
+            <span className="text-sm text-[var(--text-muted)]">No pending submissions.</span>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2 max-w-2xl">
+            {suggestions.map((p) => {
+              const pageLabel = p.page.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+              const dateStr = new Date(p.createdAt).toLocaleDateString(undefined, {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              });
+              return (
+                <div
+                  key={p.username}
+                  className="flex items-start gap-3 p-3 rounded-lg border border-gray-200"
+                  style={{ backgroundColor: "var(--control-bg)" }}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-sm font-medium text-[var(--text)]">u/{p.username}</span>
+                      <span className="text-xs text-[var(--text-muted)]">
+                        &rarr; <em>{pageLabel}</em>
+                      </span>
+                      <span className="text-xs text-[var(--text-muted)]">&middot; {dateStr}</span>
+                    </div>
+                    <p className="text-xs text-[var(--text-muted)] mt-0.5 line-clamp-2">
+                      {p.description}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      onClick={() => void handleReview(p)}
+                      className="text-xs px-2 py-1 rounded bg-[var(--accent)] text-white hover:opacity-90 cursor-pointer"
+                    >
+                      Review
+                    </button>
+                    <button
+                      onClick={() => void handleQuickDeny(p.username)}
+                      className="text-xs px-2 py-1 rounded border border-red-300 text-red-600 hover:bg-red-50 cursor-pointer"
+                    >
+                      Deny
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+type SettingsTab = "general" | "game" | "style" | "theme" | "mapping" | "collaborative";
 
 function SettingsView({
   mappingText,
@@ -2608,6 +3795,7 @@ function SettingsView({
     { value: "style", label: "Style" },
     { value: "theme", label: "Theme" },
     { value: "mapping", label: "Mapping" },
+    { value: "collaborative", label: "Collaborative" },
   ] as const;
 
   return (
@@ -2931,6 +4119,10 @@ function SettingsView({
             onSave={handleSaveMappingCallback}
           />
         )}
+
+        {settingsTab === "collaborative" && (
+          <CollaborativePanel config={config} onConfigChanged={onConfigChanged} />
+        )}
       </div>
     </>
   );
@@ -2942,7 +4134,9 @@ export const App = () => {
   const [subredditName, setSubredditName] = useState("");
   const [config, setConfig] = useState<GameConfig | null>(null);
   const [isMod, setIsMod] = useState(false);
+  const [canSuggest, setCanSuggest] = useState(false);
   const [username, setUsername] = useState("");
+  const [suggestionToLoad, setSuggestionToLoad] = useState<string | null>(null);
   const [meta, setMeta] = useState<EchoMeta | null>(null);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -2998,6 +4192,10 @@ export const App = () => {
   const [showEchoLinkDialog, setShowEchoLinkDialog] = useState(false);
   const [echoLinkInput, setEchoLinkInput] = useState("");
   const [echoLinkError, setEchoLinkError] = useState<string | null>(null);
+  const [earnedFlairs, setEarnedFlairs] = useState<FlairTemplateInfo[]>([]);
+  const [equippedFlairId, setEquippedFlairId] = useState<string | null>(null);
+  const [showFlairDropdown, setShowFlairDropdown] = useState(false);
+  const flairDropdownRef = useRef<HTMLDivElement>(null);
   const [assetsGridReady, setAssetsGridReady] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [showBreadcrumb, setShowBreadcrumb] = useState(false);
@@ -3052,6 +4250,48 @@ export const App = () => {
         }
       } catch {}
     })();
+  }, []);
+
+  useEffect(() => {
+    if (!canSuggest) return;
+    void (async () => {
+      try {
+        const res = await fetch("/api/wiki/my-flairs");
+        if (res.ok) {
+          const data: MyFlairsResponse = await res.json();
+          setEarnedFlairs(data.earned);
+          setEquippedFlairId(data.equipped);
+        }
+      } catch {}
+    })();
+  }, [canSuggest]);
+
+  useEffect(() => {
+    if (!showFlairDropdown) return;
+    const handler = (e: MouseEvent) => {
+      if (flairDropdownRef.current && !flairDropdownRef.current.contains(e.target as Node)) {
+        setShowFlairDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showFlairDropdown]);
+
+  const handleEquipFlair = useCallback(async (flairTemplateId: string | null) => {
+    try {
+      const body: EquipFlairRequest = { flairTemplateId };
+      const res = await fetch("/api/wiki/equip-flair", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        const data: EquipFlairResponse = await res.json();
+        setEquippedFlairId(data.flairTemplateId);
+        showToast(data.flairTemplateId ? "Flair equipped!" : "Flair removed");
+      }
+    } catch {}
+    setShowFlairDropdown(false);
   }, []);
 
   useEffect(() => {
@@ -3182,6 +4422,7 @@ export const App = () => {
         setSubredditName(data.subredditName);
         setConfig(data.config);
         setIsMod(data.isMod);
+        setCanSuggest(data.canSuggest);
         setUsername(data.username);
         setAppearance(data.appearance);
         initConfig = data.config;
@@ -3564,6 +4805,16 @@ export const App = () => {
 
   const handleAnchorConsumed = useCallback(() => setWikiTargetAnchor(null), []);
 
+  const handleNavigateToSuggestion = useCallback((page: string, suggestionContent: string) => {
+    setWikiCurrentPage(page);
+    setSuggestionToLoad(suggestionContent);
+    setActiveTab("wiki");
+  }, []);
+
+  const handleSuggestionLoaded = useCallback(() => {
+    setSuggestionToLoad(null);
+  }, []);
+
   const handleWipe = useCallback(async () => {
     revokeAllBlobUrls();
     await wipeAll();
@@ -3591,6 +4842,10 @@ export const App = () => {
     async (newConfig: GameConfig) => {
       const gameNameChanged = config?.gameName !== newConfig.gameName;
       setConfig(newConfig);
+
+      if (!newConfig.collaborativeMode && activeTab === "submissions") {
+        setActiveTab("wiki");
+      }
       if (gameNameChanged) {
         await handleWipe();
         if (!newConfig.gameName) {
@@ -3602,7 +4857,7 @@ export const App = () => {
         }
       }
     },
-    [config?.gameName, handleWipe],
+    [config?.gameName, handleWipe, activeTab],
   );
 
   const handleMappingSaved = useCallback(
@@ -4058,6 +5313,29 @@ export const App = () => {
                     )}
                   </button>
                 )}
+                {isMod && config?.collaborativeMode && (
+                  <button
+                    className={`text-sm px-3 py-1 rounded-full transition-colors cursor-pointer ${
+                      activeTab === "submissions"
+                        ? "bg-[var(--accent)] text-white"
+                        : "text-[var(--text-muted)]"
+                    }`}
+                    style={
+                      activeTab !== "submissions" ? { backgroundColor: "transparent" } : undefined
+                    }
+                    onMouseEnter={(e) => {
+                      if (activeTab !== "submissions")
+                        e.currentTarget.style.backgroundColor = "var(--thumb-bg)";
+                    }}
+                    onMouseLeave={(e) => {
+                      if (activeTab !== "submissions")
+                        e.currentTarget.style.backgroundColor = "transparent";
+                    }}
+                    onClick={() => setActiveTab("submissions")}
+                  >
+                    Submissions
+                  </button>
+                )}
                 {isMod && (
                   <button
                     className={`text-sm px-3 py-1 rounded-full transition-colors cursor-pointer ${
@@ -4088,6 +5366,65 @@ export const App = () => {
                 </span>
               )}
               <div className="flex items-center gap-3">
+                {earnedFlairs.length > 0 && (
+                  <div ref={flairDropdownRef} className="relative">
+                    <button
+                      className="text-gray-400 hover:text-[var(--text-muted)] transition-colors cursor-pointer flex items-center gap-1"
+                      title="Equip flair"
+                      onClick={() => setShowFlairDropdown((v) => !v)}
+                    >
+                      <svg
+                        className="w-4 h-4"
+                        viewBox="0 0 16 16"
+                        fill="currentColor"
+                        aria-hidden="true"
+                      >
+                        <path d="M2.5 1A1.5 1.5 0 0 0 1 2.5v4.563c0 .398.158.779.44 1.06l6.294 6.294a1.5 1.5 0 0 0 2.121 0l4.563-4.563a1.5 1.5 0 0 0 0-2.12L8.124 1.439A1.5 1.5 0 0 0 7.063 1H2.5ZM4 5.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Z" />
+                      </svg>
+                    </button>
+                    {showFlairDropdown && (
+                      <div className="absolute right-0 top-full mt-1 w-52 bg-[var(--bg)] border border-gray-200 rounded-lg shadow-xl z-50 py-1 overflow-hidden">
+                        <div className="px-3 py-1.5 text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wide border-b border-gray-100">
+                          Equip flair
+                        </div>
+                        {earnedFlairs.map((flair) => (
+                          <button
+                            key={flair.id}
+                            className="w-full text-left px-3 py-2 text-xs hover:bg-[var(--thumb-bg)] cursor-pointer flex items-center gap-2 transition-colors"
+                            onClick={() => void handleEquipFlair(flair.id)}
+                          >
+                            <span
+                              className="px-1.5 py-0.5 rounded text-[10px] font-medium truncate max-w-[140px]"
+                              style={{
+                                backgroundColor: flair.backgroundColor || "var(--accent)",
+                                color: flair.textColor || "#fff",
+                              }}
+                            >
+                              {flair.text}
+                            </span>
+                            {equippedFlairId === flair.id && (
+                              <svg
+                                className="w-3 h-3 text-[var(--accent)] ml-auto shrink-0"
+                                viewBox="0 0 16 16"
+                                fill="currentColor"
+                              >
+                                <path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z" />
+                              </svg>
+                            )}
+                          </button>
+                        ))}
+                        {equippedFlairId && (
+                          <button
+                            className="w-full text-left px-3 py-2 text-xs text-[var(--text-muted)] hover:bg-[var(--thumb-bg)] cursor-pointer border-t border-gray-100 transition-colors"
+                            onClick={() => void handleEquipFlair(null)}
+                          >
+                            Remove flair
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
                 <button
                   className="text-gray-400 hover:text-[var(--text-muted)] transition-colors cursor-pointer"
                   title="Open EchoLink"
@@ -4284,6 +5621,10 @@ export const App = () => {
               onCopyEchoLink={handleCopyEchoLink}
               targetAnchor={wikiTargetAnchor}
               onAnchorConsumed={handleAnchorConsumed}
+              canSuggest={canSuggest}
+              suggestionToLoad={suggestionToLoad}
+              onSuggestionLoaded={handleSuggestionLoaded}
+              onNavigateToSuggestion={handleNavigateToSuggestion}
             />
           )}
 
@@ -4385,6 +5726,10 @@ export const App = () => {
                 )}
               </div>
             </>
+          )}
+
+          {activeTab === "submissions" && isMod && config?.collaborativeMode && (
+            <SubmissionsPanel subredditName={subredditName} wikiFontSize={style.wikiFontSize} />
           )}
 
           {activeTab === "settings" && isMod && config && (

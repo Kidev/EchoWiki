@@ -18,6 +18,9 @@ export type GameConfig = {
   wikiDescription: string;
   homeBackground: HomeBackground;
   homeLogo: HomeLogo;
+  collaborativeMode: boolean;
+  minKarma: number;
+  minAccountAgeDays: number;
 };
 
 export type ConfigResponse = {
@@ -33,6 +36,9 @@ export type ConfigUpdateRequest = {
   wikiDescription?: string;
   homeBackground?: HomeBackground;
   homeLogo?: HomeLogo;
+  collaborativeMode?: boolean;
+  minKarma?: number;
+  minAccountAgeDays?: number;
 };
 
 export type ConfigUpdateResponse = {
@@ -58,6 +64,8 @@ export type InitResponse = {
   isMod: boolean;
   config: GameConfig;
   appearance: SubredditAppearance;
+  collaborativeMode: boolean;
+  canSuggest: boolean;
 };
 
 export type WikiResponse = {
@@ -140,6 +148,103 @@ export type WikiUpdateRequest = {
 export type WikiUpdateResponse = {
   type: "wiki-updated";
   page: string;
+};
+
+export type WikiSuggestion = {
+  username: string;
+  page: string;
+  content: string;
+  description: string;
+  createdAt: number;
+};
+
+export type WikiSuggestionRequest = {
+  page: string;
+  content: string;
+  description: string;
+};
+
+export type WikiSuggestionResponse = {
+  type: "wiki-suggestion";
+  suggestion: WikiSuggestion | null;
+};
+
+export type WikiSuggestionsResponse = {
+  type: "wiki-suggestions";
+  suggestions: WikiSuggestion[];
+};
+
+export type WikiSuggestionActionRequest = {
+  username: string;
+};
+
+export type WikiSuggestionActionResponse = {
+  type: "wiki-suggestion-action";
+};
+
+export type WikiBanRequest = {
+  username: string;
+};
+
+export type WikiBanResponse = {
+  type: "wiki-ban";
+};
+
+export type WikiBansResponse = {
+  type: "wiki-bans";
+  banned: string[];
+};
+
+export type FlairTemplateInfo = {
+  id: string;
+  text: string;
+  textColor: string;
+  backgroundColor: string;
+};
+
+export type CollabInfoResponse = {
+  type: "collab-info";
+  wikiEditMode: "disabled" | "modonly" | "anyone" | null;
+  banned: string[];
+  flairTemplateId: string | null;
+  flairTemplates: FlairTemplateInfo[];
+  advancedContributorCount: number;
+  advancedContributorFlairTemplateId: string | null;
+};
+
+export type SuggestionFlairRequest = {
+  flairTemplateId: string | null;
+};
+
+export type SuggestionFlairResponse = {
+  type: "suggestion-flair";
+  flairTemplateId: string | null;
+};
+
+export type AdvancedContributorRequest = {
+  count: number;
+  flairTemplateId: string | null;
+};
+
+export type AdvancedContributorResponse = {
+  type: "advanced-contributor";
+  count: number;
+  flairTemplateId: string | null;
+};
+
+export type MyFlairsResponse = {
+  type: "my-flairs";
+  earned: FlairTemplateInfo[];
+  equipped: string | null;
+};
+
+export type EquipFlairRequest = {
+  flairTemplateId: string | null;
+};
+
+export type EquipFlairResponse = {
+  type: "equip-flair";
+  flairTemplateId: string | null;
 };
 
 export type ErrorResponse = {

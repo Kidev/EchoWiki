@@ -1,33 +1,75 @@
 # EchoWiki
 
-For all the communities sharing their passion for an RPG Maker game, this app turns your subreddit wiki into an interactive and rich experience. Users owning the same game bring their own files from their own copy, those assets are processed and stored locally in their browser, and are displayed when they encounter echo links in the wiki. Nothing is uploaded to any server.
+Rich wikis for Reddit communities. Live editing, advanced markdown, collaborative contributions, and for RPG Maker games: in-game assets from each player's own copy. No uploads.
 
 [EchoWiki is available on GitHub](https://github.com/Kidev/EchoWiki)
 
-## How It Works
+EchoWiki turns a subreddit wiki into a proper editing and reading environment. Moderators write and update pages inside the app with a live Markdown preview. Readers get richer formatting than Reddit's native wiki. Contributors can propose changes that mods review before merging. For RPG Maker communities specifically, the app resolves special `echo://` links to in-game assets that each reader loads from their own copy of the game, without any files being uploaded anywhere.
 
-**Import**: Users select their game folder. The app auto-detects the engine and extracts assets entirely in the browser. Nothing is uploaded.
+## Wiki
 
-**Browse**: Wiki pages render `echo://` links as inline images and audio players. An asset browser lets users explore all their files and copy echo links for use in the wiki.
+Wiki pages are fetched from the subreddit's wiki via the Reddit API and rendered inside the app with a full Markdown engine.
 
-**Wiki**: The subreddit wiki is displayed directly inside the app. Links between wiki pages navigate in-app, anchor links scroll to the right section, and external links open normally. Moderators can write wiki pages with echo links that resolve to each user's own local copy of the game assets.
+Supported formatting:
+
+- Standard GFM: tables, code blocks, lists, blockquotes, horizontal rules
+- GitHub-style alerts (`> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]`, `> [!CAUTION]`) with colored borders and icons
+- Raw HTML via `rehype-raw`, enabling floating infoboxes, layout grids, and inline style overrides
+- Echo links resolved as inline images and audio players
+- Anchor links scrolling to the target heading within the page
+- External links opening in the browser
+
+Navigation uses a breadcrumb bar that slides down from the top when hovering the Wiki tab. Each segment in the breadcrumb has a dropdown showing sibling pages at that level.
+
+### Live Editor
+
+Moderators can edit wiki pages directly inside the app. An edit button appears in the top-right corner of the wiki view when in expanded mode. Clicking it opens a split-pane editor: the left pane shows a live Markdown preview and the right pane is a raw Markdown textarea. Saving requires entering a reason for the change. The reason is prefixed with the moderator's username and stored in the Reddit wiki revision history. Navigating away while editing prompts for confirmation before discarding changes.
+
+HTML `style` attributes on echo image tags (e.g. `<img src="echo://..." style="width: 120px">`) are applied client-side, allowing layout control from wiki source.
+
+### Section Links
+
+Every heading has a copy-link button that appears on hover. Clicking it copies an `echolink://` URL pointing to that specific section. These links can be shared with other users of the same subreddit's EchoWiki. To open one, use the link icon in the top bar to open the EchoLink dialog, then paste the URL. The dialog also accepts `echo://` asset paths to jump directly to a file in the asset browser.
+
+## Collaborative Editing
+
+When collaborative mode is enabled, users who meet the subreddit's eligibility thresholds (karma and account age, both configurable) can suggest changes to any wiki page. Each user can have one active suggestion at a time.
+
+### Suggestions
+
+Suggesting a change opens the same split-pane editor as the mod editor, with two tabs in the preview pane:
+
+- **Preview**: live rendered Markdown of the suggested content
+- **Highlight changes**: a unified diff view of the raw Markdown, with removed lines in red and added lines in green, and unchanged content collapsed to context blocks
+
+Submitting requires a short description of what changed. The suggestion is queued for mod review.
+
+### Mod Review
+
+Moderators see a Submissions tab listing all pending suggestions. Clicking Review opens a full-screen modal showing the current page content alongside the suggested content. A "Highlight changes" button in the header switches the view from side-by-side rendered Markdown to a unified diff of the raw source.
+
+Mods can accept or deny each submission. Accepting writes the suggested content to the Reddit wiki with the contributor's username in the revision reason.
+
+### Flair Rewards
+
+Mods can configure two flair templates in the Collaborative settings: one for contributors and one for advanced contributors (awarded after a configurable number of accepted suggestions). When a suggestion is accepted, the contributor earns the appropriate flair based on their acceptance count.
+
+Flairs are not assigned automatically. Users choose when to equip them using a dropdown in the top bar, to the left of the EchoLink button. The dropdown lists all earned flairs with their styled previews. Users can switch between earned flairs at any time or remove their flair.
 
 ## Echo Links
 
-Standard markdown with the `echo://` scheme:
+Echo links are standard Markdown image or link syntax using the `echo://` scheme:
 
 ```markdown
 ![Character portrait](echo://img/characters/hero.png)
 [Battle theme](echo://audio/bgm/battle.ogg)
 ```
 
-Users who have imported the game see resolved assets inline. Everyone else (and those reading the raw wiki on Reddit) sees the alt text only.
+Users who have imported their copy of the game see assets resolved inline. Everyone else, including those reading the raw wiki on Reddit, sees only the alt text. Nothing is uploaded to any server.
 
-## Asset Editions
+### Asset Editions
 
-Echo links support edition parameters that transform how assets are displayed. Editions use URL query-parameter syntax (`?` and `&`) appended to the path and are applied client-side in real-time.
-
-Available editions:
+Echo links support edition parameters that transform how assets are displayed, using URL query-parameter syntax appended to the path. Editions are applied client-side in real-time.
 
 | Edition    | Syntax                    | Description                                             |
 | ---------- | ------------------------- | ------------------------------------------------------- |
@@ -36,16 +78,20 @@ Available editions:
 | **Speed**  | `?speed=value`            | Sets audio playback speed (0.25 to 4.0, default 1.0)    |
 | **Pitch**  | `?pitch=value`            | Shifts audio pitch in semitones (-12 to +12, default 0) |
 
-Editions can be combined with `&`:
+Editions combine with `&`:
 
 ```markdown
 ![Hero walking](echo://img/characters/actor1.png?crop&sprite=12,8,3)
 [Battle theme fast](echo://audio/bgm/battle.ogg?speed=2.0&pitch=-3)
 ```
 
-The asset preview lightbox includes interactive controls for applying editions. The generated echo link (copied via the "Copy ECHO" button) automatically includes the active edition suffixes.
+The asset preview lightbox includes interactive controls for applying editions. The generated echo link (copied via the copy button) includes the active edition suffixes.
 
-## Supported Engines
+## Asset Import
+
+Users select their game folder. The app auto-detects the engine, extracts assets entirely in the browser, and stores them in IndexedDB. Nothing is uploaded.
+
+### Supported Engines
 
 | Engine               | Format            |
 | -------------------- | ----------------- |
@@ -59,38 +105,13 @@ The asset preview lightbox includes interactive controls for applying editions. 
 
 Engine detection is automatic. Games using mkxp with RTP archives (.dat files) are also supported.
 
-## Wiki
-
-Wiki pages are fetched from the subreddit's wiki via the Reddit API. Navigating between pages happens in-app via a breadcrumb bar that slides down from the top menu when hovering the Wiki tab. The breadcrumb shows the current page path and dropdown arrows to navigate to sibling pages at each level.
-
-Markdown rendering supports:
-
-- Standard GFM features: tables, code blocks, lists, blockquotes, horizontal rules
-- GitHub-style alerts (`> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]`, `> [!CAUTION]`) with colored borders, icons, and bold titles
-- HTML content via `rehype-raw`, used for floating infoboxes and layout grids
-- Echo links resolved inline as images or audio players
-- Anchor links scrolling within the current page
-- External links opening in the browser
-
-All wiki content is themed to match the configured color scheme.
-
-### Section Links
-
-Every wiki heading has a copy-link button that appears on hover. Clicking it copies an `echolink://` URL pointing to that specific section. These links can be shared with other users of the same subreddit's EchoWiki. To open one, click the link icon in the Wiki tab bar to open the EchoLink dialog, then paste the URL. The dialog also accepts `echo://` asset paths to jump directly to a specific file in the asset browser.
-
-### Editing
-
-Moderators can edit wiki pages directly inside the app. An edit button appears in the top-right corner of the wiki view when in expanded mode. Clicking it opens a split-pane editor: the left pane shows a live Markdown preview and the right pane is a raw Markdown textarea. Saving requires entering a reason for the change; the reason is prefixed with the moderator's username and stored in the Reddit wiki revision history. Navigating away while editing prompts for confirmation before discarding changes.
-
-HTML `style` attributes on echo image tags (e.g. `<img src="echo://..." style="width: 120px">`) are applied client-side, allowing fine-grained layout control from wiki source.
-
 ## Asset Browser
 
-A gallery view with filter tabs (Images, Audio) and subfolder navigation. Long asset names scroll on hover. Clicking any asset opens a full preview with a close button (image lightbox or audio player with frequency visualization). Right-clicking or using the copy button copies the echo markdown to the clipboard. When a filename mapping is configured, assets display mapped names. Pagination loads more assets on demand.
+A gallery view with filter tabs (Images, Audio) and subfolder navigation. Clicking any asset opens a full preview with a close button, an image lightbox or an audio player with frequency visualization. Right-clicking or using the copy button copies the echo Markdown to the clipboard. When a filename mapping is configured, assets display their mapped names. Pagination loads more assets on demand.
 
 ## Mod Settings
 
-Moderators see a Settings tab with five sections and a single Save button in the tab bar.
+Moderators see a Settings tab with sections for General, Game, Style, Theme, Mapping, and Collaborative configuration.
 
 ### General
 
@@ -99,7 +120,7 @@ Moderators see a Settings tab with five sections and a single Save button in the
 
 ### Game
 
-- **Game Title**: Displayed to users during import. If the detected game title does not match, a warning is shown.
+- **Game Title**: Displayed to users during import. A warning appears if the detected title does not match.
 - **Engine**: Select the engine type or leave on auto for automatic detection.
 - **Encryption Key**: Required for games with encrypted assets.
 
@@ -113,15 +134,15 @@ Moderators see a Settings tab with five sections and a single Save button in the
 
 ### Theme
 
-Separate light and dark mode configuration. Two-column layout with foreground colors (Accent, Links, Text, Muted Text) on the left and background colors (Background, Thumbnail Bg, Control Bg, Control Text) on the right. Each color has a reset button to restore the default derived from the subreddit's appearance settings. The app follows the user's system light/dark preference.
+Separate light and dark mode configuration. Each color has a reset button to restore the default derived from the subreddit's appearance settings. The app follows the user's system light/dark preference.
 
 ### Mapping
 
-Split-pane editor with a draggable divider. The top panel shows a live preview table of parsed mappings (Original / Mapped To) with a sticky header and scrollable rows. The bottom panel is a code editor with JS-style syntax highlighting for strings, colons, and comments.
+Split-pane editor with a draggable divider. The top panel shows a live preview table of parsed mappings (Original / Mapped To). The bottom panel is a code editor with syntax highlighting for strings, colons, and comments.
 
-Mods define `"original": "mapped"` pairs (one per line, comments supported). Mapped names replace raw filenames in the asset browser and echo links.
+Mods define `"original": "mapped"` pairs (one per line, comments supported). Mapped names replace raw filenames in the asset browser and in echo links.
 
-When a mapping is changed or removed, any wiki echo links that referenced the old mapped name are automatically replaced with the original hash name. A notification shows how many replacements were made and which pages were updated.
+When a mapping is changed or removed, any wiki echo links referencing the old mapped name are automatically replaced with the original filename. A notification shows how many replacements were made and which pages were updated.
 
 Example:
 
@@ -134,14 +155,20 @@ Example:
 "dungeon_a1": "cave_floor"
 ```
 
+### Collaborative
+
+- **Collaborative mode**: Toggle to enable or disable community suggestions.
+- **Eligibility thresholds**: Minimum karma and account age required to submit suggestions.
+- **Contributor flair**: Flair template awarded to users after their first accepted suggestion.
+- **Advanced contributor flair**: Flair template and acceptance count threshold for the advanced tier.
+- **Banned contributors**: List of users banned from submitting suggestions.
+
 ## A Note to Game Developers
 
-Fan wikis happen. For any game with a dedicated community, players will build wikis filled with screenshots, ripped sprites, and re-hosted audio. This is the reality of passionate fanbases, and it has always been largely uncontrollable: assets end up scattered across third-party sites, reposted without context, and stripped of any connection to the original product.
+Fan wikis happen. For any game with a dedicated community, players will build wikis filled with screenshots, ripped sprites, and re-hosted audio. Assets end up scattered across third-party sites, reposted without context, and stripped of any connection to the original product.
 
-EchoWiki takes a fundamentally different approach. No asset is ever uploaded, hosted, or distributed by anyone. Each user loads files from their own purchased copy of the game, and those files never leave their machine. The wiki references assets by filename, but every single user must own and import the game themselves for anything to appear. There is no server hosting your art, no CDN serving your music, no download link anywhere. If someone does not own the game, they see nothing. The app actively encourages ownership rather than working around it.
-
-If you are a developer whose game has an EchoWiki community, your fans are building something beautiful around the world you created, and they are doing it without redistributing a single byte of your work.
+EchoWiki takes a different approach. No asset is ever uploaded, hosted, or distributed by anyone. Each user loads files from their own purchased copy of the game, and those files never leave their machine. The wiki references assets by filename, but every reader must own and import the game themselves for anything to appear. There is no server hosting the art, no CDN serving the music, no download link anywhere. If someone does not own the game, they see nothing. The app encourages ownership rather than working around it.
 
 ## Privacy
 
-All game files are processed locally in the browser using IndexedDB. No assets are uploaded anywhere. Server-side storage (Redis) only holds mod configuration: game title, style settings, and filename mappings. See [PRIVACY_POLICY.md](https://raw.githubusercontent.com/Kidev/EchoWiki/refs/heads/main/PRIVACY_POLICY.md) and [TERMS_AND_CONDITIONS.md](https://raw.githubusercontent.com/Kidev/EchoWiki/refs/heads/main/TERMS_AND_CONDITIONS.md).
+All game files are processed locally in the browser using IndexedDB. No assets are uploaded anywhere. Server-side storage (Redis) holds only mod configuration: game title, style settings, filename mappings, and collaborative settings. See [PRIVACY_POLICY.md](https://raw.githubusercontent.com/Kidev/EchoWiki/refs/heads/main/PRIVACY_POLICY.md) and [TERMS_AND_CONDITIONS.md](https://raw.githubusercontent.com/Kidev/EchoWiki/refs/heads/main/TERMS_AND_CONDITIONS.md).
