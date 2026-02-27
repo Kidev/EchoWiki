@@ -12,6 +12,7 @@ export const Splash = () => {
   const [meta, setMeta] = useState<EchoMeta | null>(null);
   const [ready, setReady] = useState(false);
   const [isGameIndependent, setIsGameIndependent] = useState(false);
+  const [serverDown, setServerDown] = useState(false);
 
   useEffect(() => {
     const check = async () => {
@@ -20,16 +21,21 @@ export const Splash = () => {
         fetch("/api/config").catch(() => null),
       ]);
       setImported(has);
+
+      if (!configRes || !configRes.ok) {
+        setServerDown(true);
+        setReady(true);
+        return;
+      }
+
       if (has) {
         const m = await getMeta();
         setMeta(m ?? null);
       }
-      if (configRes?.ok) {
-        try {
-          const data: ConfigResponse = await configRes.json();
-          setIsGameIndependent(!data.config.gameName);
-        } catch {}
-      }
+      try {
+        const data: ConfigResponse = await configRes.json();
+        setIsGameIndependent(!data.config.gameName);
+      } catch {}
       setReady(true);
     };
     void check();
@@ -51,7 +57,32 @@ export const Splash = () => {
         />
       </div>
 
-      {ready && (
+      {ready && serverDown ? (
+        <div className="flex flex-col items-center gap-3 text-center px-6 max-w-xs">
+          <svg
+            className="w-6 h-6 opacity-60"
+            style={{ color: "#677db7" }}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
+            />
+          </svg>
+          <p className="text-sm font-semibold" style={{ color: "#c0c0d0" }}>
+            EchoWiki is not available
+          </p>
+          <p className="text-xs leading-relaxed" style={{ color: "#677db7" }}>
+            This app may have been removed from the subreddit.
+            <br />
+            Contact the moderators for more information.
+          </p>
+        </div>
+      ) : ready ? (
         <>
           <p className="text-sm" style={{ color: "#677db7" }}>
             Hey {context.username ?? "user"}
@@ -94,7 +125,7 @@ export const Splash = () => {
             {isGameIndependent ? "Open Wiki" : imported ? "Browse Echoes" : "Import Game Files"}
           </button>
         </>
-      )}
+      ) : null}
     </div>
   );
 };

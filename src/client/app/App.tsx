@@ -77,7 +77,7 @@ import {
 import { getAsset } from "../lib/idb";
 import type { EchoMeta } from "../lib/idb";
 
-type AppState = "loading" | "no-assets" | "importing" | "ready";
+type AppState = "loading" | "no-assets" | "importing" | "ready" | "server-unavailable";
 
 type ActiveTab = "wiki" | "assets" | "submissions" | "settings";
 
@@ -4426,7 +4426,13 @@ export const App = () => {
         setUsername(data.username);
         setAppearance(data.appearance);
         initConfig = data.config;
-      } catch {}
+      } catch (e) {
+        if (e instanceof TypeError) {
+          setInitResolved(true);
+          setAppState("server-unavailable");
+          return;
+        }
+      }
 
       try {
         const styleRes = await stylePromise;
@@ -5242,6 +5248,43 @@ export const App = () => {
                   {error}
                 </div>
               )}
+            </div>
+          )}
+
+          {appState === "server-unavailable" && (
+            <div
+              className="flex flex-col items-center gap-4 max-w-xs text-center home-content-reveal"
+              style={{
+                position: "absolute",
+                top: "50%",
+                transform: "translateY(-50%)",
+                zIndex: 3,
+                paddingLeft: 24,
+                paddingRight: 24,
+              }}
+            >
+              <svg
+                className="w-8 h-8"
+                style={{ color: "var(--text-muted)", opacity: 0.7 }}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.5}
+                  d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
+                />
+              </svg>
+              <p className="text-sm font-semibold" style={{ color: "var(--text)" }}>
+                EchoWiki is not available
+              </p>
+              <p className="text-xs leading-relaxed" style={{ color: "var(--text-muted)" }}>
+                This app may have been removed from the subreddit.
+                <br />
+                Contact the moderators for more information.
+              </p>
             </div>
           )}
         </div>
