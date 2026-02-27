@@ -26,6 +26,8 @@ import type {
   AdvancedContributorRequest,
   AdvancedContributorResponse,
   CardSize,
+  CastVoteRequest,
+  CastVoteResponse,
   CollabInfoResponse,
   ColorTheme,
   EngineType,
@@ -44,12 +46,16 @@ import type {
   StyleResponse,
   SubredditAppearance,
   SuggestionFlairRequest,
+  VoteStatus,
+  VoteValue,
+  VotingInitResponse,
   WikiBanRequest,
   WikiFontSize,
   WikiSuggestion,
   WikiSuggestionActionRequest,
   WikiSuggestionRequest,
   WikiSuggestionResponse,
+  WikiSuggestionWithVoting,
   WikiSuggestionsResponse,
   WikiResponse,
   WikiPagesResponse,
@@ -78,6 +84,8 @@ import { getAsset } from "../lib/idb";
 import type { EchoMeta } from "../lib/idb";
 
 type AppState = "loading" | "no-assets" | "importing" | "ready" | "server-unavailable";
+
+type AppMode = "main" | "voting";
 
 type ActiveTab = "wiki" | "assets" | "submissions" | "settings";
 
@@ -3413,6 +3421,575 @@ function CollaborativePanel({
   );
 }
 
+function voteReasonLabel(reason: VoteStatus["reason"]): string {
+  switch (reason) {
+    case "threshold_accept":
+      return "accept vote threshold reached";
+    case "threshold_reject":
+      return "reject vote threshold reached";
+    case "percent_time":
+      return "voting deadline reached";
+    case "mod_override":
+      return "decided by moderator";
+    case "cancelled":
+      return "suggestion was withdrawn";
+    default:
+      return "vote concluded";
+  }
+}
+
+function VotingView({
+  data,
+  onVoteCast,
+}: {
+  data: VotingInitResponse;
+  onVoteCast: (updated: VoteStatus, myVote: VoteValue | null) => void;
+}) {
+  const { suggestion, currentContent, canVote, config } = data;
+  const [voteStatus, setVoteStatus] = useState<VoteStatus>(data.voteStatus);
+  const [myVote, setMyVote] = useState<VoteValue | null>(data.myVote);
+  const [isCasting, setIsCasting] = useState(false);
+  const [voteError, setVoteError] = useState<string | null>(null);
+  const [showDiff, setShowDiff] = useState(false);
+
+  const pageLabel = suggestion.page
+    ? suggestion.page.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+    : "";
+  const dateStr = suggestion.createdAt
+    ? new Date(suggestion.createdAt).toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      })
+    : "";
+
+  const decidedDateStr = voteStatus.decidedAt
+    ? new Date(voteStatus.decidedAt).toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      })
+    : "";
+
+  const isActive = voteStatus.status === "active";
+
+  const handleVote = useCallback(
+    async (vote: VoteValue) => {
+      if (isCasting) return;
+      setIsCasting(true);
+      setVoteError(null);
+      try {
+        const body: CastVoteRequest = { vote };
+        const res = await fetch("/api/vote", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const err = (await res.json()) as ErrorResponse;
+          setVoteError(err.message ?? "Failed to cast vote");
+          return;
+        }
+        const responseData = (await res.json()) as CastVoteResponse;
+        setVoteStatus(responseData.voteStatus);
+        setMyVote(responseData.myVote);
+        onVoteCast(responseData.voteStatus, responseData.myVote);
+      } catch {
+        setVoteError("Network error");
+      } finally {
+        setIsCasting(false);
+      }
+    },
+    [isCasting, onVoteCast],
+  );
+
+  const resultBannerBg =
+    voteStatus.status === "accepted"
+      ? "bg-green-50 border-green-200 text-green-800"
+      : voteStatus.status === "rejected"
+        ? "bg-red-50 border-red-200 text-red-700"
+        : voteStatus.status === "cancelled"
+          ? "bg-amber-50 border-amber-200 text-amber-700"
+          : "";
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden" style={{ color: "var(--text)" }}>
+      {/* Result banner */}
+      {!isActive && (
+        <div className={`px-4 py-2.5 border-b shrink-0 ${resultBannerBg}`}>
+          <span className="font-bold text-sm">
+            {voteStatus.status === "accepted"
+              ? "✓ ACCEPTED"
+              : voteStatus.status === "rejected"
+                ? "✗ REJECTED"
+                : "⊘ WITHDRAWN"}
+          </span>
+          {decidedDateStr && (
+            <span className="text-xs ml-2">
+              on {decidedDateStr}
+              {voteStatus.reason ? ` — ${voteReasonLabel(voteStatus.reason)}` : ""}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Suggestion header */}
+      <div
+        className="px-4 py-3 border-b shrink-0"
+        style={{ borderColor: "var(--thumb-bg)", backgroundColor: "var(--control-bg)" }}
+      >
+        <div className="flex items-center gap-1.5 flex-wrap text-sm">
+          <span className="font-semibold" style={{ color: "var(--accent)" }}>
+            u/{suggestion.username}
+          </span>
+          {pageLabel && (
+            <>
+              <span style={{ color: "var(--text-muted)" }}>suggests changes to</span>
+              <span className="font-medium italic">{pageLabel}</span>
+            </>
+          )}
+          {dateStr && (
+            <span style={{ color: "var(--text-muted)" }} className="text-xs">
+              &middot; {dateStr}
+            </span>
+          )}
+        </div>
+        {suggestion.description && (
+          <p className="text-xs mt-0.5 line-clamp-2" style={{ color: "var(--text-muted)" }}>
+            &ldquo;{suggestion.description}&rdquo;
+          </p>
+        )}
+      </div>
+
+      {/* Diff / side-by-side toggle */}
+      <div
+        className="flex items-center gap-2 px-4 py-1.5 border-b shrink-0"
+        style={{ borderColor: "var(--thumb-bg)" }}
+      >
+        <button
+          onClick={() => setShowDiff((v) => !v)}
+          className={`text-xs px-2.5 py-1 rounded border transition-colors cursor-pointer ${
+            showDiff
+              ? "bg-amber-50 border-amber-300 text-amber-700"
+              : "border-gray-300 hover:bg-[var(--control-bg)]"
+          }`}
+          style={!showDiff ? { color: "var(--text-muted)" } : undefined}
+        >
+          {showDiff ? "Show side-by-side" : "Show diff"}
+        </button>
+      </div>
+
+      {/* Content area */}
+      <div className="flex flex-1 overflow-hidden min-h-0">
+        {showDiff ? (
+          <div className="flex-1 overflow-hidden">
+            <DiffView original={currentContent} proposed={suggestion.content} />
+          </div>
+        ) : (
+          <>
+            <div
+              className="flex-1 overflow-auto border-r p-3"
+              style={{ borderColor: "var(--thumb-bg)" }}
+            >
+              <div
+                className="text-xs font-medium mb-2 uppercase tracking-wide"
+                style={{ color: "var(--text-muted)" }}
+              >
+                Current
+              </div>
+              <pre
+                className="text-xs whitespace-pre-wrap font-mono leading-relaxed"
+                style={{ color: "var(--text)" }}
+              >
+                {currentContent || <span style={{ color: "var(--text-muted)" }}>(empty)</span>}
+              </pre>
+            </div>
+            <div className="flex-1 overflow-auto p-3">
+              <div
+                className="text-xs font-medium mb-2 uppercase tracking-wide"
+                style={{ color: "var(--text-muted)" }}
+              >
+                Suggested
+              </div>
+              <pre
+                className="text-xs whitespace-pre-wrap font-mono leading-relaxed"
+                style={{ color: "var(--text)" }}
+              >
+                {suggestion.content || <span style={{ color: "var(--text-muted)" }}>(empty)</span>}
+              </pre>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Vote counts */}
+      <div
+        className="px-4 py-2.5 border-t shrink-0"
+        style={{ borderColor: "var(--thumb-bg)", backgroundColor: "var(--control-bg)" }}
+      >
+        <div className="flex items-center gap-4 text-sm flex-wrap">
+          <span className="text-green-600 font-medium">{voteStatus.acceptCount} accept</span>
+          <span className="text-red-500 font-medium">{voteStatus.rejectCount} reject</span>
+          <span style={{ color: "var(--text-muted)" }} className="text-xs">
+            {voteStatus.totalVoters} voter{voteStatus.totalVoters !== 1 ? "s" : ""}
+          </span>
+        </div>
+        {config.votingShowVoterNames && voteStatus.votes.length > 0 && (
+          <div className="flex flex-wrap gap-2 mt-1.5">
+            {voteStatus.votes.map((entry, i) => (
+              <span
+                key={i}
+                className={`text-xs px-1.5 py-0.5 rounded ${
+                  entry.vote === "accept" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"
+                }`}
+              >
+                {entry.username ? `u/${entry.username}` : "anonymous"}{" "}
+                {entry.vote === "accept" ? "✓" : "✗"}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Vote buttons */}
+      {canVote && isActive && (
+        <div
+          className="px-4 py-3 border-t shrink-0 flex items-center gap-3 flex-wrap"
+          style={{ borderColor: "var(--thumb-bg)" }}
+        >
+          <button
+            onClick={() => void handleVote("accept")}
+            disabled={isCasting || myVote === "accept"}
+            className={`text-sm px-4 py-2 rounded-lg font-medium transition-colors cursor-pointer disabled:opacity-40 ${
+              myVote === "accept"
+                ? "bg-green-600 text-white"
+                : "bg-green-50 text-green-700 border border-green-300 hover:bg-green-100"
+            }`}
+          >
+            {isCasting && myVote !== "accept" ? "…" : "✓ Accept"}
+          </button>
+          <button
+            onClick={() => void handleVote("reject")}
+            disabled={isCasting || myVote === "reject"}
+            className={`text-sm px-4 py-2 rounded-lg font-medium transition-colors cursor-pointer disabled:opacity-40 ${
+              myVote === "reject"
+                ? "bg-red-600 text-white"
+                : "bg-red-50 text-red-600 border border-red-300 hover:bg-red-100"
+            }`}
+          >
+            {isCasting && myVote !== "reject" ? "…" : "✗ Reject"}
+          </button>
+          {myVote && (
+            <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+              Your vote: <strong>{myVote}</strong>
+              {config.votingAllowVoteChange ? " (click to change)" : ""}
+            </span>
+          )}
+          {voteError && <span className="text-xs text-red-500">{voteError}</span>}
+        </div>
+      )}
+
+      {!canVote && isActive && data.username !== "anonymous" && (
+        <div
+          className="px-4 py-2 border-t shrink-0 text-xs"
+          style={{ borderColor: "var(--thumb-bg)", color: "var(--text-muted)" }}
+        >
+          {data.username === suggestion.username
+            ? "You cannot vote on your own suggestion."
+            : "You are not eligible to vote on this suggestion."}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VotingSettingsPanel({
+  config,
+  onConfigChanged,
+}: {
+  config: GameConfig;
+  onConfigChanged: (config: GameConfig) => void;
+}) {
+  const [isSaving, setIsSaving] = useState(false);
+
+  const [votingEnabled, setVotingEnabled] = useState(config.votingEnabled);
+  const [acceptThreshold, setAcceptThreshold] = useState(String(config.votingAcceptThreshold));
+  const [rejectThreshold, setRejectThreshold] = useState(String(config.votingRejectThreshold));
+  const [percentThreshold, setPercentThreshold] = useState(String(config.votingPercentThreshold));
+  const [durationDays, setDurationDays] = useState(String(config.votingDurationDays));
+  const [allowVoteChange, setAllowVoteChange] = useState(config.votingAllowVoteChange);
+  const [changeCooldown, setChangeCooldown] = useState(String(config.votingChangeCooldownMinutes));
+  const [showVoterNames, setShowVoterNames] = useState(config.votingShowVoterNames);
+  const [voterMinKarma, setVoterMinKarma] = useState(String(config.votingVoterMinKarma));
+  const [voterMinAge, setVoterMinAge] = useState(String(config.votingVoterMinAccountAgeDays));
+
+  const handleSave = useCallback(async () => {
+    setIsSaving(true);
+    try {
+      const res = await fetch("/api/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          votingEnabled,
+          votingAcceptThreshold: Math.max(0, parseInt(acceptThreshold, 10) || 0),
+          votingRejectThreshold: Math.max(0, parseInt(rejectThreshold, 10) || 0),
+          votingPercentThreshold: Math.min(100, Math.max(0, parseInt(percentThreshold, 10) || 0)),
+          votingDurationDays: Math.max(0, parseInt(durationDays, 10) || 0),
+          votingAllowVoteChange: allowVoteChange,
+          votingChangeCooldownMinutes: Math.max(0, parseInt(changeCooldown, 10) || 0),
+          votingShowVoterNames: showVoterNames,
+          votingVoterMinKarma: Math.max(0, parseInt(voterMinKarma, 10) || 0),
+          votingVoterMinAccountAgeDays: Math.max(0, parseInt(voterMinAge, 10) || 0),
+        }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { config: GameConfig };
+        onConfigChanged(data.config);
+      }
+    } catch {
+    } finally {
+      setIsSaving(false);
+    }
+  }, [
+    votingEnabled,
+    acceptThreshold,
+    rejectThreshold,
+    percentThreshold,
+    durationDays,
+    allowVoteChange,
+    changeCooldown,
+    showVoterNames,
+    voterMinKarma,
+    voterMinAge,
+    onConfigChanged,
+  ]);
+
+  const labelClass = "text-xs font-medium";
+  const inputClass =
+    "w-full text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)]";
+  const inputStyle = { backgroundColor: "var(--control-bg)", color: "var(--control-text)" };
+  const sectionClass = "flex flex-col gap-3 pt-4 border-t border-gray-100";
+
+  return (
+    <div className="flex flex-col gap-4 max-w-lg">
+      {/* Enable toggle */}
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <span className={labelClass}>Public Voting</span>
+          <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+            When enabled, each suggestion spawns a public vote post.
+            {!config.collaborativeMode && (
+              <span className="text-amber-600 ml-1">Collaborative mode must be enabled first.</span>
+            )}
+          </p>
+        </div>
+        <button
+          onClick={() => setVotingEnabled((v) => !v)}
+          className={`relative shrink-0 w-10 h-5 rounded-full transition-colors cursor-pointer ${votingEnabled ? "bg-[var(--accent)]" : "bg-gray-300"}`}
+        >
+          <span
+            className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${votingEnabled ? "translate-x-5" : "translate-x-0"}`}
+          />
+        </button>
+      </div>
+
+      {/* Voter Eligibility */}
+      <div className={sectionClass}>
+        <span
+          className={`${labelClass} text-[var(--text-muted)] uppercase tracking-wide text-[10px]`}
+        >
+          Voter Eligibility
+        </span>
+        <div className="flex flex-col gap-1.5">
+          <span className={labelClass}>Minimum karma</span>
+          <input
+            type="number"
+            min="0"
+            value={voterMinKarma}
+            onChange={(e) => setVoterMinKarma(e.target.value)}
+            placeholder="0 (no requirement)"
+            className={inputClass}
+            style={inputStyle}
+          />
+          <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+            0 = no karma requirement
+          </span>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <span className={labelClass}>Minimum account age (days)</span>
+          <input
+            type="number"
+            min="0"
+            value={voterMinAge}
+            onChange={(e) => setVoterMinAge(e.target.value)}
+            placeholder="0 (no requirement)"
+            className={inputClass}
+            style={inputStyle}
+          />
+          <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+            0 = no age requirement
+          </span>
+        </div>
+      </div>
+
+      {/* Vote Behavior */}
+      <div className={sectionClass}>
+        <span
+          className={`${labelClass} text-[var(--text-muted)] uppercase tracking-wide text-[10px]`}
+        >
+          Vote Behavior
+        </span>
+        <div className="flex items-center justify-between gap-3">
+          <span className={labelClass}>Allow vote changes</span>
+          <button
+            onClick={() => setAllowVoteChange((v) => !v)}
+            className={`relative shrink-0 w-10 h-5 rounded-full transition-colors cursor-pointer ${allowVoteChange ? "bg-[var(--accent)]" : "bg-gray-300"}`}
+          >
+            <span
+              className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${allowVoteChange ? "translate-x-5" : "translate-x-0"}`}
+            />
+          </button>
+        </div>
+        {allowVoteChange && (
+          <div className="flex flex-col gap-1.5">
+            <span className={labelClass}>Change cooldown (minutes)</span>
+            <input
+              type="number"
+              min="0"
+              value={changeCooldown}
+              onChange={(e) => setChangeCooldown(e.target.value)}
+              placeholder="0 (no cooldown)"
+              className={inputClass}
+              style={inputStyle}
+            />
+            <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+              0 = can change vote immediately
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Acceptance Thresholds */}
+      <div className={sectionClass}>
+        <span
+          className={`${labelClass} text-[var(--text-muted)] uppercase tracking-wide text-[10px]`}
+        >
+          Instant Thresholds
+        </span>
+        <div className="flex flex-col gap-1.5">
+          <span className={labelClass}>Accept after N accept votes</span>
+          <input
+            type="number"
+            min="0"
+            value={acceptThreshold}
+            onChange={(e) => setAcceptThreshold(e.target.value)}
+            placeholder="100"
+            className={inputClass}
+            style={inputStyle}
+          />
+          <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+            0 = disabled
+          </span>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <span className={labelClass}>Reject after N reject votes</span>
+          <input
+            type="number"
+            min="0"
+            value={rejectThreshold}
+            onChange={(e) => setRejectThreshold(e.target.value)}
+            placeholder="0 (disabled)"
+            className={inputClass}
+            style={inputStyle}
+          />
+          <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+            0 = disabled
+          </span>
+        </div>
+      </div>
+
+      {/* Time-based voting */}
+      <div className={sectionClass}>
+        <span
+          className={`${labelClass} text-[var(--text-muted)] uppercase tracking-wide text-[10px]`}
+        >
+          Time-Based Voting
+        </span>
+        <div className="flex flex-col gap-1.5">
+          <span className={labelClass}>Voting duration (days)</span>
+          <input
+            type="number"
+            min="0"
+            value={durationDays}
+            onChange={(e) => setDurationDays(e.target.value)}
+            placeholder="0 (no deadline)"
+            className={inputClass}
+            style={inputStyle}
+          />
+          <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+            0 = no deadline
+          </span>
+        </div>
+        {parseInt(durationDays, 10) > 0 && (
+          <div className="flex flex-col gap-1.5">
+            <span className={labelClass}>
+              Accept if X% of votes are &ldquo;accept&rdquo; at deadline
+            </span>
+            <input
+              type="number"
+              min="0"
+              max="100"
+              value={percentThreshold}
+              onChange={(e) => setPercentThreshold(e.target.value)}
+              placeholder="0 (disabled)"
+              className={inputClass}
+              style={inputStyle}
+            />
+            <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+              0 = disabled; e.g. 51 means majority vote
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Display */}
+      <div className={sectionClass}>
+        <span
+          className={`${labelClass} text-[var(--text-muted)] uppercase tracking-wide text-[10px]`}
+        >
+          Display
+        </span>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <span className={labelClass}>Show voter names publicly</span>
+            <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+              Off = only vote counts are shown
+            </p>
+          </div>
+          <button
+            onClick={() => setShowVoterNames((v) => !v)}
+            className={`relative shrink-0 w-10 h-5 rounded-full transition-colors cursor-pointer ${showVoterNames ? "bg-[var(--accent)]" : "bg-gray-300"}`}
+          >
+            <span
+              className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${showVoterNames ? "translate-x-5" : "translate-x-0"}`}
+            />
+          </button>
+        </div>
+      </div>
+
+      <div className="pt-2">
+        <button
+          onClick={() => void handleSave()}
+          disabled={isSaving}
+          className="text-sm px-4 py-2 rounded-lg bg-[var(--accent)] text-white cursor-pointer disabled:opacity-40 hover:opacity-90 transition-opacity"
+        >
+          {isSaving ? "Saving…" : "Save Voting Settings"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function SubmissionsPanel({
   subredditName,
   wikiFontSize,
@@ -3420,9 +3997,9 @@ function SubmissionsPanel({
   subredditName: string;
   wikiFontSize: WikiFontSize;
 }) {
-  const [suggestions, setSuggestions] = useState<WikiSuggestion[]>([]);
+  const [suggestions, setSuggestions] = useState<WikiSuggestionWithVoting[]>([]);
   const [loading, setLoading] = useState(false);
-  const [reviewSuggestion, setReviewSuggestion] = useState<WikiSuggestion | null>(null);
+  const [reviewSuggestion, setReviewSuggestion] = useState<WikiSuggestionWithVoting | null>(null);
   const [reviewCurrentContent, setReviewCurrentContent] = useState<string | null>(null);
   const [isActing, setIsActing] = useState(false);
   const [actError, setActError] = useState<string | null>(null);
@@ -3445,7 +4022,7 @@ function SubmissionsPanel({
     void loadSuggestions();
   }, [loadSuggestions]);
 
-  const handleReview = useCallback(async (suggestion: WikiSuggestion) => {
+  const handleReview = useCallback(async (suggestion: WikiSuggestionWithVoting) => {
     setReviewSuggestion(suggestion);
     setActError(null);
     try {
@@ -3586,12 +4163,29 @@ function SubmissionsPanel({
                         &rarr; <em>{pageLabel}</em>
                       </span>
                       <span className="text-xs text-[var(--text-muted)]">&middot; {dateStr}</span>
+                      {p.voteStatus && (
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-200">
+                          {p.voteStatus.acceptCount}✓ {p.voteStatus.rejectCount}✗ voting
+                        </span>
+                      )}
                     </div>
                     <p className="text-xs text-[var(--text-muted)] mt-0.5 line-clamp-2">
                       {p.description}
                     </p>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
+                    {p.votingPostId && (
+                      <button
+                        onClick={() =>
+                          navigateTo({
+                            url: `https://www.reddit.com/comments/${p.votingPostId!.replace("t3_", "")}`,
+                          })
+                        }
+                        className="text-xs px-2 py-1 rounded border border-blue-300 text-blue-600 hover:bg-blue-50 cursor-pointer"
+                      >
+                        Vote post ↗
+                      </button>
+                    )}
                     <button
                       onClick={() => void handleReview(p)}
                       className="text-xs px-2 py-1 rounded bg-[var(--accent)] text-white hover:opacity-90 cursor-pointer"
@@ -3615,7 +4209,7 @@ function SubmissionsPanel({
   );
 }
 
-type SettingsTab = "general" | "game" | "style" | "theme" | "mapping" | "collaborative";
+type SettingsTab = "general" | "game" | "style" | "theme" | "mapping" | "collaborative" | "voting";
 
 function SettingsView({
   mappingText,
@@ -3796,6 +4390,7 @@ function SettingsView({
     { value: "theme", label: "Theme" },
     { value: "mapping", label: "Mapping" },
     { value: "collaborative", label: "Collaborative" },
+    { value: "voting", label: "Voting" },
   ] as const;
 
   return (
@@ -4123,12 +4718,18 @@ function SettingsView({
         {settingsTab === "collaborative" && (
           <CollaborativePanel config={config} onConfigChanged={onConfigChanged} />
         )}
+
+        {settingsTab === "voting" && (
+          <VotingSettingsPanel config={config} onConfigChanged={onConfigChanged} />
+        )}
       </div>
     </>
   );
 }
 
 export const App = () => {
+  const [appMode, setAppMode] = useState<AppMode>("main");
+  const [votingData, setVotingData] = useState<VotingInitResponse | null>(null);
   const [appState, setAppState] = useState<AppState>("loading");
   const [activeTab, setActiveTab] = useState<ActiveTab>("wiki");
   const [subredditName, setSubredditName] = useState("");
@@ -4418,14 +5019,33 @@ export const App = () => {
       try {
         const res = await fetch("/api/init");
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data: InitResponse = await res.json();
-        setSubredditName(data.subredditName);
-        setConfig(data.config);
-        setIsMod(data.isMod);
-        setCanSuggest(data.canSuggest);
-        setUsername(data.username);
-        setAppearance(data.appearance);
-        initConfig = data.config;
+        const data = (await res.json()) as InitResponse | VotingInitResponse;
+        if (data.type === "voting-init") {
+          const vd = data as VotingInitResponse;
+          setAppMode("voting");
+          setVotingData(vd);
+          setConfig(vd.config);
+          setAppearance(vd.appearance);
+          // Also apply the saved style if available
+          try {
+            const styleRes = await stylePromise;
+            if (styleRes?.ok) {
+              const styleData: StyleResponse = await styleRes.json();
+              setStyle(styleData.style);
+            }
+          } catch {}
+          setInitResolved(true);
+          setAppState("ready");
+          return;
+        }
+        const initData = data as InitResponse;
+        setSubredditName(initData.subredditName);
+        setConfig(initData.config);
+        setIsMod(initData.isMod);
+        setCanSuggest(initData.canSuggest);
+        setUsername(initData.username);
+        setAppearance(initData.appearance);
+        initConfig = initData.config;
       } catch (e) {
         if (e instanceof TypeError) {
           setInitResolved(true);
@@ -5290,7 +5910,18 @@ export const App = () => {
         </div>
       )}
 
-      {appState === "ready" && (
+      {appState === "ready" && appMode === "voting" && votingData && (
+        <VotingView
+          data={votingData}
+          onVoteCast={(updatedStatus, updatedMyVote) => {
+            setVotingData((prev) =>
+              prev ? { ...prev, voteStatus: updatedStatus, myVote: updatedMyVote } : null,
+            );
+          }}
+        />
+      )}
+
+      {appState === "ready" && appMode === "main" && (
         <>
           <div className="relative" style={{ zIndex: 10 }}>
             <div

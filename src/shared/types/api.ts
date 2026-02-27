@@ -21,6 +21,16 @@ export type GameConfig = {
   collaborativeMode: boolean;
   minKarma: number;
   minAccountAgeDays: number;
+  votingEnabled: boolean;
+  votingAcceptThreshold: number;
+  votingRejectThreshold: number;
+  votingPercentThreshold: number;
+  votingDurationDays: number;
+  votingAllowVoteChange: boolean;
+  votingChangeCooldownMinutes: number;
+  votingShowVoterNames: boolean;
+  votingVoterMinKarma: number;
+  votingVoterMinAccountAgeDays: number;
 };
 
 export type ConfigResponse = {
@@ -39,6 +49,16 @@ export type ConfigUpdateRequest = {
   collaborativeMode?: boolean;
   minKarma?: number;
   minAccountAgeDays?: number;
+  votingEnabled?: boolean;
+  votingAcceptThreshold?: number;
+  votingRejectThreshold?: number;
+  votingPercentThreshold?: number;
+  votingDurationDays?: number;
+  votingAllowVoteChange?: boolean;
+  votingChangeCooldownMinutes?: number;
+  votingShowVoterNames?: boolean;
+  votingVoterMinKarma?: number;
+  votingVoterMinAccountAgeDays?: number;
 };
 
 export type ConfigUpdateResponse = {
@@ -169,9 +189,66 @@ export type WikiSuggestionResponse = {
   suggestion: WikiSuggestion | null;
 };
 
+export type VoteValue = "accept" | "reject";
+
+export type VoteEntry = {
+  username: string;
+  vote: VoteValue;
+  votedAt: number;
+};
+
+export type VoteStatusData = {
+  status: "active" | "accepted" | "rejected" | "cancelled";
+  decidedAt: number | null;
+  reason:
+    | "threshold_accept"
+    | "threshold_reject"
+    | "percent_time"
+    | "mod_override"
+    | "cancelled"
+    | null;
+};
+
+export type VoteStatus = VoteStatusData & {
+  acceptCount: number;
+  rejectCount: number;
+  totalVoters: number;
+  votes: VoteEntry[];
+};
+
+export type WikiSuggestionWithVoting = WikiSuggestion & {
+  votingPostId: string | null;
+  voteStatus: VoteStatus | null;
+};
+
 export type WikiSuggestionsResponse = {
   type: "wiki-suggestions";
-  suggestions: WikiSuggestion[];
+  suggestions: WikiSuggestionWithVoting[];
+};
+
+export type VotingInitResponse = {
+  type: "voting-init";
+  postId: string;
+  subredditName: string;
+  username: string;
+  isMod: boolean;
+  config: GameConfig;
+  appearance: SubredditAppearance;
+  suggestion: WikiSuggestion;
+  currentContent: string;
+  voteStatus: VoteStatus;
+  canVote: boolean;
+  myVote: VoteValue | null;
+};
+
+export type CastVoteRequest = {
+  vote: VoteValue;
+};
+
+export type CastVoteResponse = {
+  type: "vote-cast";
+  voteStatus: VoteStatus;
+  myVote: VoteValue | null;
 };
 
 export type WikiSuggestionActionRequest = {

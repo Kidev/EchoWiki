@@ -39,6 +39,13 @@
       }
     ]
   },
+  "scheduler": {
+    "tasks": {
+      "vote-deadline": {
+        "endpoint": "/internal/scheduler/vote-deadline"
+      }
+    }
+  },
   "dev": {
     "subreddit": "echo_wiki_dev"
   },
