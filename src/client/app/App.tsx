@@ -145,18 +145,6 @@ function getFontFamily(fontFamily: FontFamily, subredditFont: string | null): st
   return FONT_MAP[fontFamily];
 }
 
-const ECHOWIKI_PRE_IMPORT: CSSProperties = {
-  "--accent": "#6a5cff",
-  "--accent-hover": "#5a4ee6",
-  "--accent-ring": "rgba(106, 92, 255, 0.2)",
-  "--bg": "transparent",
-  "--text": "#ffffff",
-  "--text-muted": "#677db7",
-  "--thumb-bg": "#16213e",
-  "--control-bg": "#16213e",
-  "--control-text": "#ffffff",
-} as CSSProperties;
-
 function darkenHex(hex: string, amount: number): string {
   const r = Math.max(0, parseInt(hex.slice(1, 3), 16) - Math.round(255 * amount));
   const g = Math.max(0, parseInt(hex.slice(3, 5), 16) - Math.round(255 * amount));
@@ -1714,7 +1702,12 @@ const WikiView = memo(function WikiView({
   const [showSuggestDialog, setShowSuggestDialog] = useState(false);
   const [existingSuggestion, setExistingSuggestion] = useState<WikiSuggestion | null>(null);
   const [isDeletingSuggestion, setIsDeletingSuggestion] = useState(false);
-  const [showDiff, setShowDiff] = useState(false);
+  const [proposeViewMode, setProposeViewMode] = useState<"normal" | "source" | "diff">("normal");
+  const [proposeHiddenPane, setProposeHiddenPane] = useState<null | "left" | "right">(null);
+
+  useEffect(() => {
+    if (proposeViewMode === "diff") setProposeHiddenPane(null);
+  }, [proposeViewMode]);
 
   useEffect(() => {
     const load = async () => {
@@ -1758,7 +1751,7 @@ const WikiView = memo(function WikiView({
     setSuggestError(null);
     setShowSuggestDialog(false);
     setExistingSuggestion(null);
-    setShowDiff(false);
+    setProposeViewMode("normal");
   }, [currentPage]);
 
   useEffect(() => {
@@ -1953,95 +1946,205 @@ const WikiView = memo(function WikiView({
           <div className="w-10 h-10 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
         </div>
       ) : isEditing ? (
-        <div className="flex-1 flex overflow-hidden">
-          {}
-          <div className="flex-1 flex flex-col overflow-hidden border-r border-gray-100">
-            {isProposeMode && (
-              <div className="px-3 py-1 bg-[var(--thumb-bg)] border-b border-gray-100 shrink-0 flex items-center gap-1">
-                <button
-                  onClick={() => setShowDiff(false)}
-                  className={`text-[10px] px-2 py-0.5 rounded transition-colors cursor-pointer ${
-                    !showDiff
-                      ? "bg-[var(--accent)] text-white"
-                      : "text-[var(--text-muted)] hover:bg-[var(--control-bg)]"
-                  }`}
-                >
-                  Preview
-                </button>
-                <button
-                  onClick={() => setShowDiff(true)}
-                  className={`text-[10px] px-2 py-0.5 rounded transition-colors cursor-pointer flex items-center gap-1 ${
-                    showDiff
-                      ? "bg-amber-500 text-white"
-                      : "text-[var(--text-muted)] hover:bg-[var(--control-bg)]"
-                  }`}
-                >
-                  Highlight changes
-                </button>
-              </div>
-            )}
-            {isProposeMode && showDiff ? (
-              <DiffView original={content ?? ""} proposed={editContent} />
-            ) : (
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex flex-1 min-h-0 overflow-hidden">
+            <div
+              style={{
+                flexGrow: proposeHiddenPane === "left" ? 0 : 1,
+                flexShrink: 1,
+                flexBasis: "0%",
+                minWidth: 0,
+                overflow: "hidden",
+                transition: "flex-grow 0.35s ease",
+                borderRight: "1px solid var(--thumb-bg)",
+              }}
+              className="flex flex-col"
+            >
+              {isProposeMode && (
+                <div className="px-3 py-1 bg-[var(--thumb-bg)] border-b border-gray-100 shrink-0 flex items-center gap-1">
+                  {(["normal", "source", "diff"] as const).map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => setProposeViewMode(m)}
+                      className={`text-[10px] px-2 py-0.5 rounded transition-colors cursor-pointer ${
+                        proposeViewMode === m
+                          ? m === "diff"
+                            ? "bg-amber-500 text-white"
+                            : "bg-[var(--accent)] text-white"
+                          : "text-[var(--text-muted)] hover:bg-[var(--control-bg)]"
+                      }`}
+                    >
+                      {m === "normal" ? "Normal" : m === "source" ? "Source" : "Diff"}
+                    </button>
+                  ))}
+                </div>
+              )}
               <div
-                className="flex-1 overflow-auto"
-                style={{ scrollbarGutter: "stable both-edges" }}
+                className="flex-1 overflow-hidden"
+                style={{
+                  zoom:
+                    isProposeMode && proposeHiddenPane === null && proposeViewMode !== "diff"
+                      ? 0.5
+                      : 1,
+                }}
               >
-                <WikiMarkdownContent
-                  content={editContent}
-                  subredditName={subredditName}
-                  currentPage={currentPage}
-                  wikiFontSize={wikiFontSize}
-                  onPageChange={handlePageChange}
-                  onCopyEchoLink={onCopyEchoLink}
-                />
-              </div>
-            )}
-          </div>
-          {/* Right pane: markdown source editor */}
-          <div className="flex-1 flex flex-col overflow-hidden">
-            <div className="px-3 py-1.5 text-xs bg-[var(--thumb-bg)] border-b border-gray-100 shrink-0 select-none flex items-center justify-between sticky top-0 z-10">
-              <span className="font-mono text-[var(--text-muted)]">
-                {isProposeMode ? "Suggesting changes" : "Source"}
-              </span>
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => setShowCancelDialog(true)}
-                  className="px-2 py-0.5 rounded border border-gray-300 text-[var(--text-muted)] hover:bg-[var(--control-bg)] transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-                {isProposeMode ? (
-                  <button
-                    onClick={() => {
-                      setSuggestError(null);
-                      setShowSuggestDialog(true);
-                    }}
-                    className="px-2 py-0.5 rounded bg-[var(--accent)] text-white hover:opacity-90 transition-opacity cursor-pointer"
+                {isProposeMode && proposeViewMode === "diff" ? (
+                  <SideBySideDiffView original={content ?? ""} proposed={editContent} />
+                ) : isProposeMode && proposeViewMode === "source" ? (
+                  <div
+                    className="h-full overflow-auto"
+                    style={{ scrollbarGutter: "stable both-edges" }}
                   >
-                    Submit
-                  </button>
+                    <pre
+                      className="p-4 text-xs font-mono whitespace-pre-wrap leading-relaxed"
+                      style={{ color: "var(--text)" }}
+                    >
+                      {editContent || "(empty)"}
+                    </pre>
+                  </div>
                 ) : (
-                  <button
-                    onClick={() => {
-                      setSaveError(null);
-                      setShowSaveDialog(true);
-                    }}
-                    className="px-2 py-0.5 rounded bg-[var(--accent)] text-white hover:opacity-90 transition-opacity cursor-pointer"
+                  <div
+                    className="h-full overflow-auto"
+                    style={{ scrollbarGutter: "stable both-edges" }}
                   >
-                    Save
-                  </button>
+                    <WikiMarkdownContent
+                      content={editContent}
+                      subredditName={subredditName}
+                      currentPage={currentPage}
+                      wikiFontSize={wikiFontSize}
+                      onPageChange={handlePageChange}
+                      onCopyEchoLink={onCopyEchoLink}
+                    />
+                  </div>
                 )}
               </div>
             </div>
-            <textarea
-              className="flex-1 resize-none p-4 font-mono text-sm bg-[var(--bg)] text-[var(--text)] placeholder:text-[var(--text-muted)] outline-none"
-              value={editContent}
-              onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setEditContent(e.target.value)}
-              spellCheck={false}
-              placeholder="Write wiki markdown here…"
-            />
+            {}
+            <div
+              style={{
+                flexGrow: proposeHiddenPane === "right" ? 0 : 1,
+                flexShrink: 1,
+                flexBasis: "0%",
+                minWidth: 0,
+                overflow: "hidden",
+                transition: "flex-grow 0.35s ease",
+              }}
+              className="flex flex-col"
+            >
+              <div className="px-3 py-1.5 text-xs bg-[var(--thumb-bg)] border-b border-gray-100 shrink-0 select-none flex items-center justify-between sticky top-0 z-10">
+                <span className="font-mono text-[var(--text-muted)]">
+                  {isProposeMode ? "Suggesting changes" : "Source"}
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => setShowCancelDialog(true)}
+                    className="px-2 py-0.5 rounded border border-gray-300 text-[var(--text-muted)] hover:bg-[var(--control-bg)] transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  {isProposeMode ? (
+                    <button
+                      onClick={() => {
+                        setSuggestError(null);
+                        setShowSuggestDialog(true);
+                      }}
+                      className="px-2 py-0.5 rounded bg-[var(--accent)] text-white hover:opacity-90 transition-opacity cursor-pointer"
+                    >
+                      Submit
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setSaveError(null);
+                        setShowSaveDialog(true);
+                      }}
+                      className="px-2 py-0.5 rounded bg-[var(--accent)] text-white hover:opacity-90 transition-opacity cursor-pointer"
+                    >
+                      Save
+                    </button>
+                  )}
+                </div>
+              </div>
+              <textarea
+                className="flex-1 resize-none p-4 font-mono text-sm bg-[var(--bg)] text-[var(--text)] placeholder:text-[var(--text-muted)] outline-none"
+                value={editContent}
+                onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setEditContent(e.target.value)}
+                spellCheck={false}
+                placeholder="Write wiki markdown here…"
+              />
+            </div>
           </div>
+          {}
+          {isProposeMode && (
+            <div
+              className="flex items-center shrink-0 border-t text-[10px]"
+              style={{ borderColor: "var(--thumb-bg)", backgroundColor: "var(--thumb-bg)" }}
+            >
+              <div
+                style={{
+                  flexGrow: proposeHiddenPane === "left" ? 0 : 1,
+                  flexShrink: 1,
+                  flexBasis: "0%",
+                  overflow: "hidden",
+                  transition: "flex-grow 0.35s ease",
+                }}
+                className={`flex items-center justify-center px-3 py-0.5 select-none ${proposeViewMode !== "diff" ? "cursor-pointer" : "cursor-default"}`}
+                onClick={
+                  proposeViewMode !== "diff"
+                    ? () => setProposeHiddenPane(proposeHiddenPane === "left" ? null : "left")
+                    : undefined
+                }
+              >
+                <span
+                  className="font-bold transition-colors whitespace-nowrap"
+                  style={{
+                    color: proposeHiddenPane === "left" ? "var(--text-muted)" : "var(--text)",
+                  }}
+                >
+                  PROPOSED
+                </span>
+              </div>
+              {proposeHiddenPane === null && (
+                <div
+                  className="shrink-0 px-2 flex items-center"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M17 8l4 4m0 0l-4 4m4-4H3"
+                    />
+                  </svg>
+                </div>
+              )}
+              <div
+                style={{
+                  flexGrow: proposeHiddenPane === "right" ? 0 : 1,
+                  flexShrink: 1,
+                  flexBasis: "0%",
+                  overflow: "hidden",
+                  transition: "flex-grow 0.35s ease",
+                }}
+                className={`flex items-center justify-center px-3 py-0.5 select-none ${proposeViewMode !== "diff" ? "cursor-pointer" : "cursor-default"}`}
+                onClick={
+                  proposeViewMode !== "diff"
+                    ? () => setProposeHiddenPane(proposeHiddenPane === "right" ? null : "right")
+                    : undefined
+                }
+              >
+                <span
+                  className="font-bold transition-colors whitespace-nowrap"
+                  style={{
+                    color: proposeHiddenPane === "right" ? "var(--text-muted)" : "var(--text)",
+                  }}
+                >
+                  EDITOR
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       ) : content === null || content === undefined ? (
         <div className="flex flex-col items-center justify-center py-16 gap-3 text-center px-4">
@@ -2810,62 +2913,163 @@ function computeLineDiff(a: string, b: string): DiffLine[] {
 }
 
 const DIFF_CONTEXT = 3;
+const DIFF_LINE_LIMIT = 6000;
 
-function collapseDiff(diff: DiffLine[]): Array<DiffLine | { type: "ellipsis"; count: number }> {
-  type Out = DiffLine | { type: "ellipsis"; count: number };
-  const result: Out[] = [];
+type CharSpan = { text: string; kind: "same" | "add" | "remove" };
 
-  const isNearChange = diff.map((_, idx) => {
+type SideBySideLine =
+  | { type: "equal"; leftNum: number; rightNum: number; content: string }
+  | {
+      type: "changed";
+      leftNum: number;
+      rightNum: number;
+      leftChars: CharSpan[];
+      rightChars: CharSpan[];
+    }
+  | { type: "remove"; leftNum: number; leftChars: CharSpan[] }
+  | { type: "add"; rightNum: number; rightChars: CharSpan[] }
+  | { type: "hunk"; count: number };
+
+function computeCharDiff(left: string, right: string): [CharSpan[], CharSpan[]] {
+  const m = left.length;
+  const n = right.length;
+  const stride = n + 1;
+  const dp = new Int32Array((m + 1) * stride);
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (left[i - 1] === right[j - 1]) {
+        dp[i * stride + j] = dp[(i - 1) * stride + (j - 1)]! + 1;
+      } else {
+        const up = dp[(i - 1) * stride + j]!;
+        const lft = dp[i * stride + (j - 1)]!;
+        dp[i * stride + j] = up > lft ? up : lft;
+      }
+    }
+  }
+  type LItem = { kind: "same" | "remove"; c: string };
+  type RItem = { kind: "same" | "add"; c: string };
+  const lBuf: LItem[] = [];
+  const rBuf: RItem[] = [];
+  let i = m;
+  let j = n;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && left[i - 1] === right[j - 1]) {
+      lBuf.unshift({ kind: "same", c: left[i - 1]! });
+      rBuf.unshift({ kind: "same", c: right[j - 1]! });
+      i--;
+      j--;
+    } else if (j > 0 && (i === 0 || dp[i * stride + (j - 1)]! >= dp[(i - 1) * stride + j]!)) {
+      rBuf.unshift({ kind: "add", c: right[j - 1]! });
+      j--;
+    } else {
+      lBuf.unshift({ kind: "remove", c: left[i - 1]! });
+      i--;
+    }
+  }
+  function mergeSpans<T extends { kind: string; c: string }>(buf: T[]): CharSpan[] {
+    const spans: CharSpan[] = [];
+    for (const item of buf) {
+      if (spans.length > 0 && spans[spans.length - 1]!.kind === item.kind) {
+        spans[spans.length - 1]!.text += item.c;
+      } else {
+        spans.push({ text: item.c, kind: item.kind as CharSpan["kind"] });
+      }
+    }
+    return spans;
+  }
+  return [mergeSpans(lBuf), mergeSpans(rBuf)];
+}
+
+function computeSideBySideDiff(original: string, proposed: string): SideBySideLine[] {
+  const lineDiff = computeLineDiff(original, proposed);
+  const raw: SideBySideLine[] = [];
+  let leftNum = 0;
+  let rightNum = 0;
+  let i = 0;
+  while (i < lineDiff.length) {
+    const line = lineDiff[i]!;
+    if (line.type === "equal") {
+      leftNum++;
+      rightNum++;
+      raw.push({ type: "equal", leftNum, rightNum, content: line.line });
+      i++;
+    } else {
+      const removes: string[] = [];
+      const adds: string[] = [];
+      while (i < lineDiff.length && lineDiff[i]!.type === "remove") {
+        removes.push(lineDiff[i]!.line);
+        i++;
+      }
+      while (i < lineDiff.length && lineDiff[i]!.type === "add") {
+        adds.push(lineDiff[i]!.line);
+        i++;
+      }
+      const pairCount = Math.min(removes.length, adds.length);
+      for (let k = 0; k < pairCount; k++) {
+        leftNum++;
+        rightNum++;
+        const [lChars, rChars] = computeCharDiff(removes[k]!, adds[k]!);
+        raw.push({ type: "changed", leftNum, rightNum, leftChars: lChars, rightChars: rChars });
+      }
+      for (let k = pairCount; k < removes.length; k++) {
+        leftNum++;
+        raw.push({ type: "remove", leftNum, leftChars: [{ text: removes[k]!, kind: "remove" }] });
+      }
+      for (let k = pairCount; k < adds.length; k++) {
+        rightNum++;
+        raw.push({ type: "add", rightNum, rightChars: [{ text: adds[k]!, kind: "add" }] });
+      }
+    }
+  }
+
+  const isNear = raw.map((_, idx) => {
     for (
       let k = Math.max(0, idx - DIFF_CONTEXT);
-      k <= Math.min(diff.length - 1, idx + DIFF_CONTEXT);
+      k <= Math.min(raw.length - 1, idx + DIFF_CONTEXT);
       k++
     ) {
-      if (diff[k]!.type !== "equal") return true;
+      if (raw[k]!.type !== "equal") return true;
     }
     return false;
   });
-
-  let i = 0;
-  while (i < diff.length) {
-    const line = diff[i]!;
-    if (line.type === "equal" && !isNearChange[i]) {
+  const result: SideBySideLine[] = [];
+  let j = 0;
+  while (j < raw.length) {
+    const entry = raw[j]!;
+    if (entry.type === "equal" && !isNear[j]) {
       let count = 0;
-      while (i < diff.length && diff[i]!.type === "equal" && !isNearChange[i]) {
+      while (j < raw.length && raw[j]!.type === "equal" && !isNear[j]) {
         count++;
-        i++;
+        j++;
       }
-      if (count > 0) result.push({ type: "ellipsis", count });
+      result.push({ type: "hunk", count });
     } else {
-      result.push(line);
-      i++;
+      result.push(entry);
+      j++;
     }
   }
   return result;
 }
 
-const DIFF_LINE_LIMIT = 6000;
-
-function DiffView({ original, proposed }: { original: string; proposed: string }) {
+function SideBySideDiffView({ original, proposed }: { original: string; proposed: string }) {
   const tooLarge = useMemo(
     () => original.split("\n").length + proposed.split("\n").length > DIFF_LINE_LIMIT,
     [original, proposed],
   );
-  const diff = useMemo(
-    () => (tooLarge ? [] : computeLineDiff(original, proposed)),
+  const lines = useMemo(
+    () => (tooLarge ? [] : computeSideBySideDiff(original, proposed)),
     [tooLarge, original, proposed],
   );
-  const collapsed = useMemo(() => collapseDiff(diff), [diff]);
-  const hasChanges = diff.some((l) => l.type !== "equal");
 
   if (tooLarge) {
     return (
-      <div className="flex items-center justify-center py-8 text-sm text-[var(--text-muted)] px-6 text-center">
-        Content too large to diff. Use the side-by-side view to review changes.
+      <div className="flex items-center justify-center py-8 text-sm px-6 text-center text-[var(--text-muted)]">
+        Content too large to diff. Use Source view to review changes.
       </div>
     );
   }
 
+  const hasChanges = lines.some((l) => l.type !== "equal" && l.type !== "hunk");
   if (!hasChanges) {
     return (
       <div className="flex items-center justify-center py-8 text-sm text-[var(--text-muted)]">
@@ -2874,37 +3078,299 @@ function DiffView({ original, proposed }: { original: string; proposed: string }
     );
   }
 
+  function renderChars(spans: CharSpan[], side: "left" | "right") {
+    return spans.map((span, si) => {
+      if (span.kind === "same") return <span key={si}>{span.text || "\u00a0"}</span>;
+      if (side === "left" && span.kind === "remove")
+        return (
+          <span key={si} className="bg-red-300/70 rounded-[1px]">
+            {span.text}
+          </span>
+        );
+      if (side === "right" && span.kind === "add")
+        return (
+          <span key={si} className="bg-green-300/70 rounded-[1px]">
+            {span.text}
+          </span>
+        );
+      return <span key={si}>{span.text}</span>;
+    });
+  }
+
   return (
     <div
-      className="font-mono text-xs overflow-auto h-full"
+      className="flex flex-col h-full overflow-auto font-mono text-xs select-text"
       style={{ scrollbarGutter: "stable both-edges" }}
     >
-      {collapsed.map((entry, idx) => {
-        if (entry.type === "ellipsis") {
+      {lines.map((line, idx) => {
+        if (line.type === "hunk") {
           return (
             <div
               key={idx}
-              className="px-3 py-0.5 text-[var(--text-muted)] select-none bg-[var(--thumb-bg)] opacity-60"
+              className="flex border-y select-none"
+              style={{
+                borderColor: "var(--thumb-bg)",
+                backgroundColor: "var(--control-bg)",
+                opacity: 0.7,
+              }}
             >
-              ··· {entry.count} unchanged line{entry.count !== 1 ? "s" : ""}
+              <div className="w-9 shrink-0" />
+              <div
+                className="flex-1 px-2 py-0.5 text-[10px] italic border-r"
+                style={{ color: "var(--text-muted)", borderColor: "var(--thumb-bg)" }}
+              >
+                ··· {line.count} unchanged line{line.count !== 1 ? "s" : ""}
+              </div>
+              <div className="w-9 shrink-0" />
+              <div className="flex-1" />
             </div>
           );
         }
-        const line = entry as DiffLine;
-        const bgClass =
-          line.type === "add"
-            ? "bg-green-50 text-green-900"
-            : line.type === "remove"
-              ? "bg-red-50 text-red-800 line-through opacity-75"
-              : "text-[var(--text)]";
-        const prefix = line.type === "add" ? "+ " : line.type === "remove" ? "- " : "  ";
+        const leftNum = line.type !== "add" ? line.leftNum : null;
+        const rightNum = line.type !== "remove" ? line.rightNum : null;
+        const leftBg =
+          line.type === "remove" ? "bg-red-50" : line.type === "changed" ? "bg-red-50/50" : "";
+        const rightBg =
+          line.type === "add" ? "bg-green-50" : line.type === "changed" ? "bg-green-50/50" : "";
+        const leftContent = () => {
+          if (line.type === "add") return null;
+          if (line.type === "equal") return <>{line.content || "\u00a0"}</>;
+          return renderChars(line.leftChars, "left");
+        };
+        const rightContent = () => {
+          if (line.type === "remove") return null;
+          if (line.type === "equal") return <>{line.content || "\u00a0"}</>;
+          return renderChars(line.rightChars, "right");
+        };
         return (
-          <div key={idx} className={`whitespace-pre-wrap leading-5 px-3 py-0 ${bgClass}`}>
-            <span className="select-none opacity-60">{prefix}</span>
-            {line.line || "\u00a0"}
+          <div key={idx} className="flex">
+            <div
+              className={`flex flex-1 min-w-0 border-r ${leftBg}`}
+              style={{ borderColor: "var(--thumb-bg)" }}
+            >
+              <span
+                className="w-9 shrink-0 text-right pr-2 py-0 leading-5 select-none opacity-40 text-[10px]"
+                style={{ color: "var(--text-muted)" }}
+              >
+                {leftNum ?? ""}
+              </span>
+              <span
+                className="flex-1 px-2 py-0 leading-5 whitespace-pre-wrap break-all min-w-0"
+                style={{ color: "var(--text)" }}
+              >
+                {leftContent()}
+              </span>
+            </div>
+            <div className={`flex flex-1 min-w-0 ${rightBg}`}>
+              <span
+                className="w-9 shrink-0 text-right pr-2 py-0 leading-5 select-none opacity-40 text-[10px]"
+                style={{ color: "var(--text-muted)" }}
+              >
+                {rightNum ?? ""}
+              </span>
+              <span
+                className="flex-1 px-2 py-0 leading-5 whitespace-pre-wrap break-all min-w-0"
+                style={{ color: "var(--text)" }}
+              >
+                {rightContent()}
+              </span>
+            </div>
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function CompareView({
+  original,
+  proposed,
+  subredditName,
+  currentPage,
+  wikiFontSize,
+  leftLabel = "Current",
+  rightLabel = "Suggested",
+  mode: controlledMode,
+}: {
+  original: string;
+  proposed: string;
+  subredditName: string;
+  currentPage: string;
+  wikiFontSize: WikiFontSize;
+  leftLabel?: string;
+  rightLabel?: string;
+  mode?: "normal" | "source" | "diff";
+}) {
+  const [internalMode, setInternalMode] = useState<"normal" | "source" | "diff">("normal");
+  const mode = controlledMode ?? internalMode;
+  const [hiddenCol, setHiddenCol] = useState<null | "left" | "right">(null);
+  useEffect(() => {
+    if (mode === "diff") setHiddenCol(null);
+  }, [mode]);
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      {controlledMode === undefined && (
+        <div
+          className="flex items-center gap-1 px-3 py-1.5 border-b shrink-0"
+          style={{ borderColor: "var(--thumb-bg)", backgroundColor: "var(--thumb-bg)" }}
+        >
+          {(["normal", "source", "diff"] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setInternalMode(m)}
+              className={`text-[10px] px-2.5 py-1 rounded transition-colors cursor-pointer capitalize ${
+                mode === m
+                  ? "bg-[var(--accent)] text-white"
+                  : "text-[var(--text-muted)] hover:bg-[var(--control-bg)]"
+              }`}
+            >
+              {m === "normal" ? "Normal" : m === "source" ? "Source" : "Diff"}
+            </button>
+          ))}
+        </div>
+      )}
+      {mode === "diff" ? (
+        <div className="flex-1 overflow-hidden">
+          <SideBySideDiffView original={original} proposed={proposed} />
+        </div>
+      ) : (
+        <div className="flex flex-1 overflow-hidden min-h-0">
+          {}
+          <div
+            style={{
+              flexGrow: hiddenCol === "left" ? 0 : 1,
+              flexShrink: 1,
+              flexBasis: "0%",
+              minWidth: 0,
+              overflow: "hidden",
+              transition: "flex-grow 0.35s ease",
+              borderRight: "1px solid var(--thumb-bg)",
+            }}
+          >
+            <div className="h-full overflow-auto" style={{ scrollbarGutter: "stable both-edges" }}>
+              <div style={{ zoom: hiddenCol === null ? 0.5 : 1 }}>
+                {mode === "normal" ? (
+                  original ? (
+                    <WikiMarkdownContent
+                      content={original}
+                      subredditName={subredditName}
+                      currentPage={currentPage}
+                      wikiFontSize={wikiFontSize}
+                      onPageChange={() => undefined}
+                      onCopyEchoLink={() => undefined}
+                    />
+                  ) : (
+                    <div
+                      className="flex items-center justify-center py-12 text-sm"
+                      style={{ color: "var(--text-muted)" }}
+                    >
+                      No existing content
+                    </div>
+                  )
+                ) : (
+                  <pre
+                    className="p-4 text-xs font-mono whitespace-pre-wrap leading-relaxed"
+                    style={{ color: "var(--text)" }}
+                  >
+                    {original || "(empty)"}
+                  </pre>
+                )}
+              </div>
+            </div>
+          </div>
+          {}
+          <div
+            style={{
+              flexGrow: hiddenCol === "right" ? 0 : 1,
+              flexShrink: 1,
+              flexBasis: "0%",
+              minWidth: 0,
+              overflow: "hidden",
+              transition: "flex-grow 0.35s ease",
+            }}
+          >
+            <div className="h-full overflow-auto" style={{ scrollbarGutter: "stable both-edges" }}>
+              <div style={{ zoom: hiddenCol === null ? 0.5 : 1 }}>
+                {mode === "normal" ? (
+                  <WikiMarkdownContent
+                    content={proposed}
+                    subredditName={subredditName}
+                    currentPage={currentPage}
+                    wikiFontSize={wikiFontSize}
+                    onPageChange={() => undefined}
+                    onCopyEchoLink={() => undefined}
+                  />
+                ) : (
+                  <pre
+                    className="p-4 text-xs font-mono whitespace-pre-wrap leading-relaxed"
+                    style={{ color: "var(--text)" }}
+                  >
+                    {proposed || "(empty)"}
+                  </pre>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {}
+      <div
+        className="flex items-center shrink-0 border-t text-[10px]"
+        style={{ borderColor: "var(--thumb-bg)", backgroundColor: "var(--thumb-bg)" }}
+      >
+        <div
+          style={{
+            flexGrow: hiddenCol === "left" ? 0 : 1,
+            flexShrink: 1,
+            flexBasis: "0%",
+            overflow: "hidden",
+            transition: "flex-grow 0.35s ease",
+          }}
+          className={`flex items-center justify-center px-3 py-0.5 select-none ${mode !== "diff" ? "cursor-pointer" : "cursor-default"}`}
+          onClick={
+            mode !== "diff" ? () => setHiddenCol(hiddenCol === "left" ? null : "left") : undefined
+          }
+        >
+          <span
+            className="font-bold transition-colors whitespace-nowrap"
+            style={{ color: hiddenCol === "left" ? "var(--text-muted)" : "var(--text)" }}
+          >
+            {leftLabel.toUpperCase()}
+          </span>
+        </div>
+        {hiddenCol === null && (
+          <div className="shrink-0 px-2 flex items-center" style={{ color: "var(--text-muted)" }}>
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M17 8l4 4m0 0l-4 4m4-4H3"
+              />
+            </svg>
+          </div>
+        )}
+        <div
+          style={{
+            flexGrow: hiddenCol === "right" ? 0 : 1,
+            flexShrink: 1,
+            flexBasis: "0%",
+            overflow: "hidden",
+            transition: "flex-grow 0.35s ease",
+          }}
+          className={`flex items-center justify-center px-3 py-0.5 select-none ${mode !== "diff" ? "cursor-pointer" : "cursor-default"}`}
+          onClick={
+            mode !== "diff" ? () => setHiddenCol(hiddenCol === "right" ? null : "right") : undefined
+          }
+        >
+          <span
+            className="font-bold transition-colors whitespace-nowrap"
+            style={{ color: hiddenCol === "right" ? "var(--text-muted)" : "var(--text)" }}
+          >
+            {rightLabel.toUpperCase()}
+          </span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -2936,8 +3402,6 @@ function SuggestionReviewModal({
     month: "short",
     day: "numeric",
   });
-  const [highlightChanges, setHighlightChanges] = useState(false);
-
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-[var(--bg)]">
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100 shrink-0">
@@ -2952,25 +3416,6 @@ function SuggestionReviewModal({
         </div>
         <div className="flex items-center gap-2 shrink-0 ml-4">
           {actError && <span className="text-xs text-red-500">{actError}</span>}
-          <button
-            onClick={() => setHighlightChanges((v) => !v)}
-            title="Toggle diff view"
-            className={`text-xs px-2.5 py-1.5 rounded border transition-colors cursor-pointer flex items-center gap-1.5 ${
-              highlightChanges
-                ? "bg-amber-50 border-amber-300 text-amber-700"
-                : "border-gray-300 text-[var(--text-muted)] hover:bg-[var(--control-bg)]"
-            }`}
-          >
-            <svg
-              className="w-3.5 h-3.5 shrink-0"
-              viewBox="0 0 16 16"
-              fill="currentColor"
-              aria-hidden="true"
-            >
-              <path d="M8 1a.75.75 0 0 1 .75.75V6h4.25a.75.75 0 0 1 0 1.5H8.75v4.25a.75.75 0 0 1-1.5 0V7.5H3a.75.75 0 0 1 0-1.5h4.25V1.75A.75.75 0 0 1 8 1Zm-5 9.25a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1-.75-.75Zm8 0a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1-.75-.75Z" />
-            </svg>
-            Highlight changes
-          </button>
           <button
             onClick={onDeny}
             disabled={isActing}
@@ -3002,57 +3447,17 @@ function SuggestionReviewModal({
           </button>
         </div>
       </div>
-      {highlightChanges ? (
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="px-3 py-1 text-[10px] font-medium text-amber-700 bg-amber-50 border-b border-amber-100 shrink-0 flex items-center gap-1.5">
-            <svg className="w-3 h-3" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-              <path d="M8 1a.75.75 0 0 1 .75.75V6h4.25a.75.75 0 0 1 0 1.5H8.75v4.25a.75.75 0 0 1-1.5 0V7.5H3a.75.75 0 0 1 0-1.5h4.25V1.75A.75.75 0 0 1 8 1Zm-5 9.25a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1-.75-.75Zm8 0a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1-.75-.75Z" />
-            </svg>
-            DIFF — <span className="text-red-600">removed</span> /{" "}
-            <span className="text-green-700">added</span>
-          </div>
-          <DiffView original={currentContent ?? ""} proposed={suggestion.content} />
-        </div>
-      ) : (
-        <div className="flex-1 flex overflow-hidden">
-          <div className="flex-1 flex flex-col overflow-hidden border-r border-gray-100">
-            <div className="px-3 py-1 text-[10px] font-medium text-[var(--text-muted)] bg-[var(--thumb-bg)] border-b border-gray-100 shrink-0">
-              CURRENT
-            </div>
-            <div className="flex-1 overflow-auto" style={{ scrollbarGutter: "stable both-edges" }}>
-              {currentContent ? (
-                <WikiMarkdownContent
-                  content={currentContent}
-                  subredditName={subredditName}
-                  currentPage={suggestion.page}
-                  wikiFontSize={wikiFontSize}
-                  onPageChange={() => undefined}
-                  onCopyEchoLink={() => undefined}
-                />
-              ) : (
-                <div className="flex items-center justify-center h-full text-sm text-[var(--text-muted)]">
-                  No existing content
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="flex-1 flex flex-col overflow-hidden">
-            <div className="px-3 py-1 text-[10px] font-medium text-[var(--accent)] bg-[var(--thumb-bg)] border-b border-gray-100 shrink-0">
-              SUGGESTED
-            </div>
-            <div className="flex-1 overflow-auto" style={{ scrollbarGutter: "stable both-edges" }}>
-              <WikiMarkdownContent
-                content={suggestion.content}
-                subredditName={subredditName}
-                currentPage={suggestion.page}
-                wikiFontSize={wikiFontSize}
-                onPageChange={() => undefined}
-                onCopyEchoLink={() => undefined}
-              />
-            </div>
-          </div>
-        </div>
-      )}
+      <div className="flex-1 overflow-hidden">
+        <CompareView
+          original={currentContent ?? ""}
+          proposed={suggestion.content}
+          subredditName={subredditName}
+          currentPage={suggestion.page}
+          wikiFontSize={wikiFontSize}
+          leftLabel="Current"
+          rightLabel="Suggested"
+        />
+      </div>
     </div>
   );
 }
@@ -3421,6 +3826,34 @@ function CollaborativePanel({
   );
 }
 
+function formatAuthorKarma(karma: number): string {
+  if (karma >= 1_000_000) return `${(karma / 1_000_000).toFixed(1)}M`;
+  if (karma >= 1_000) return `${(karma / 1_000).toFixed(1)}k`;
+  return String(karma);
+}
+
+function formatAuthorAge(days: number): string {
+  if (days < 30) return `${days}d`;
+  if (days < 365) {
+    const mo = Math.floor(days / 30);
+    return `${mo}mo`;
+  }
+  const yr = Math.floor(days / 365);
+  const mo = Math.floor((days % 365) / 30);
+  return mo > 0 ? `${yr}y ${mo}mo` : `${yr}y`;
+}
+
+function formatTimeRemaining(ms: number): string {
+  if (ms <= 0) return "deadline passed";
+  const days = Math.floor(ms / 86400000);
+  const hours = Math.floor((ms % 86400000) / 3600000);
+  const minutes = Math.floor((ms % 3600000) / 60000);
+  if (days > 0) return `${days}d ${hours}h left`;
+  if (hours > 0) return `${hours}h ${minutes}m left`;
+  if (minutes > 0) return `${minutes}m left`;
+  return "< 1m left";
+}
+
 function voteReasonLabel(reason: VoteStatus["reason"]): string {
   switch (reason) {
     case "threshold_accept":
@@ -3440,9 +3873,13 @@ function voteReasonLabel(reason: VoteStatus["reason"]): string {
 
 function VotingView({
   data,
+  wikiFontSize,
+  isInline,
   onVoteCast,
 }: {
   data: VotingInitResponse;
+  wikiFontSize: WikiFontSize;
+  isInline: boolean;
   onVoteCast: (updated: VoteStatus, myVote: VoteValue | null) => void;
 }) {
   const { suggestion, currentContent, canVote, config } = data;
@@ -3450,19 +3887,18 @@ function VotingView({
   const [myVote, setMyVote] = useState<VoteValue | null>(data.myVote);
   const [isCasting, setIsCasting] = useState(false);
   const [voteError, setVoteError] = useState<string | null>(null);
-  const [showDiff, setShowDiff] = useState(false);
+  const [mode, setMode] = useState<"normal" | "source" | "diff">("normal");
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    if (voteStatus.status !== "active" || config.votingDurationDays <= 0) return;
+    const interval = setInterval(() => setNow(Date.now()), 60000);
+    return () => clearInterval(interval);
+  }, [voteStatus.status, config.votingDurationDays]);
 
   const pageLabel = suggestion.page
     ? suggestion.page.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
     : "";
-  const dateStr = suggestion.createdAt
-    ? new Date(suggestion.createdAt).toLocaleDateString(undefined, {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      })
-    : "";
-
   const decidedDateStr = voteStatus.decidedAt
     ? new Date(voteStatus.decidedAt).toLocaleDateString(undefined, {
         year: "numeric",
@@ -3503,6 +3939,28 @@ function VotingView({
     [isCasting, onVoteCast],
   );
 
+  const handleRetract = useCallback(async () => {
+    if (isCasting) return;
+    setIsCasting(true);
+    setVoteError(null);
+    try {
+      const res = await fetch("/api/vote", { method: "DELETE" });
+      if (!res.ok) {
+        const err = (await res.json()) as ErrorResponse;
+        setVoteError(err.message ?? "Failed to retract vote");
+        return;
+      }
+      const responseData = (await res.json()) as CastVoteResponse;
+      setVoteStatus(responseData.voteStatus);
+      setMyVote(responseData.myVote);
+      onVoteCast(responseData.voteStatus, responseData.myVote);
+    } catch {
+      setVoteError("Network error");
+    } finally {
+      setIsCasting(false);
+    }
+  }, [isCasting, onVoteCast]);
+
   const resultBannerBg =
     voteStatus.status === "accepted"
       ? "bg-green-50 border-green-200 text-green-800"
@@ -3516,8 +3974,8 @@ function VotingView({
     <div className="flex flex-col h-full overflow-hidden" style={{ color: "var(--text)" }}>
       {/* Result banner */}
       {!isActive && (
-        <div className={`px-4 py-2.5 border-b shrink-0 ${resultBannerBg}`}>
-          <span className="font-bold text-sm">
+        <div className={`px-4 py-2 border-b shrink-0 text-sm ${resultBannerBg}`}>
+          <span className="font-bold">
             {voteStatus.status === "accepted"
               ? "✓ ACCEPTED"
               : voteStatus.status === "rejected"
@@ -3533,172 +3991,270 @@ function VotingView({
         </div>
       )}
 
-      {/* Suggestion header */}
+      {}
       <div
-        className="px-4 py-3 border-b shrink-0"
-        style={{ borderColor: "var(--thumb-bg)", backgroundColor: "var(--control-bg)" }}
+        className="flex items-center justify-between gap-3 px-3 py-1.5 border-b shrink-0"
+        style={{ borderColor: "var(--thumb-bg)", backgroundColor: "var(--thumb-bg)" }}
       >
-        <div className="flex items-center gap-1.5 flex-wrap text-sm">
-          <span className="font-semibold" style={{ color: "var(--accent)" }}>
-            u/{suggestion.username}
-          </span>
-          {pageLabel && (
-            <>
-              <span style={{ color: "var(--text-muted)" }}>suggests changes to</span>
-              <span className="font-medium italic">{pageLabel}</span>
-            </>
-          )}
-          {dateStr && (
-            <span style={{ color: "var(--text-muted)" }} className="text-xs">
-              &middot; {dateStr}
-            </span>
-          )}
-        </div>
-        {suggestion.description && (
-          <p className="text-xs mt-0.5 line-clamp-2" style={{ color: "var(--text-muted)" }}>
-            &ldquo;{suggestion.description}&rdquo;
-          </p>
-        )}
-      </div>
-
-      {/* Diff / side-by-side toggle */}
-      <div
-        className="flex items-center gap-2 px-4 py-1.5 border-b shrink-0"
-        style={{ borderColor: "var(--thumb-bg)" }}
-      >
-        <button
-          onClick={() => setShowDiff((v) => !v)}
-          className={`text-xs px-2.5 py-1 rounded border transition-colors cursor-pointer ${
-            showDiff
-              ? "bg-amber-50 border-amber-300 text-amber-700"
-              : "border-gray-300 hover:bg-[var(--control-bg)]"
-          }`}
-          style={!showDiff ? { color: "var(--text-muted)" } : undefined}
-        >
-          {showDiff ? "Show side-by-side" : "Show diff"}
-        </button>
-      </div>
-
-      {/* Content area */}
-      <div className="flex flex-1 overflow-hidden min-h-0">
-        {showDiff ? (
-          <div className="flex-1 overflow-hidden">
-            <DiffView original={currentContent} proposed={suggestion.content} />
-          </div>
-        ) : (
-          <>
-            <div
-              className="flex-1 overflow-auto border-r p-3"
-              style={{ borderColor: "var(--thumb-bg)" }}
+        {}
+        <div className="flex items-center gap-1">
+          {(["normal", "source", "diff"] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              className={`text-[10px] px-2.5 py-1 rounded transition-colors cursor-pointer ${
+                mode === m
+                  ? "bg-[var(--accent)] text-white"
+                  : "text-[var(--text-muted)] hover:bg-[var(--control-bg)]"
+              }`}
             >
-              <div
-                className="text-xs font-medium mb-2 uppercase tracking-wide"
-                style={{ color: "var(--text-muted)" }}
-              >
-                Current
-              </div>
-              <pre
-                className="text-xs whitespace-pre-wrap font-mono leading-relaxed"
-                style={{ color: "var(--text)" }}
-              >
-                {currentContent || <span style={{ color: "var(--text-muted)" }}>(empty)</span>}
-              </pre>
-            </div>
-            <div className="flex-1 overflow-auto p-3">
-              <div
-                className="text-xs font-medium mb-2 uppercase tracking-wide"
-                style={{ color: "var(--text-muted)" }}
-              >
-                Suggested
-              </div>
-              <pre
-                className="text-xs whitespace-pre-wrap font-mono leading-relaxed"
-                style={{ color: "var(--text)" }}
-              >
-                {suggestion.content || <span style={{ color: "var(--text-muted)" }}>(empty)</span>}
-              </pre>
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* Vote counts */}
-      <div
-        className="px-4 py-2.5 border-t shrink-0"
-        style={{ borderColor: "var(--thumb-bg)", backgroundColor: "var(--control-bg)" }}
-      >
-        <div className="flex items-center gap-4 text-sm flex-wrap">
-          <span className="text-green-600 font-medium">{voteStatus.acceptCount} accept</span>
-          <span className="text-red-500 font-medium">{voteStatus.rejectCount} reject</span>
-          <span style={{ color: "var(--text-muted)" }} className="text-xs">
-            {voteStatus.totalVoters} voter{voteStatus.totalVoters !== 1 ? "s" : ""}
-          </span>
+              {m === "normal" ? "Normal" : m === "source" ? "Source" : "Diff"}
+            </button>
+          ))}
         </div>
-        {config.votingShowVoterNames && voteStatus.votes.length > 0 && (
-          <div className="flex flex-wrap gap-2 mt-1.5">
-            {voteStatus.votes.map((entry, i) => (
-              <span
-                key={i}
-                className={`text-xs px-1.5 py-0.5 rounded ${
-                  entry.vote === "accept" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"
-                }`}
+        {}
+        <div className="flex items-center gap-3 shrink-0 flex-wrap justify-end">
+          {}
+          <div className="relative group cursor-default select-none">
+            <span className="text-xs text-green-600 font-medium">
+              {config.votingAcceptThreshold > 0
+                ? `${voteStatus.acceptCount}/${config.votingAcceptThreshold} ✓`
+                : `${voteStatus.acceptCount} ✓`}
+            </span>
+            {config.votingShowVoterNames && voteStatus.acceptCount > 0 && (
+              <div
+                className="absolute top-full left-1/2 -translate-x-1/2 mt-1.5 z-50 hidden group-hover:block rounded-md shadow-lg p-2 text-[10px] whitespace-nowrap"
+                style={{
+                  backgroundColor: "var(--control-bg)",
+                  border: "1px solid var(--thumb-bg)",
+                  color: "var(--text-muted)",
+                }}
               >
-                {entry.username ? `u/${entry.username}` : "anonymous"}{" "}
-                {entry.vote === "accept" ? "✓" : "✗"}
-              </span>
-            ))}
+                {voteStatus.votes
+                  .filter((v) => v.vote === "accept" && v.username)
+                  .map((v, i) => (
+                    <div key={i}>u/{v.username}</div>
+                  ))}
+              </div>
+            )}
           </div>
-        )}
-      </div>
-
-      {/* Vote buttons */}
-      {canVote && isActive && (
-        <div
-          className="px-4 py-3 border-t shrink-0 flex items-center gap-3 flex-wrap"
-          style={{ borderColor: "var(--thumb-bg)" }}
-        >
-          <button
-            onClick={() => void handleVote("accept")}
-            disabled={isCasting || myVote === "accept"}
-            className={`text-sm px-4 py-2 rounded-lg font-medium transition-colors cursor-pointer disabled:opacity-40 ${
-              myVote === "accept"
-                ? "bg-green-600 text-white"
-                : "bg-green-50 text-green-700 border border-green-300 hover:bg-green-100"
-            }`}
-          >
-            {isCasting && myVote !== "accept" ? "…" : "✓ Accept"}
-          </button>
-          <button
-            onClick={() => void handleVote("reject")}
-            disabled={isCasting || myVote === "reject"}
-            className={`text-sm px-4 py-2 rounded-lg font-medium transition-colors cursor-pointer disabled:opacity-40 ${
-              myVote === "reject"
-                ? "bg-red-600 text-white"
-                : "bg-red-50 text-red-600 border border-red-300 hover:bg-red-100"
-            }`}
-          >
-            {isCasting && myVote !== "reject" ? "…" : "✗ Reject"}
-          </button>
-          {myVote && (
+          {}
+          <div className="relative group cursor-default select-none">
+            <span className="text-xs text-red-500 font-medium">
+              {config.votingRejectThreshold > 0
+                ? `${voteStatus.rejectCount}/${config.votingRejectThreshold} ✗`
+                : `${voteStatus.rejectCount} ✗`}
+            </span>
+            {config.votingShowVoterNames && voteStatus.rejectCount > 0 && (
+              <div
+                className="absolute top-full left-1/2 -translate-x-1/2 mt-1.5 z-50 hidden group-hover:block rounded-md shadow-lg p-2 text-[10px] whitespace-nowrap"
+                style={{
+                  backgroundColor: "var(--control-bg)",
+                  border: "1px solid var(--thumb-bg)",
+                  color: "var(--text-muted)",
+                }}
+              >
+                {voteStatus.votes
+                  .filter((v) => v.vote === "reject" && v.username)
+                  .map((v, i) => (
+                    <div key={i}>u/{v.username}</div>
+                  ))}
+              </div>
+            )}
+          </div>
+          {}
+          <div className="relative group cursor-default select-none">
             <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-              Your vote: <strong>{myVote}</strong>
-              {config.votingAllowVoteChange ? " (click to change)" : ""}
+              {voteStatus.totalVoters} voter{voteStatus.totalVoters !== 1 ? "s" : ""}
+            </span>
+            {config.votingShowVoterNames && voteStatus.totalVoters > 0 && (
+              <div
+                className="absolute top-full left-1/2 -translate-x-1/2 mt-1.5 z-50 hidden group-hover:block rounded-md shadow-lg p-2 text-[10px] whitespace-nowrap"
+                style={{
+                  backgroundColor: "var(--control-bg)",
+                  border: "1px solid var(--thumb-bg)",
+                  color: "var(--text-muted)",
+                }}
+              >
+                {voteStatus.votes
+                  .filter((v) => v.username)
+                  .map((v, i) => (
+                    <div key={i}>
+                      <span className={v.vote === "accept" ? "text-green-600" : "text-red-500"}>
+                        {v.vote === "accept" ? "✓" : "✗"}
+                      </span>{" "}
+                      u/{v.username}
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
+          {}
+          {isActive && config.votingDurationDays > 0 && (
+            <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+              {formatTimeRemaining(
+                suggestion.createdAt + config.votingDurationDays * 86400000 - now,
+              )}
             </span>
           )}
-          {voteError && <span className="text-xs text-red-500">{voteError}</span>}
+          {isInline && (
+            <button
+              title="Pop out"
+              onClick={(e) => {
+                void requestExpandedMode(e.nativeEvent, "app");
+              }}
+              className="text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                />
+              </svg>
+            </button>
+          )}
         </div>
-      )}
+      </div>
 
-      {!canVote && isActive && data.username !== "anonymous" && (
-        <div
-          className="px-4 py-2 border-t shrink-0 text-xs"
-          style={{ borderColor: "var(--thumb-bg)", color: "var(--text-muted)" }}
-        >
-          {data.username === suggestion.username
-            ? "You cannot vote on your own suggestion."
-            : "You are not eligible to vote on this suggestion."}
+      {}
+      <div className="flex-1 overflow-hidden min-h-0">
+        <CompareView
+          original={currentContent}
+          proposed={suggestion.content}
+          subredditName={data.subredditName}
+          currentPage={suggestion.page}
+          wikiFontSize={wikiFontSize}
+          leftLabel="Current"
+          rightLabel="Suggested"
+          mode={mode}
+        />
+      </div>
+
+      {}
+      <div
+        className="px-4 py-2.5 border-t shrink-0 flex items-center justify-between gap-4"
+        style={{ borderColor: "var(--thumb-bg)", backgroundColor: "var(--control-bg)" }}
+      >
+        {}
+        <div className="flex flex-col gap-0.5 min-w-0 overflow-hidden">
+          <div className="flex items-center gap-1.5 text-xs flex-wrap">
+            <span className="font-medium" style={{ color: "var(--accent)" }}>
+              u/{suggestion.username}
+            </span>
+            {pageLabel && (
+              <>
+                <span style={{ color: "var(--text-muted)" }}>→</span>
+                <span className="font-medium italic" style={{ color: "var(--text)" }}>
+                  {pageLabel}
+                </span>
+              </>
+            )}
+          </div>
+          {data.suggestionAuthorInfo && (
+            <div
+              className="flex items-center gap-2 text-[10px] flex-wrap"
+              style={{ color: "var(--text-muted)" }}
+            >
+              <span>{formatAuthorKarma(data.suggestionAuthorInfo.karma)} karma</span>
+              <span>·</span>
+              <span>{formatAuthorAge(data.suggestionAuthorInfo.accountAgeDays)} old</span>
+              <span>·</span>
+              {data.suggestionAuthorInfo.acceptedContributions > 0 ? (
+                <span>
+                  {data.suggestionAuthorInfo.acceptedContributions} accepted contribution
+                  {data.suggestionAuthorInfo.acceptedContributions !== 1 ? "s" : ""}
+                </span>
+              ) : (
+                <span>no previous contributions</span>
+              )}
+            </div>
+          )}
+          {suggestion.description && (
+            <div className="relative group">
+              <p className="text-[10px] truncate" style={{ color: "var(--text-muted)" }}>
+                {suggestion.description}
+              </p>
+              {suggestion.previousDescriptions && suggestion.previousDescriptions.length > 0 && (
+                <div
+                  className="absolute bottom-full left-0 mb-1.5 z-50 hidden group-hover:block rounded-md shadow-lg p-2 text-[10px] max-w-64"
+                  style={{
+                    backgroundColor: "var(--control-bg)",
+                    border: "1px solid var(--thumb-bg)",
+                    color: "var(--text-muted)",
+                  }}
+                >
+                  <div className="font-medium mb-1" style={{ color: "var(--text)" }}>
+                    Previous reasons:
+                  </div>
+                  {suggestion.previousDescriptions.map((d, i) => (
+                    <div key={i} className="truncate">
+                      · {d}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
-      )}
+
+        {}
+        <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+          {canVote && isActive ? (
+            <>
+              {}
+              <div
+                style={{
+                  maxWidth: myVote === "reject" ? "0px" : "180px",
+                  opacity: myVote === "reject" ? 0 : 1,
+                  overflow: "hidden",
+                  flexShrink: 0,
+                  transition: "max-width 0.3s ease, opacity 0.25s ease",
+                }}
+              >
+                <button
+                  onClick={() =>
+                    void (myVote === "accept" ? handleRetract() : handleVote("accept"))
+                  }
+                  disabled={isCasting}
+                  className="whitespace-nowrap text-sm px-5 py-2 rounded-lg font-bold cursor-pointer disabled:opacity-50 bg-green-600 text-white hover:bg-green-700 transition-colors"
+                >
+                  {isCasting && myVote !== "reject" ? "…" : "✓ FOR"}
+                </button>
+              </div>
+              {}
+              <div
+                style={{
+                  maxWidth: myVote === "accept" ? "0px" : "180px",
+                  opacity: myVote === "accept" ? 0 : 1,
+                  overflow: "hidden",
+                  flexShrink: 0,
+                  transition: "max-width 0.3s ease, opacity 0.25s ease",
+                }}
+              >
+                <button
+                  onClick={() =>
+                    void (myVote === "reject" ? handleRetract() : handleVote("reject"))
+                  }
+                  disabled={isCasting}
+                  className="whitespace-nowrap text-sm px-5 py-2 rounded-lg font-bold cursor-pointer disabled:opacity-50 bg-red-600 text-white hover:bg-red-700 transition-colors"
+                >
+                  {isCasting && myVote !== "accept" ? "…" : "✗ AGAINST"}
+                </button>
+              </div>
+              {voteError && <span className="text-xs text-red-500">{voteError}</span>}
+            </>
+          ) : !canVote && isActive ? (
+            <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+              {data.voteIneligibleReason ??
+                (data.username === suggestion.username
+                  ? "You cannot vote on your own suggestion."
+                  : "You are not eligible to vote.")}
+            </span>
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 }
@@ -3711,17 +4267,32 @@ function VotingSettingsPanel({
   onConfigChanged: (config: GameConfig) => void;
 }) {
   const [isSaving, setIsSaving] = useState(false);
-
   const [votingEnabled, setVotingEnabled] = useState(config.votingEnabled);
   const [acceptThreshold, setAcceptThreshold] = useState(String(config.votingAcceptThreshold));
   const [rejectThreshold, setRejectThreshold] = useState(String(config.votingRejectThreshold));
   const [percentThreshold, setPercentThreshold] = useState(String(config.votingPercentThreshold));
   const [durationDays, setDurationDays] = useState(String(config.votingDurationDays));
+  const [minVoters, setMinVoters] = useState(String(config.votingMinVotersForTiming));
   const [allowVoteChange, setAllowVoteChange] = useState(config.votingAllowVoteChange);
   const [changeCooldown, setChangeCooldown] = useState(String(config.votingChangeCooldownMinutes));
   const [showVoterNames, setShowVoterNames] = useState(config.votingShowVoterNames);
   const [voterMinKarma, setVoterMinKarma] = useState(String(config.votingVoterMinKarma));
   const [voterMinAge, setVoterMinAge] = useState(String(config.votingVoterMinAccountAgeDays));
+  const [maxEdits, setMaxEdits] = useState(String(config.votingMaxSuggestionEdits));
+  const [postTitle, setPostTitle] = useState(config.votingPostTitle);
+  const [flairTemplateId, setFlairTemplateId] = useState<string | null>(
+    config.votingFlairTemplateId,
+  );
+  const [flairTemplates, setFlairTemplates] = useState<FlairTemplateInfo[]>([]);
+
+  useEffect(() => {
+    void fetch("/api/wiki/collab-info")
+      .then((r) => r.json())
+      .then((d: CollabInfoResponse) => {
+        setFlairTemplates(d.flairTemplates ?? []);
+      })
+      .catch(() => {});
+  }, []);
 
   const handleSave = useCallback(async () => {
     setIsSaving(true);
@@ -3735,11 +4306,15 @@ function VotingSettingsPanel({
           votingRejectThreshold: Math.max(0, parseInt(rejectThreshold, 10) || 0),
           votingPercentThreshold: Math.min(100, Math.max(0, parseInt(percentThreshold, 10) || 0)),
           votingDurationDays: Math.max(0, parseInt(durationDays, 10) || 0),
+          votingMinVotersForTiming: Math.max(0, parseInt(minVoters, 10) || 0),
           votingAllowVoteChange: allowVoteChange,
           votingChangeCooldownMinutes: Math.max(0, parseInt(changeCooldown, 10) || 0),
           votingShowVoterNames: showVoterNames,
           votingVoterMinKarma: Math.max(0, parseInt(voterMinKarma, 10) || 0),
           votingVoterMinAccountAgeDays: Math.max(0, parseInt(voterMinAge, 10) || 0),
+          votingMaxSuggestionEdits: Math.max(0, parseInt(maxEdits, 10) || 0),
+          votingFlairTemplateId: flairTemplateId,
+          votingPostTitle: postTitle.trim() || config.votingPostTitle,
         }),
       });
       if (res.ok) {
@@ -3756,232 +4331,253 @@ function VotingSettingsPanel({
     rejectThreshold,
     percentThreshold,
     durationDays,
+    minVoters,
     allowVoteChange,
     changeCooldown,
     showVoterNames,
     voterMinKarma,
     voterMinAge,
+    maxEdits,
+    postTitle,
+    flairTemplateId,
+    config.votingPostTitle,
     onConfigChanged,
   ]);
 
-  const labelClass = "text-xs font-medium";
-  const inputClass =
-    "w-full text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)]";
-  const inputStyle = { backgroundColor: "var(--control-bg)", color: "var(--control-text)" };
-  const sectionClass = "flex flex-col gap-3 pt-4 border-t border-gray-100";
+  const inp =
+    "w-full text-xs px-2 py-1 rounded border border-gray-200 focus:outline-none focus:border-[var(--accent)]";
+  const inpSt = { backgroundColor: "var(--control-bg)", color: "var(--control-text)" };
+  const hdr = "text-[10px] font-semibold uppercase tracking-wide pt-2 border-t border-gray-100";
+  const hdrSt = { color: "var(--text-muted)" };
+  const Toggle = ({ val, set }: { val: boolean; set: (v: boolean) => void }) => (
+    <button
+      onClick={() => set(!val)}
+      className={`relative shrink-0 w-8 h-4 rounded-full transition-colors cursor-pointer ${val ? "bg-[var(--accent)]" : "bg-gray-300"}`}
+    >
+      <span
+        className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform ${val ? "translate-x-4" : "translate-x-0"}`}
+      />
+    </button>
+  );
 
   return (
-    <div className="flex flex-col gap-4 max-w-lg">
-      {/* Enable toggle */}
+    <div className="flex flex-col gap-2 max-w-lg text-xs">
+      {}
       <div className="flex items-center justify-between gap-3">
         <div>
-          <span className={labelClass}>Public Voting</span>
-          <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>
-            When enabled, each suggestion spawns a public vote post.
-            {!config.collaborativeMode && (
-              <span className="text-amber-600 ml-1">Collaborative mode must be enabled first.</span>
-            )}
-          </p>
+          <span className="font-medium">Public Voting</span>
+          <span className="text-[10px] ml-2" style={{ color: "var(--text-muted)" }}>
+            each suggestion spawns a vote post
+          </span>
+          {!config.collaborativeMode && (
+            <span className="text-amber-600 text-[10px] ml-1">— requires collaborative mode</span>
+          )}
         </div>
-        <button
-          onClick={() => setVotingEnabled((v) => !v)}
-          className={`relative shrink-0 w-10 h-5 rounded-full transition-colors cursor-pointer ${votingEnabled ? "bg-[var(--accent)]" : "bg-gray-300"}`}
-        >
-          <span
-            className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${votingEnabled ? "translate-x-5" : "translate-x-0"}`}
-          />
-        </button>
+        <Toggle val={votingEnabled} set={setVotingEnabled} />
       </div>
 
       {/* Voter Eligibility */}
-      <div className={sectionClass}>
-        <span
-          className={`${labelClass} text-[var(--text-muted)] uppercase tracking-wide text-[10px]`}
-        >
-          Voter Eligibility
-        </span>
-        <div className="flex flex-col gap-1.5">
-          <span className={labelClass}>Minimum karma</span>
+      <p className={hdr} style={hdrSt}>
+        Voter Eligibility
+      </p>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="block mb-0.5 font-medium">Min karma</label>
           <input
             type="number"
             min="0"
             value={voterMinKarma}
             onChange={(e) => setVoterMinKarma(e.target.value)}
-            placeholder="0 (no requirement)"
-            className={inputClass}
-            style={inputStyle}
+            placeholder="0 = none"
+            className={inp}
+            style={inpSt}
           />
-          <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-            0 = no karma requirement
-          </span>
         </div>
-        <div className="flex flex-col gap-1.5">
-          <span className={labelClass}>Minimum account age (days)</span>
+        <div>
+          <label className="block mb-0.5 font-medium">Min age (days)</label>
           <input
             type="number"
             min="0"
             value={voterMinAge}
             onChange={(e) => setVoterMinAge(e.target.value)}
-            placeholder="0 (no requirement)"
-            className={inputClass}
-            style={inputStyle}
+            placeholder="0 = none"
+            className={inp}
+            style={inpSt}
           />
-          <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-            0 = no age requirement
-          </span>
         </div>
       </div>
 
       {/* Vote Behavior */}
-      <div className={sectionClass}>
-        <span
-          className={`${labelClass} text-[var(--text-muted)] uppercase tracking-wide text-[10px]`}
-        >
-          Vote Behavior
-        </span>
-        <div className="flex items-center justify-between gap-3">
-          <span className={labelClass}>Allow vote changes</span>
-          <button
-            onClick={() => setAllowVoteChange((v) => !v)}
-            className={`relative shrink-0 w-10 h-5 rounded-full transition-colors cursor-pointer ${allowVoteChange ? "bg-[var(--accent)]" : "bg-gray-300"}`}
-          >
-            <span
-              className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${allowVoteChange ? "translate-x-5" : "translate-x-0"}`}
-            />
-          </button>
-        </div>
-        {allowVoteChange && (
-          <div className="flex flex-col gap-1.5">
-            <span className={labelClass}>Change cooldown (minutes)</span>
-            <input
-              type="number"
-              min="0"
-              value={changeCooldown}
-              onChange={(e) => setChangeCooldown(e.target.value)}
-              placeholder="0 (no cooldown)"
-              className={inputClass}
-              style={inputStyle}
-            />
-            <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-              0 = can change vote immediately
-            </span>
-          </div>
-        )}
+      <p className={hdr} style={hdrSt}>
+        Vote Behavior
+      </p>
+      <div className="flex items-center justify-between gap-3">
+        <span className="font-medium">Allow vote changes</span>
+        <Toggle val={allowVoteChange} set={setAllowVoteChange} />
       </div>
+      {allowVoteChange && (
+        <div>
+          <label className="block mb-0.5 font-medium">
+            Change cooldown (min) <span style={{ color: "var(--text-muted)" }}>0 = immediate</span>
+          </label>
+          <input
+            type="number"
+            min="0"
+            value={changeCooldown}
+            onChange={(e) => setChangeCooldown(e.target.value)}
+            className={inp}
+            style={inpSt}
+          />
+        </div>
+      )}
 
-      {/* Acceptance Thresholds */}
-      <div className={sectionClass}>
-        <span
-          className={`${labelClass} text-[var(--text-muted)] uppercase tracking-wide text-[10px]`}
-        >
-          Instant Thresholds
-        </span>
-        <div className="flex flex-col gap-1.5">
-          <span className={labelClass}>Accept after N accept votes</span>
+      {}
+      <p className={hdr} style={hdrSt}>
+        Instant Thresholds <span className="normal-case font-normal">0 = off</span>
+      </p>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="block mb-0.5 font-medium">Accept at N ✓</label>
           <input
             type="number"
             min="0"
             value={acceptThreshold}
             onChange={(e) => setAcceptThreshold(e.target.value)}
-            placeholder="100"
-            className={inputClass}
-            style={inputStyle}
+            className={inp}
+            style={inpSt}
           />
-          <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-            0 = disabled
-          </span>
         </div>
-        <div className="flex flex-col gap-1.5">
-          <span className={labelClass}>Reject after N reject votes</span>
+        <div>
+          <label className="block mb-0.5 font-medium">Reject at N ✗</label>
           <input
             type="number"
             min="0"
             value={rejectThreshold}
             onChange={(e) => setRejectThreshold(e.target.value)}
-            placeholder="0 (disabled)"
-            className={inputClass}
-            style={inputStyle}
+            className={inp}
+            style={inpSt}
           />
-          <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-            0 = disabled
-          </span>
         </div>
       </div>
 
-      {/* Time-based voting */}
-      <div className={sectionClass}>
-        <span
-          className={`${labelClass} text-[var(--text-muted)] uppercase tracking-wide text-[10px]`}
-        >
-          Time-Based Voting
-        </span>
-        <div className="flex flex-col gap-1.5">
-          <span className={labelClass}>Voting duration (days)</span>
+      {}
+      <p className={hdr} style={hdrSt}>
+        Time-Based Voting
+      </p>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="block mb-0.5 font-medium">
+            Duration (days) <span style={{ color: "var(--text-muted)" }}>0 = off</span>
+          </label>
           <input
             type="number"
             min="0"
             value={durationDays}
             onChange={(e) => setDurationDays(e.target.value)}
-            placeholder="0 (no deadline)"
-            className={inputClass}
-            style={inputStyle}
+            className={inp}
+            style={inpSt}
           />
-          <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-            0 = no deadline
-          </span>
         </div>
-        {parseInt(durationDays, 10) > 0 && (
-          <div className="flex flex-col gap-1.5">
-            <span className={labelClass}>
-              Accept if X% of votes are &ldquo;accept&rdquo; at deadline
-            </span>
-            <input
-              type="number"
-              min="0"
-              max="100"
-              value={percentThreshold}
-              onChange={(e) => setPercentThreshold(e.target.value)}
-              placeholder="0 (disabled)"
-              className={inputClass}
-              style={inputStyle}
-            />
-            <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-              0 = disabled; e.g. 51 means majority vote
-            </span>
-          </div>
-        )}
+        <div>
+          <label className="block mb-0.5 font-medium">
+            Min voters <span style={{ color: "var(--text-muted)" }}>0 = none</span>
+          </label>
+          <input
+            type="number"
+            min="0"
+            value={minVoters}
+            onChange={(e) => setMinVoters(e.target.value)}
+            className={inp}
+            style={inpSt}
+          />
+        </div>
+      </div>
+      {parseInt(durationDays, 10) > 0 && (
+        <div>
+          <label className="block mb-0.5 font-medium">
+            Accept if ≥ X% accept at deadline{" "}
+            <span style={{ color: "var(--text-muted)" }}>0 = majority wins</span>
+          </label>
+          <input
+            type="number"
+            min="0"
+            max="100"
+            value={percentThreshold}
+            onChange={(e) => setPercentThreshold(e.target.value)}
+            className={inp}
+            style={inpSt}
+          />
+        </div>
+      )}
+
+      {}
+      <p className={hdr} style={hdrSt}>
+        Suggestion &amp; Display
+      </p>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="block mb-0.5 font-medium">
+            Max updates <span style={{ color: "var(--text-muted)" }}>0 = unlimited</span>
+          </label>
+          <input
+            type="number"
+            min="0"
+            value={maxEdits}
+            onChange={(e) => setMaxEdits(e.target.value)}
+            className={inp}
+            style={inpSt}
+          />
+        </div>
+        <div className="flex items-center justify-between gap-2 pt-4">
+          <span className="font-medium">Show voter names</span>
+          <Toggle val={showVoterNames} set={setShowVoterNames} />
+        </div>
       </div>
 
-      {/* Display */}
-      <div className={sectionClass}>
-        <span
-          className={`${labelClass} text-[var(--text-muted)] uppercase tracking-wide text-[10px]`}
-        >
-          Display
-        </span>
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <span className={labelClass}>Show voter names publicly</span>
-            <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>
-              Off = only vote counts are shown
-            </p>
-          </div>
-          <button
-            onClick={() => setShowVoterNames((v) => !v)}
-            className={`relative shrink-0 w-10 h-5 rounded-full transition-colors cursor-pointer ${showVoterNames ? "bg-[var(--accent)]" : "bg-gray-300"}`}
+      {}
+      {flairTemplates.length > 0 && (
+        <>
+          <p className={hdr} style={hdrSt}>
+            Vote Post Flair
+          </p>
+          <select
+            value={flairTemplateId ?? ""}
+            onChange={(e) => setFlairTemplateId(e.target.value || null)}
+            className={inp}
+            style={inpSt}
           >
-            <span
-              className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${showVoterNames ? "translate-x-5" : "translate-x-0"}`}
-            />
-          </button>
-        </div>
-      </div>
+            <option value="">No flair</option>
+            {flairTemplates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.text}
+              </option>
+            ))}
+          </select>
+        </>
+      )}
 
-      <div className="pt-2">
+      {}
+      <p className={hdr} style={hdrSt}>
+        Vote Post Title
+      </p>
+      <input
+        type="text"
+        value={postTitle}
+        onChange={(e) => setPostTitle(e.target.value)}
+        placeholder={config.votingPostTitle}
+        className={inp}
+        style={inpSt}
+      />
+      <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+        <code>%user%</code> · <code>%page%</code> · <code>%pathPage%</code> ·{" "}
+        <code>%shortPathPage%</code>
+      </p>
+
+      <div className="pt-1">
         <button
           onClick={() => void handleSave()}
           disabled={isSaving}
-          className="text-sm px-4 py-2 rounded-lg bg-[var(--accent)] text-white cursor-pointer disabled:opacity-40 hover:opacity-90 transition-opacity"
+          className="text-xs px-3 py-1.5 rounded-lg bg-[var(--accent)] text-white cursor-pointer disabled:opacity-40 hover:opacity-90 transition-opacity"
         >
           {isSaving ? "Saving…" : "Save Voting Settings"}
         </button>
@@ -4937,25 +5533,6 @@ export const App = () => {
 
   const colors: ColorTheme = isDark ? style.dark : style.light;
 
-  const preImportVars = useMemo((): CSSProperties => {
-    if (!initResolved) return ECHOWIKI_PRE_IMPORT;
-    const bg = colors.bgColor;
-    const accent = colors.accentColor;
-    const text = colors.textColor;
-    const muted = colors.textMuted;
-    return {
-      "--accent": accent,
-      "--accent-hover": darkenHex(accent, 0.05),
-      "--accent-ring": hexToRgba(accent, 0.2),
-      "--bg": bg,
-      "--text": text,
-      "--text-muted": muted,
-      "--thumb-bg": colors.thumbBgColor,
-      "--control-bg": colors.controlBgColor,
-      "--control-text": colors.controlTextColor,
-    } as CSSProperties;
-  }, [initResolved, colors]);
-
   const wikiTitle = useMemo(() => {
     if (config?.wikiTitle) return config.wikiTitle;
     if (subredditName) return `WIKI r/${subredditName}`;
@@ -5035,6 +5612,35 @@ export const App = () => {
             }
           } catch {}
           setInitResolved(true);
+
+          const contentEchoPaths = [
+            ...extractEchoPathsFromMarkdown(vd.currentContent),
+            ...extractEchoPathsFromMarkdown(vd.suggestion.content),
+          ];
+          const contentNeedsAssets = contentEchoPaths.length > 0;
+          const imported = await hasAssetsPromise;
+          if (contentNeedsAssets && !imported) {
+            setAppState("no-assets");
+            return;
+          }
+
+          if (imported) {
+            try {
+              const mappingRes = await fetch("/api/mapping").catch(() => null);
+              if (mappingRes?.ok) {
+                const mappingData: MappingResponse = await mappingRes.json();
+                if (mappingData.mapping) {
+                  const pathToMappedResult = await applyMapping(mappingData.mapping);
+                  setPathToMapped(pathToMappedResult);
+                  setReverseMapping(pathToMappedResult);
+                }
+              }
+            } catch {}
+            const uniqueEchoPaths = [...new Set(contentEchoPaths)];
+            if (uniqueEchoPaths.length > 0) {
+              void preloadPaths(uniqueEchoPaths);
+            }
+          }
           setAppState("ready");
           return;
         }
@@ -5662,7 +6268,7 @@ export const App = () => {
     <div
       className="flex flex-col h-screen"
       style={{
-        ...(appState === "ready" ? cssVars : preImportVars),
+        ...cssVars,
         backgroundColor: "var(--bg)",
         color: "var(--text)",
         fontFamily: getFontFamily(
@@ -5840,7 +6446,27 @@ export const App = () => {
                 pointerEvents: appState === "no-assets" ? "auto" : "none",
               }}
             >
-              {config?.gameName ? (
+              {appMode === "voting" ? (
+                <p className="text-[var(--text-muted)] text-sm">
+                  This vote includes game assets.
+                  {config?.gameName ? (
+                    <>
+                      {" "}
+                      Select the folder containing
+                      <br />
+                      <span className="font-semibold text-[var(--text)]">{config.gameName}</span>
+                      <br />
+                    </>
+                  ) : (
+                    <>
+                      {" "}
+                      Select your game folder
+                      <br />
+                    </>
+                  )}
+                  to view the comparison.
+                </p>
+              ) : config?.gameName ? (
                 <p className="text-[var(--text-muted)] text-sm">
                   To view the Wiki, select the folder containing
                   <br />
@@ -5913,6 +6539,8 @@ export const App = () => {
       {appState === "ready" && appMode === "voting" && votingData && (
         <VotingView
           data={votingData}
+          wikiFontSize={style.wikiFontSize}
+          isInline={isInline}
           onVoteCast={(updatedStatus, updatedMyVote) => {
             setVotingData((prev) =>
               prev ? { ...prev, voteStatus: updatedStatus, myVote: updatedMyVote } : null,
@@ -6122,7 +6750,7 @@ export const App = () => {
                     className="text-gray-400 hover:text-[var(--text-muted)] transition-colors cursor-pointer"
                     title="Pop out"
                     onClick={(e) => {
-                      void requestExpandedMode(e.nativeEvent, "default");
+                      void requestExpandedMode(e.nativeEvent, "app");
                     }}
                   >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

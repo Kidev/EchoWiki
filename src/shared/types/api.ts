@@ -31,6 +31,10 @@ export type GameConfig = {
   votingShowVoterNames: boolean;
   votingVoterMinKarma: number;
   votingVoterMinAccountAgeDays: number;
+  votingPostTitle: string;
+  votingFlairTemplateId: string | null;
+  votingMinVotersForTiming: number;
+  votingMaxSuggestionEdits: number;
 };
 
 export type ConfigResponse = {
@@ -59,6 +63,10 @@ export type ConfigUpdateRequest = {
   votingShowVoterNames?: boolean;
   votingVoterMinKarma?: number;
   votingVoterMinAccountAgeDays?: number;
+  votingPostTitle?: string | undefined;
+  votingFlairTemplateId?: string | null | undefined;
+  votingMinVotersForTiming?: number | undefined;
+  votingMaxSuggestionEdits?: number | undefined;
 };
 
 export type ConfigUpdateResponse = {
@@ -176,6 +184,8 @@ export type WikiSuggestion = {
   content: string;
   description: string;
   createdAt: number;
+  editCount?: number;
+  previousDescriptions?: string[];
 };
 
 export type WikiSuggestionRequest = {
@@ -226,6 +236,12 @@ export type WikiSuggestionsResponse = {
   suggestions: WikiSuggestionWithVoting[];
 };
 
+export type SuggestionAuthorInfo = {
+  karma: number;
+  accountAgeDays: number;
+  acceptedContributions: number;
+};
+
 export type VotingInitResponse = {
   type: "voting-init";
   postId: string;
@@ -239,6 +255,8 @@ export type VotingInitResponse = {
   voteStatus: VoteStatus;
   canVote: boolean;
   myVote: VoteValue | null;
+  voteIneligibleReason: string | null;
+  suggestionAuthorInfo: SuggestionAuthorInfo | null;
 };
 
 export type CastVoteRequest = {
