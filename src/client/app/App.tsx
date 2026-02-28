@@ -3,6 +3,7 @@ import {
   memo,
   type ChangeEvent,
   type CSSProperties,
+  type MutableRefObject,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
   useCallback,
@@ -1561,22 +1562,32 @@ function WikiSuggestDialog({
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="font-semibold text-[var(--text)] mb-1">Submit suggestion</h3>
-        <p className="text-sm text-[var(--text-muted)] mb-4">
+        <p className="text-sm text-[var(--text-muted)] mb-1">
           Describe your changes so moderators can understand what you&apos;re suggesting.
+        </p>
+        <p className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>
+          If updating an existing suggestion, describe <strong>all</strong> changes made, not just
+          the latest.
         </p>
         <input
           type="text"
           value={description}
           onChange={(e) => onDescriptionChange(e.target.value)}
-          placeholder="Description of changes…"
+          placeholder="Description of changes (min. 10 chars)…"
           autoFocus
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !isSaving && description.trim()) onConfirm();
+            if (e.key === "Enter" && !isSaving && description.trim().length >= 10) onConfirm();
           }}
-          className="w-full text-sm px-3 py-2 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)] mb-3"
+          className="w-full text-sm px-3 py-2 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)] mb-1"
         />
-        {error !== null && <p className="text-xs text-red-500 mb-3">{error}</p>}
-        <div className="flex justify-end gap-2">
+        {description.trim().length > 0 && description.trim().length < 10 && (
+          <p className="text-xs mb-2" style={{ color: "var(--text-muted)" }}>
+            {10 - description.trim().length} more character
+            {10 - description.trim().length !== 1 ? "s" : ""} needed
+          </p>
+        )}
+        {error !== null && <p className="text-xs text-red-500 mb-2">{error}</p>}
+        <div className="flex justify-end gap-2 mt-1">
           <button
             onClick={onDismiss}
             disabled={isSaving}
@@ -1586,7 +1597,7 @@ function WikiSuggestDialog({
           </button>
           <button
             onClick={onConfirm}
-            disabled={isSaving || !description.trim()}
+            disabled={isSaving || description.trim().length < 10}
             className="text-sm px-3 py-1.5 rounded bg-[var(--accent)] text-white hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50"
           >
             {isSaving ? "Submitting…" : "Submit"}
@@ -2078,7 +2089,12 @@ const WikiView = memo(function WikiView({
           {isProposeMode && (
             <div
               className="flex items-center shrink-0 border-t text-[10px]"
-              style={{ borderColor: "var(--thumb-bg)", backgroundColor: "var(--thumb-bg)" }}
+              style={{
+                borderColor: "var(--thumb-bg)",
+                backgroundColor: "var(--thumb-bg)",
+                cursor: proposeHiddenPane !== null ? "pointer" : "default",
+              }}
+              onClick={proposeHiddenPane !== null ? () => setProposeHiddenPane(null) : undefined}
             >
               <div
                 style={{
@@ -2088,17 +2104,22 @@ const WikiView = memo(function WikiView({
                   overflow: "hidden",
                   transition: "flex-grow 0.35s ease",
                 }}
-                className={`flex items-center justify-center px-3 py-0.5 select-none ${proposeViewMode !== "diff" ? "cursor-pointer" : "cursor-default"}`}
+                className={`flex items-center justify-center px-3 py-0.5 select-none ${proposeHiddenPane === null && proposeViewMode !== "diff" ? "cursor-pointer" : ""}`}
                 onClick={
-                  proposeViewMode !== "diff"
-                    ? () => setProposeHiddenPane(proposeHiddenPane === "left" ? null : "left")
+                  proposeHiddenPane === null && proposeViewMode !== "diff"
+                    ? (e) => {
+                        e.stopPropagation();
+                        setProposeHiddenPane("right");
+                      }
                     : undefined
                 }
               >
                 <span
-                  className="font-bold transition-colors whitespace-nowrap"
+                  className="font-bold whitespace-nowrap"
                   style={{
-                    color: proposeHiddenPane === "left" ? "var(--text-muted)" : "var(--text)",
+                    color: "var(--text)",
+                    opacity: proposeHiddenPane === "left" ? 0 : 1,
+                    transition: "opacity 0.35s ease",
                   }}
                 >
                   PROPOSED
@@ -2127,17 +2148,22 @@ const WikiView = memo(function WikiView({
                   overflow: "hidden",
                   transition: "flex-grow 0.35s ease",
                 }}
-                className={`flex items-center justify-center px-3 py-0.5 select-none ${proposeViewMode !== "diff" ? "cursor-pointer" : "cursor-default"}`}
+                className={`flex items-center justify-center px-3 py-0.5 select-none ${proposeHiddenPane === null && proposeViewMode !== "diff" ? "cursor-pointer" : ""}`}
                 onClick={
-                  proposeViewMode !== "diff"
-                    ? () => setProposeHiddenPane(proposeHiddenPane === "right" ? null : "right")
+                  proposeHiddenPane === null && proposeViewMode !== "diff"
+                    ? (e) => {
+                        e.stopPropagation();
+                        setProposeHiddenPane("left");
+                      }
                     : undefined
                 }
               >
                 <span
-                  className="font-bold transition-colors whitespace-nowrap"
+                  className="font-bold whitespace-nowrap"
                   style={{
-                    color: proposeHiddenPane === "right" ? "var(--text-muted)" : "var(--text)",
+                    color: "var(--text)",
+                    opacity: proposeHiddenPane === "right" ? 0 : 1,
+                    transition: "opacity 0.35s ease",
                   }}
                 >
                   EDITOR
@@ -3083,13 +3109,13 @@ function SideBySideDiffView({ original, proposed }: { original: string; proposed
       if (span.kind === "same") return <span key={si}>{span.text || "\u00a0"}</span>;
       if (side === "left" && span.kind === "remove")
         return (
-          <span key={si} className="bg-red-300/70 rounded-[1px]">
+          <span key={si} className="bg-red-500/50 rounded-[1px]">
             {span.text}
           </span>
         );
       if (side === "right" && span.kind === "add")
         return (
-          <span key={si} className="bg-green-300/70 rounded-[1px]">
+          <span key={si} className="bg-green-500/50 rounded-[1px]">
             {span.text}
           </span>
         );
@@ -3129,9 +3155,13 @@ function SideBySideDiffView({ original, proposed }: { original: string; proposed
         const leftNum = line.type !== "add" ? line.leftNum : null;
         const rightNum = line.type !== "remove" ? line.rightNum : null;
         const leftBg =
-          line.type === "remove" ? "bg-red-50" : line.type === "changed" ? "bg-red-50/50" : "";
+          line.type === "remove" ? "bg-red-500/15" : line.type === "changed" ? "bg-red-500/10" : "";
         const rightBg =
-          line.type === "add" ? "bg-green-50" : line.type === "changed" ? "bg-green-50/50" : "";
+          line.type === "add"
+            ? "bg-green-500/15"
+            : line.type === "changed"
+              ? "bg-green-500/10"
+              : "";
         const leftContent = () => {
           if (line.type === "add") return null;
           if (line.type === "equal") return <>{line.content || "\u00a0"}</>;
@@ -3316,7 +3346,12 @@ function CompareView({
       {}
       <div
         className="flex items-center shrink-0 border-t text-[10px]"
-        style={{ borderColor: "var(--thumb-bg)", backgroundColor: "var(--thumb-bg)" }}
+        style={{
+          borderColor: "var(--thumb-bg)",
+          backgroundColor: "var(--thumb-bg)",
+          cursor: hiddenCol !== null ? "pointer" : "default",
+        }}
+        onClick={hiddenCol !== null ? () => setHiddenCol(null) : undefined}
       >
         <div
           style={{
@@ -3326,14 +3361,23 @@ function CompareView({
             overflow: "hidden",
             transition: "flex-grow 0.35s ease",
           }}
-          className={`flex items-center justify-center px-3 py-0.5 select-none ${mode !== "diff" ? "cursor-pointer" : "cursor-default"}`}
+          className={`flex items-center justify-center px-3 py-0.5 select-none ${hiddenCol === null && mode !== "diff" ? "cursor-pointer" : ""}`}
           onClick={
-            mode !== "diff" ? () => setHiddenCol(hiddenCol === "left" ? null : "left") : undefined
+            hiddenCol === null && mode !== "diff"
+              ? (e) => {
+                  e.stopPropagation();
+                  setHiddenCol("right");
+                }
+              : undefined
           }
         >
           <span
-            className="font-bold transition-colors whitespace-nowrap"
-            style={{ color: hiddenCol === "left" ? "var(--text-muted)" : "var(--text)" }}
+            className="font-bold whitespace-nowrap"
+            style={{
+              color: "var(--text)",
+              opacity: hiddenCol === "left" ? 0 : 1,
+              transition: "opacity 0.35s ease",
+            }}
           >
             {leftLabel.toUpperCase()}
           </span>
@@ -3358,14 +3402,23 @@ function CompareView({
             overflow: "hidden",
             transition: "flex-grow 0.35s ease",
           }}
-          className={`flex items-center justify-center px-3 py-0.5 select-none ${mode !== "diff" ? "cursor-pointer" : "cursor-default"}`}
+          className={`flex items-center justify-center px-3 py-0.5 select-none ${hiddenCol === null && mode !== "diff" ? "cursor-pointer" : ""}`}
           onClick={
-            mode !== "diff" ? () => setHiddenCol(hiddenCol === "right" ? null : "right") : undefined
+            hiddenCol === null && mode !== "diff"
+              ? (e) => {
+                  e.stopPropagation();
+                  setHiddenCol("left");
+                }
+              : undefined
           }
         >
           <span
-            className="font-bold transition-colors whitespace-nowrap"
-            style={{ color: hiddenCol === "right" ? "var(--text-muted)" : "var(--text)" }}
+            className="font-bold whitespace-nowrap"
+            style={{
+              color: "var(--text)",
+              opacity: hiddenCol === "right" ? 0 : 1,
+              transition: "opacity 0.35s ease",
+            }}
           >
             {rightLabel.toUpperCase()}
           </span>
@@ -3485,6 +3538,8 @@ function CollaborativePanel({
 
   const [advCountField, setAdvCountField] = useState("0");
   const [advFlairTemplateId, setAdvFlairTemplateId] = useState<string | null>(null);
+  const [savedAdvCount, setSavedAdvCount] = useState("0");
+  const [savedAdvFlairTemplateId, setSavedAdvFlairTemplateId] = useState<string | null>(null);
   const [isSavingAdv, setIsSavingAdv] = useState(false);
 
   const [banned, setBanned] = useState<string[]>([]);
@@ -3505,6 +3560,8 @@ function CollaborativePanel({
         setFlairTemplates(data.flairTemplates);
         setAdvCountField(String(data.advancedContributorCount));
         setAdvFlairTemplateId(data.advancedContributorFlairTemplateId);
+        setSavedAdvCount(String(data.advancedContributorCount));
+        setSavedAdvFlairTemplateId(data.advancedContributorFlairTemplateId);
       }
     } catch {
     } finally {
@@ -3589,6 +3646,8 @@ function CollaborativePanel({
         const data: AdvancedContributorResponse = await res.json();
         setAdvCountField(String(data.count));
         setAdvFlairTemplateId(data.flairTemplateId);
+        setSavedAdvCount(String(data.count));
+        setSavedAdvFlairTemplateId(data.flairTemplateId);
       }
     } catch {
     } finally {
@@ -3762,7 +3821,11 @@ function CollaborativePanel({
               </select>
               <button
                 onClick={() => void handleSaveAdvanced()}
-                disabled={isSavingAdv}
+                disabled={
+                  (advCountField === savedAdvCount &&
+                    advFlairTemplateId === savedAdvFlairTemplateId) ||
+                  isSavingAdv
+                }
                 className="text-xs px-2.5 py-1 rounded-full bg-[var(--accent)] text-white cursor-pointer disabled:opacity-30 shrink-0"
               >
                 {isSavingAdv ? "Saving…" : "Apply"}
@@ -3985,7 +4048,7 @@ function VotingView({
           {decidedDateStr && (
             <span className="text-xs ml-2">
               on {decidedDateStr}
-              {voteStatus.reason ? ` — ${voteReasonLabel(voteStatus.reason)}` : ""}
+              {voteStatus.reason ? `: ${voteReasonLabel(voteStatus.reason)}` : ""}
             </span>
           )}
         </div>
@@ -4119,7 +4182,7 @@ function VotingView({
       </div>
 
       {}
-      <div className="flex-1 overflow-hidden min-h-0">
+      <div className="flex-1 overflow-hidden min-h-0 relative">
         <CompareView
           original={currentContent}
           proposed={suggestion.content}
@@ -4130,6 +4193,11 @@ function VotingView({
           rightLabel="Suggested"
           mode={mode}
         />
+        {isCasting && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/10 z-10">
+            <div className="w-10 h-10 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+          </div>
+        )}
       </div>
 
       {}
@@ -4140,9 +4208,13 @@ function VotingView({
         {}
         <div className="flex flex-col gap-0.5 min-w-0 overflow-hidden">
           <div className="flex items-center gap-1.5 text-xs flex-wrap">
-            <span className="font-medium" style={{ color: "var(--accent)" }}>
+            <button
+              className="font-medium cursor-pointer hover:underline"
+              style={{ color: "var(--accent)" }}
+              onClick={() => navigateTo({ url: `https://www.reddit.com/u/${suggestion.username}` })}
+            >
               u/{suggestion.username}
-            </span>
+            </button>
             {pageLabel && (
               <>
                 <span style={{ color: "var(--text-muted)" }}>→</span>
@@ -4220,7 +4292,11 @@ function VotingView({
                   disabled={isCasting}
                   className="whitespace-nowrap text-sm px-5 py-2 rounded-lg font-bold cursor-pointer disabled:opacity-50 bg-green-600 text-white hover:bg-green-700 transition-colors"
                 >
-                  {isCasting && myVote !== "reject" ? "…" : "✓ FOR"}
+                  {isCasting && myVote !== "reject" ? (
+                    <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin inline-block align-middle" />
+                  ) : (
+                    "✓ FOR"
+                  )}
                 </button>
               </div>
               {}
@@ -4240,7 +4316,11 @@ function VotingView({
                   disabled={isCasting}
                   className="whitespace-nowrap text-sm px-5 py-2 rounded-lg font-bold cursor-pointer disabled:opacity-50 bg-red-600 text-white hover:bg-red-700 transition-colors"
                 >
-                  {isCasting && myVote !== "accept" ? "…" : "✗ AGAINST"}
+                  {isCasting && myVote !== "accept" ? (
+                    <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin inline-block align-middle" />
+                  ) : (
+                    "✗ AGAINST"
+                  )}
                 </button>
               </div>
               {voteError && <span className="text-xs text-red-500">{voteError}</span>}
@@ -4262,9 +4342,13 @@ function VotingView({
 function VotingSettingsPanel({
   config,
   onConfigChanged,
+  onDirtyChange,
+  saveRef,
 }: {
   config: GameConfig;
   onConfigChanged: (config: GameConfig) => void;
+  onDirtyChange?: (dirty: boolean) => void;
+  saveRef?: MutableRefObject<(() => Promise<void>) | null>;
 }) {
   const [isSaving, setIsSaving] = useState(false);
   const [votingEnabled, setVotingEnabled] = useState(config.votingEnabled);
@@ -4283,16 +4367,55 @@ function VotingSettingsPanel({
   const [flairTemplateId, setFlairTemplateId] = useState<string | null>(
     config.votingFlairTemplateId,
   );
-  const [flairTemplates, setFlairTemplates] = useState<FlairTemplateInfo[]>([]);
+  const [linkFlairTemplates, setLinkFlairTemplates] = useState<FlairTemplateInfo[]>([]);
 
   useEffect(() => {
     void fetch("/api/wiki/collab-info")
       .then((r) => r.json())
       .then((d: CollabInfoResponse) => {
-        setFlairTemplates(d.flairTemplates ?? []);
+        setLinkFlairTemplates(d.linkFlairTemplates ?? []);
       })
       .catch(() => {});
   }, []);
+
+  const votingDirty = useMemo(
+    () =>
+      votingEnabled !== config.votingEnabled ||
+      acceptThreshold !== String(config.votingAcceptThreshold) ||
+      rejectThreshold !== String(config.votingRejectThreshold) ||
+      percentThreshold !== String(config.votingPercentThreshold) ||
+      durationDays !== String(config.votingDurationDays) ||
+      minVoters !== String(config.votingMinVotersForTiming) ||
+      allowVoteChange !== config.votingAllowVoteChange ||
+      changeCooldown !== String(config.votingChangeCooldownMinutes) ||
+      showVoterNames !== config.votingShowVoterNames ||
+      voterMinKarma !== String(config.votingVoterMinKarma) ||
+      voterMinAge !== String(config.votingVoterMinAccountAgeDays) ||
+      maxEdits !== String(config.votingMaxSuggestionEdits) ||
+      postTitle !== config.votingPostTitle ||
+      flairTemplateId !== config.votingFlairTemplateId,
+    [
+      votingEnabled,
+      acceptThreshold,
+      rejectThreshold,
+      percentThreshold,
+      durationDays,
+      minVoters,
+      allowVoteChange,
+      changeCooldown,
+      showVoterNames,
+      voterMinKarma,
+      voterMinAge,
+      maxEdits,
+      postTitle,
+      flairTemplateId,
+      config,
+    ],
+  );
+
+  useEffect(() => {
+    onDirtyChange?.(votingDirty);
+  }, [votingDirty, onDirtyChange]);
 
   const handleSave = useCallback(async () => {
     setIsSaving(true);
@@ -4344,11 +4467,17 @@ function VotingSettingsPanel({
     onConfigChanged,
   ]);
 
+  useEffect(() => {
+    if (saveRef) saveRef.current = handleSave;
+  }, [saveRef, handleSave]);
+
   const inp =
     "w-full text-xs px-2 py-1 rounded border border-gray-200 focus:outline-none focus:border-[var(--accent)]";
+  const numInp =
+    "w-14 text-xs px-1.5 py-1 rounded border border-gray-200 focus:outline-none focus:border-[var(--accent)] text-center tabular-nums";
   const inpSt = { backgroundColor: "var(--control-bg)", color: "var(--control-text)" };
-  const hdr = "text-[10px] font-semibold uppercase tracking-wide pt-2 border-t border-gray-100";
-  const hdrSt = { color: "var(--text-muted)" };
+  const secHdr = "text-[10px] font-semibold uppercase tracking-wide mb-2";
+  const secHdrSt = { color: "var(--text-muted)" };
   const Toggle = ({ val, set }: { val: boolean; set: (v: boolean) => void }) => (
     <button
       onClick={() => set(!val)}
@@ -4360,186 +4489,205 @@ function VotingSettingsPanel({
     </button>
   );
 
+  const divSt: CSSProperties = { borderColor: "var(--thumb-bg)" };
+
   return (
-    <div className="flex flex-col gap-2 max-w-lg text-xs">
+    <div className="text-xs" style={{ maxWidth: 680 }}>
       {}
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <span className="font-medium">Public Voting</span>
-          <span className="text-[10px] ml-2" style={{ color: "var(--text-muted)" }}>
+      <div className="flex items-center justify-between gap-3 px-3 py-2 border-b" style={divSt}>
+        <div className="flex items-center gap-2">
+          <span className="font-semibold">Public Voting</span>
+          <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
             each suggestion spawns a vote post
           </span>
           {!config.collaborativeMode && (
-            <span className="text-amber-600 text-[10px] ml-1">— requires collaborative mode</span>
+            <span className="text-amber-600 text-[10px]">: requires collaborative mode</span>
           )}
         </div>
         <Toggle val={votingEnabled} set={setVotingEnabled} />
       </div>
 
-      {/* Voter Eligibility */}
-      <p className={hdr} style={hdrSt}>
-        Voter Eligibility
-      </p>
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <label className="block mb-0.5 font-medium">Min karma</label>
-          <input
-            type="number"
-            min="0"
-            value={voterMinKarma}
-            onChange={(e) => setVoterMinKarma(e.target.value)}
-            placeholder="0 = none"
-            className={inp}
-            style={inpSt}
-          />
-        </div>
-        <div>
-          <label className="block mb-0.5 font-medium">Min age (days)</label>
-          <input
-            type="number"
-            min="0"
-            value={voterMinAge}
-            onChange={(e) => setVoterMinAge(e.target.value)}
-            placeholder="0 = none"
-            className={inp}
-            style={inpSt}
-          />
-        </div>
-      </div>
-
-      {/* Vote Behavior */}
-      <p className={hdr} style={hdrSt}>
-        Vote Behavior
-      </p>
-      <div className="flex items-center justify-between gap-3">
-        <span className="font-medium">Allow vote changes</span>
-        <Toggle val={allowVoteChange} set={setAllowVoteChange} />
-      </div>
-      {allowVoteChange && (
-        <div>
-          <label className="block mb-0.5 font-medium">
-            Change cooldown (min) <span style={{ color: "var(--text-muted)" }}>0 = immediate</span>
-          </label>
-          <input
-            type="number"
-            min="0"
-            value={changeCooldown}
-            onChange={(e) => setChangeCooldown(e.target.value)}
-            className={inp}
-            style={inpSt}
-          />
-        </div>
-      )}
-
       {}
-      <p className={hdr} style={hdrSt}>
-        Instant Thresholds <span className="normal-case font-normal">0 = off</span>
-      </p>
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <label className="block mb-0.5 font-medium">Accept at N ✓</label>
-          <input
-            type="number"
-            min="0"
-            value={acceptThreshold}
-            onChange={(e) => setAcceptThreshold(e.target.value)}
-            className={inp}
-            style={inpSt}
-          />
-        </div>
-        <div>
-          <label className="block mb-0.5 font-medium">Reject at N ✗</label>
-          <input
-            type="number"
-            min="0"
-            value={rejectThreshold}
-            onChange={(e) => setRejectThreshold(e.target.value)}
-            className={inp}
-            style={inpSt}
-          />
-        </div>
-      </div>
-
-      {}
-      <p className={hdr} style={hdrSt}>
-        Time-Based Voting
-      </p>
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <label className="block mb-0.5 font-medium">
-            Duration (days) <span style={{ color: "var(--text-muted)" }}>0 = off</span>
-          </label>
-          <input
-            type="number"
-            min="0"
-            value={durationDays}
-            onChange={(e) => setDurationDays(e.target.value)}
-            className={inp}
-            style={inpSt}
-          />
-        </div>
-        <div>
-          <label className="block mb-0.5 font-medium">
-            Min voters <span style={{ color: "var(--text-muted)" }}>0 = none</span>
-          </label>
-          <input
-            type="number"
-            min="0"
-            value={minVoters}
-            onChange={(e) => setMinVoters(e.target.value)}
-            className={inp}
-            style={inpSt}
-          />
-        </div>
-      </div>
-      {parseInt(durationDays, 10) > 0 && (
-        <div>
-          <label className="block mb-0.5 font-medium">
-            Accept if ≥ X% accept at deadline{" "}
-            <span style={{ color: "var(--text-muted)" }}>0 = majority wins</span>
-          </label>
-          <input
-            type="number"
-            min="0"
-            max="100"
-            value={percentThreshold}
-            onChange={(e) => setPercentThreshold(e.target.value)}
-            className={inp}
-            style={inpSt}
-          />
-        </div>
-      )}
-
-      {}
-      <p className={hdr} style={hdrSt}>
-        Suggestion &amp; Display
-      </p>
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <label className="block mb-0.5 font-medium">
-            Max updates <span style={{ color: "var(--text-muted)" }}>0 = unlimited</span>
-          </label>
-          <input
-            type="number"
-            min="0"
-            value={maxEdits}
-            onChange={(e) => setMaxEdits(e.target.value)}
-            className={inp}
-            style={inpSt}
-          />
-        </div>
-        <div className="flex items-center justify-between gap-2 pt-4">
-          <span className="font-medium">Show voter names</span>
-          <Toggle val={showVoterNames} set={setShowVoterNames} />
-        </div>
-      </div>
-
-      {}
-      {flairTemplates.length > 0 && (
-        <>
-          <p className={hdr} style={hdrSt}>
-            Vote Post Flair
+      <div className="flex border-b" style={divSt}>
+        {}
+        <div className="flex-1 px-3 py-2 border-r" style={divSt}>
+          <p className={secHdr} style={secHdrSt}>
+            Voter Eligibility
           </p>
+          <div className="flex flex-col gap-1.5">
+            <label className="flex items-center gap-1.5">
+              <span className="w-10 shrink-0">Karma</span>
+              <input
+                type="number"
+                min="0"
+                value={voterMinKarma}
+                onChange={(e) => setVoterMinKarma(e.target.value)}
+                placeholder="0"
+                className={numInp}
+                style={inpSt}
+              />
+              <span style={{ color: "var(--text-muted)" }}>0=none</span>
+            </label>
+            <label className="flex items-center gap-1.5">
+              <span className="w-10 shrink-0">Age</span>
+              <input
+                type="number"
+                min="0"
+                value={voterMinAge}
+                onChange={(e) => setVoterMinAge(e.target.value)}
+                placeholder="0"
+                className={numInp}
+                style={inpSt}
+              />
+              <span style={{ color: "var(--text-muted)" }}>days, 0=none</span>
+            </label>
+          </div>
+        </div>
+
+        {}
+        <div className="flex-1 px-3 py-2 border-r" style={divSt}>
+          <p className={secHdr} style={secHdrSt}>
+            Instant Thresholds <span className="font-normal normal-case">0=off</span>
+          </p>
+          <div className="flex flex-col gap-1.5">
+            <label className="flex items-center gap-1.5">
+              <span className="w-12 shrink-0">Accept</span>
+              <input
+                type="number"
+                min="0"
+                value={acceptThreshold}
+                onChange={(e) => setAcceptThreshold(e.target.value)}
+                className={numInp}
+                style={inpSt}
+              />
+              <span>✓</span>
+            </label>
+            <label className="flex items-center gap-1.5">
+              <span className="w-12 shrink-0">Reject</span>
+              <input
+                type="number"
+                min="0"
+                value={rejectThreshold}
+                onChange={(e) => setRejectThreshold(e.target.value)}
+                className={numInp}
+                style={inpSt}
+              />
+              <span>✗</span>
+            </label>
+          </div>
+        </div>
+
+        {}
+        <div className="flex-1 px-3 py-2">
+          <p className={secHdr} style={secHdrSt}>
+            Timed Voting <span className="font-normal normal-case">0=off</span>
+          </p>
+          <div className="flex flex-col gap-1.5">
+            <label className="flex items-center gap-1.5">
+              <input
+                type="number"
+                min="0"
+                value={durationDays}
+                onChange={(e) => setDurationDays(e.target.value)}
+                className={numInp}
+                style={inpSt}
+              />
+              <span style={{ color: "var(--text-muted)" }}>days duration</span>
+            </label>
+            <label className="flex items-center gap-1.5">
+              <input
+                type="number"
+                min="0"
+                value={minVoters}
+                onChange={(e) => setMinVoters(e.target.value)}
+                className={numInp}
+                style={inpSt}
+              />
+              <span style={{ color: "var(--text-muted)" }}>min voters</span>
+            </label>
+            <label className="flex items-center gap-1.5">
+              <span>≥</span>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={percentThreshold}
+                onChange={(e) => setPercentThreshold(e.target.value)}
+                className={numInp}
+                style={inpSt}
+              />
+              <span style={{ color: "var(--text-muted)" }}>% to accept · 0=majority</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      {}
+      <div className="flex border-b" style={divSt}>
+        {}
+        <div className="flex-1 px-3 py-2 border-r" style={divSt}>
+          <p className={secHdr} style={secHdrSt}>
+            Vote Changes
+          </p>
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <span>Allow changes</span>
+              <Toggle val={allowVoteChange} set={setAllowVoteChange} />
+            </div>
+            {allowVoteChange && (
+              <label className="flex items-center gap-1.5">
+                <span className="shrink-0">Cooldown</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={changeCooldown}
+                  onChange={(e) => setChangeCooldown(e.target.value)}
+                  className={numInp}
+                  style={inpSt}
+                />
+                <span style={{ color: "var(--text-muted)" }}>min · 0=immed.</span>
+              </label>
+            )}
+          </div>
+        </div>
+
+        {}
+        <div className="flex-1 px-3 py-2 border-r" style={divSt}>
+          <p className={secHdr} style={secHdrSt}>
+            Display
+          </p>
+          <div className="flex items-center justify-between gap-2">
+            <span>Show voter names</span>
+            <Toggle val={showVoterNames} set={setShowVoterNames} />
+          </div>
+        </div>
+
+        {}
+        <div className="flex-1 px-3 py-2">
+          <p className={secHdr} style={secHdrSt}>
+            Suggestion Limits
+          </p>
+          <label className="flex items-center gap-1.5">
+            <span className="shrink-0">Max updates</span>
+            <input
+              type="number"
+              min="0"
+              value={maxEdits}
+              onChange={(e) => setMaxEdits(e.target.value)}
+              className={numInp}
+              style={inpSt}
+            />
+            <span style={{ color: "var(--text-muted)" }}>0=∞</span>
+          </label>
+        </div>
+      </div>
+
+      {}
+      <div className="flex gap-3 px-3 py-2 border-b" style={divSt}>
+        <div className="shrink-0" style={{ width: 160 }}>
+          <label className="block mb-1" style={{ color: "var(--text-muted)" }}>
+            Vote Post Flair
+          </label>
           <select
             value={flairTemplateId ?? ""}
             onChange={(e) => setFlairTemplateId(e.target.value || null)}
@@ -4547,39 +4695,40 @@ function VotingSettingsPanel({
             style={inpSt}
           >
             <option value="">No flair</option>
-            {flairTemplates.map((t) => (
+            {linkFlairTemplates.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.text}
               </option>
             ))}
           </select>
-        </>
-      )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <label className="block mb-1" style={{ color: "var(--text-muted)" }}>
+            Vote Post Title{" "}
+            <span className="text-[10px]">
+              · <code>%user%</code> <code>%page%</code> <code>%pathPage%</code>{" "}
+              <code>%shortPathPage%</code>
+            </span>
+          </label>
+          <input
+            type="text"
+            value={postTitle}
+            onChange={(e) => setPostTitle(e.target.value)}
+            placeholder={config.votingPostTitle}
+            className={inp}
+            style={inpSt}
+          />
+        </div>
+      </div>
 
       {}
-      <p className={hdr} style={hdrSt}>
-        Vote Post Title
-      </p>
-      <input
-        type="text"
-        value={postTitle}
-        onChange={(e) => setPostTitle(e.target.value)}
-        placeholder={config.votingPostTitle}
-        className={inp}
-        style={inpSt}
-      />
-      <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-        <code>%user%</code> · <code>%page%</code> · <code>%pathPage%</code> ·{" "}
-        <code>%shortPathPage%</code>
-      </p>
-
-      <div className="pt-1">
+      <div className="px-3 py-2">
         <button
           onClick={() => void handleSave()}
-          disabled={isSaving}
-          className="text-xs px-3 py-1.5 rounded-lg bg-[var(--accent)] text-white cursor-pointer disabled:opacity-40 hover:opacity-90 transition-opacity"
+          disabled={!votingDirty || isSaving}
+          className="text-xs px-3 py-1.5 rounded-lg bg-[var(--accent)] text-white cursor-pointer disabled:opacity-30 hover:opacity-90 transition-opacity"
         >
-          {isSaving ? "Saving…" : "Save Voting Settings"}
+          {isSaving ? "Saving…" : "Apply"}
         </button>
       </div>
     </div>
@@ -4588,9 +4737,11 @@ function VotingSettingsPanel({
 
 function SubmissionsPanel({
   subredditName,
+  isMod,
   wikiFontSize,
 }: {
   subredditName: string;
+  isMod: boolean;
   wikiFontSize: WikiFontSize;
 }) {
   const [suggestions, setSuggestions] = useState<WikiSuggestionWithVoting[]>([]);
@@ -4754,7 +4905,15 @@ function SubmissionsPanel({
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-sm font-medium text-[var(--text)]">u/{p.username}</span>
+                      <button
+                        className="text-sm font-medium cursor-pointer hover:underline"
+                        style={{ color: "var(--accent)" }}
+                        onClick={() =>
+                          navigateTo({ url: `https://www.reddit.com/u/${p.username}` })
+                        }
+                      >
+                        u/{p.username}
+                      </button>
                       <span className="text-xs text-[var(--text-muted)]">
                         &rarr; <em>{pageLabel}</em>
                       </span>
@@ -4782,18 +4941,22 @@ function SubmissionsPanel({
                         Vote post ↗
                       </button>
                     )}
-                    <button
-                      onClick={() => void handleReview(p)}
-                      className="text-xs px-2 py-1 rounded bg-[var(--accent)] text-white hover:opacity-90 cursor-pointer"
-                    >
-                      Review
-                    </button>
-                    <button
-                      onClick={() => void handleQuickDeny(p.username)}
-                      className="text-xs px-2 py-1 rounded border border-red-300 text-red-600 hover:bg-red-50 cursor-pointer"
-                    >
-                      Deny
-                    </button>
+                    {isMod && (
+                      <>
+                        <button
+                          onClick={() => void handleReview(p)}
+                          className="text-xs px-2 py-1 rounded bg-[var(--accent)] text-white hover:opacity-90 cursor-pointer"
+                        >
+                          Review
+                        </button>
+                        <button
+                          onClick={() => void handleQuickDeny(p.username)}
+                          className="text-xs px-2 py-1 rounded border border-red-300 text-red-600 hover:bg-red-50 cursor-pointer"
+                        >
+                          Deny
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               );
@@ -4838,6 +5001,8 @@ function SettingsView({
   const [engineField, setEngineField] = useState<EngineType>(config.engine);
   const [encryptionKeyField, setEncryptionKeyField] = useState(config.encryptionKey);
   const [savingConfig, setSavingConfig] = useState(false);
+  const [votingPanelDirty, setVotingPanelDirty] = useState(false);
+  const votingSaveRef = useRef<(() => Promise<void>) | null>(null);
 
   const isTcoaalDetected = useMemo(() => {
     const t = gameTitle.toLowerCase();
@@ -4943,11 +5108,12 @@ function SettingsView({
     [saveStyle, editingMode],
   );
 
-  const anyDirty = configDirty;
+  const anyDirty = configDirty || votingPanelDirty;
 
   const handleSaveAll = useCallback(async () => {
     if (configDirty) void handleSaveConfig();
-  }, [configDirty, handleSaveConfig]);
+    if (votingPanelDirty) void votingSaveRef.current?.();
+  }, [configDirty, handleSaveConfig, votingPanelDirty]);
 
   const defaultColors = useMemo(() => {
     const accent = appearance.keyColor ?? "#d93900";
@@ -5316,7 +5482,12 @@ function SettingsView({
         )}
 
         {settingsTab === "voting" && (
-          <VotingSettingsPanel config={config} onConfigChanged={onConfigChanged} />
+          <VotingSettingsPanel
+            config={config}
+            onConfigChanged={onConfigChanged}
+            onDirtyChange={setVotingPanelDirty}
+            saveRef={votingSaveRef}
+          />
         )}
       </div>
     </>
@@ -5638,7 +5809,13 @@ export const App = () => {
             } catch {}
             const uniqueEchoPaths = [...new Set(contentEchoPaths)];
             if (uniqueEchoPaths.length > 0) {
-              void preloadPaths(uniqueEchoPaths);
+              setLoadingProgress(5);
+              await preloadPaths(uniqueEchoPaths, (loaded) => {
+                setLoadingProgress(5 + Math.round((loaded / uniqueEchoPaths.length) * 90));
+              });
+              setLoadingProgress(100);
+              setReadyToTransition(true);
+              return;
             }
           }
           setAppState("ready");
@@ -6615,7 +6792,7 @@ export const App = () => {
                     )}
                   </button>
                 )}
-                {isMod && config?.collaborativeMode && (
+                {(isMod || (config?.collaborativeMode && config?.votingEnabled)) && (
                   <button
                     className={`text-sm px-3 py-1 rounded-full transition-colors cursor-pointer ${
                       activeTab === "submissions"
@@ -7030,9 +7207,14 @@ export const App = () => {
             </>
           )}
 
-          {activeTab === "submissions" && isMod && config?.collaborativeMode && (
-            <SubmissionsPanel subredditName={subredditName} wikiFontSize={style.wikiFontSize} />
-          )}
+          {activeTab === "submissions" &&
+            (isMod || (config?.collaborativeMode && config?.votingEnabled)) && (
+              <SubmissionsPanel
+                subredditName={subredditName}
+                isMod={isMod}
+                wikiFontSize={style.wikiFontSize}
+              />
+            )}
 
           {activeTab === "settings" && isMod && config && (
             <SettingsView

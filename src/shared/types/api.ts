@@ -303,6 +303,7 @@ export type CollabInfoResponse = {
   banned: string[];
   flairTemplateId: string | null;
   flairTemplates: FlairTemplateInfo[];
+  linkFlairTemplates: FlairTemplateInfo[];
   advancedContributorCount: number;
   advancedContributorFlairTemplateId: string | null;
 };

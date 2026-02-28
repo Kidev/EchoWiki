@@ -185,15 +185,55 @@ async function checkEligibility(
   }
 }
 
+function capitalizeWords(str: string): string {
+  return str
+    .split("/")
+    .map((seg) =>
+      seg
+        .split(" ")
+        .map((w) => (w ? w[0]!.toUpperCase() + w.slice(1) : w))
+        .join(" "),
+    )
+    .join("/");
+}
+
 function expandVotingTitle(template: string, username: string, page: string): string {
-  const pathPage = page.replace(/_/g, " ");
+  const pathPage = capitalizeWords(page.replace(/_/g, " "));
   const parts = pathPage.split("/");
   const shortPathPage = parts.length > 1 ? parts.slice(1).join("/") : pathPage;
+  const capPage = page
+    .split("/")
+    .map((seg) =>
+      seg
+        .split("_")
+        .map((w) => (w ? w[0]!.toUpperCase() + w.slice(1) : w))
+        .join("_"),
+    )
+    .join("/");
   return template
     .replace(/%user%/g, username)
-    .replace(/%page%/g, page)
+    .replace(/%page%/g, capPage)
     .replace(/%pathPage%/g, pathPage)
     .replace(/%shortPathPage%/g, shortPathPage);
+}
+
+async function upsertBotComment(votingPostId: string, text: string): Promise<void> {
+  const key = `votingBotCommentId:${votingPostId}`;
+  const existingId = await redis.get(key).catch(() => null);
+  if (existingId) {
+    try {
+      const comment = await reddit.getCommentById(existingId as `t1_${string}`);
+      await comment.edit({ text });
+      return;
+    } catch {}
+  }
+  try {
+    const comment = await reddit.submitComment({ id: votingPostId as `t3_${string}`, text });
+    await comment.distinguish(true);
+    await redis.set(key, comment.id);
+  } catch (err) {
+    console.error("Failed to create bot comment:", err);
+  }
 }
 
 async function getVoterEligibilityInfo(
@@ -210,14 +250,14 @@ async function getVoterEligibilityInfo(
     if (config.votingVoterMinKarma > 0 && karma < config.votingVoterMinKarma) {
       return {
         eligible: false,
-        reason: `Insufficient karma — you have ${karma.toLocaleString()} but need at least ${config.votingVoterMinKarma.toLocaleString()}.`,
+        reason: `Insufficient karma: you have ${karma.toLocaleString()} but need at least ${config.votingVoterMinKarma.toLocaleString()}.`,
       };
     }
     const ageDays = Math.floor((Date.now() - user.createdAt.getTime()) / 86400000);
     if (config.votingVoterMinAccountAgeDays > 0 && ageDays < config.votingVoterMinAccountAgeDays) {
       return {
         eligible: false,
-        reason: `Account too new — your account is ${ageDays} day${ageDays !== 1 ? "s" : ""} old but needs to be at least ${config.votingVoterMinAccountAgeDays} days old.`,
+        reason: `Account too new: your account is ${ageDays} day${ageDays !== 1 ? "s" : ""} old but needs to be at least ${config.votingVoterMinAccountAgeDays} days old.`,
       };
     }
     return { eligible: true, reason: null };
@@ -338,15 +378,23 @@ async function cleanupVotingPost(
   reason: VoteStatusData["reason"],
   votingPostId: string,
 ): Promise<void> {
-  await redis.set(
-    `voteStatus:${username}`,
-    JSON.stringify({ status: outcome, decidedAt: Date.now(), reason }),
-  );
+  const decidedAt = Date.now();
+  await redis.set(`voteStatus:${username}`, JSON.stringify({ status: outcome, decidedAt, reason }));
+
+  const existingRaw = await redis.get(`votingPost:${votingPostId}`).catch(() => null);
+  const baseData = existingRaw
+    ? (JSON.parse(existingRaw) as { username: string; subredditName: string })
+    : { username, subredditName: "" };
+
   await Promise.all([
-    redis.del(`votingPost:${votingPostId}`),
+    redis.set(
+      `votingPost:${votingPostId}`,
+      JSON.stringify({ ...baseData, concluded: true, status: outcome, decidedAt, reason }),
+    ),
     redis.del(`votingPostId:${username}`),
     redis.del(`votes:${username}`),
   ]);
+
   const outcomeText = outcome === "accepted" ? "ACCEPTED" : "REJECTED";
   const reasonText = getVoteReasonText(reason);
   const dateStr = new Date().toLocaleDateString("en-US", {
@@ -354,14 +402,10 @@ async function cleanupVotingPost(
     day: "numeric",
     year: "numeric",
   });
-  try {
-    await reddit.submitComment({
-      id: votingPostId as `t3_${string}`,
-      text: `**Vote concluded: ${outcomeText}**\n\nDecided on ${dateStr} — ${reasonText}.`,
-    });
-  } catch (err) {
-    console.error("Failed to submit vote result comment:", err);
-  }
+  await upsertBotComment(
+    votingPostId,
+    `**Vote concluded: ${outcomeText}**\n\nDecided on ${dateStr}: ${reasonText}.`,
+  );
   try {
     const post = await reddit.getPostById(votingPostId as `t3_${string}`);
     await post.lock();
@@ -514,10 +558,16 @@ router.get<Record<string, never>, InitResponse | VotingInitResponse | ErrorRespo
       // Check if this is a voting post
       const votingPostRaw = await redis.get(`votingPost:${postId}`).catch(() => null);
       if (votingPostRaw) {
-        const { username: suggestionUsername } = JSON.parse(votingPostRaw) as {
+        type VotingPostData = {
           username: string;
           subredditName: string;
+          concluded?: boolean;
+          status?: "accepted" | "rejected" | "cancelled";
+          decidedAt?: number;
+          reason?: VoteStatusData["reason"];
         };
+        const votingPostData = JSON.parse(votingPostRaw) as VotingPostData;
+        const { username: suggestionUsername } = votingPostData;
         const subreddit = context.subredditName ?? "";
 
         let suggestionAuthorInfo: SuggestionAuthorInfo | null = null;
@@ -539,13 +589,25 @@ router.get<Record<string, never>, InitResponse | VotingInitResponse | ErrorRespo
 
         const raw = await redis.get(`suggestion:${suggestionUsername}`);
         if (!raw) {
-          // Suggestion finalized or deleted — still show voting-init with empty suggestion
-          const voteStatus = await getVoteStatus(
-            suggestionUsername,
-            config,
-            username ?? "anonymous",
-            isMod,
-          );
+          let voteStatus: VoteStatus;
+          if (votingPostData.concluded && votingPostData.status) {
+            voteStatus = {
+              status: votingPostData.status,
+              decidedAt: votingPostData.decidedAt ?? null,
+              reason: votingPostData.reason ?? null,
+              acceptCount: 0,
+              rejectCount: 0,
+              totalVoters: 0,
+              votes: [],
+            };
+          } else {
+            voteStatus = await getVoteStatus(
+              suggestionUsername,
+              config,
+              username ?? "anonymous",
+              isMod,
+            );
+          }
           const placeholder: WikiSuggestion = {
             username: suggestionUsername,
             page: "",
@@ -1200,6 +1262,13 @@ router.post<Record<string, never>, WikiSuggestionResponse | ErrorResponse, WikiS
 
       const body = req.body as WikiSuggestionRequest;
 
+      if (!body.description || body.description.trim().length < 10) {
+        res
+          .status(400)
+          .json({ status: "error", message: "Description must be at least 10 characters." });
+        return;
+      }
+
       const bannedList = await reddit
         .getBannedWikiContributors({ subredditName: subreddit, username })
         .all()
@@ -1281,12 +1350,10 @@ router.post<Record<string, never>, WikiSuggestionResponse | ErrorResponse, WikiS
             hour: "2-digit",
             minute: "2-digit",
           });
-          try {
-            await reddit.submitComment({
-              id: existingVotingPostId as `t3_${string}`,
-              text: `✏️ **Suggestion updated** on ${dateStr} — all votes have been reset.`,
-            });
-          } catch {}
+          await upsertBotComment(
+            existingVotingPostId,
+            `**Suggestion updated** on ${dateStr}: all votes have been reset.`,
+          );
           if (config.votingDurationDays > 0) {
             const oldJobId = await redis.get(`voteJobId:${username}`).catch(() => null);
             if (oldJobId) {
@@ -1360,6 +1427,11 @@ router.post<Record<string, never>, WikiSuggestionResponse | ErrorResponse, WikiS
               ),
             ]);
 
+            await upsertBotComment(
+              newPostId,
+              `**EchoWiki Vote**\n\nStatus: Active. Vote to accept or reject the suggested changes.`,
+            );
+
             if (config.votingDurationDays > 0) {
               const jobId = await scheduler.runJob({
                 id: `vote-deadline-${username}-${Date.now()}`,
@@ -1399,17 +1471,16 @@ router.delete<Record<string, never>, WikiSuggestionActionResponse | ErrorRespons
         redis.zRem("suggestions", [username]),
       ]);
       if (votingPostId) {
-        const dateStr = new Date().toLocaleDateString("en-US", {
+        const decidedAt = Date.now();
+        const dateStr = new Date(decidedAt).toLocaleDateString("en-US", {
           month: "short",
           day: "numeric",
           year: "numeric",
         });
-        try {
-          await reddit.submitComment({
-            id: votingPostId as `t3_${string}`,
-            text: `**Suggestion withdrawn** on ${dateStr} — the author has retracted their suggestion.`,
-          });
-        } catch {}
+        await upsertBotComment(
+          votingPostId,
+          `**Vote concluded: WITHDRAWN**\n\nOn ${dateStr}: the author has retracted their suggestion.`,
+        );
         try {
           const post = await reddit.getPostById(votingPostId as `t3_${string}`);
           await post.lock();
@@ -1420,13 +1491,27 @@ router.delete<Record<string, never>, WikiSuggestionActionResponse | ErrorRespons
             await scheduler.cancelJob(jobId);
           } catch {}
         }
+
+        const existingRaw = await redis.get(`votingPost:${votingPostId}`).catch(() => null);
+        const baseData = existingRaw
+          ? (JSON.parse(existingRaw) as { username: string; subredditName: string })
+          : { username, subredditName: context.subredditName ?? "" };
         await Promise.all([
-          redis.del(`votingPost:${votingPostId}`),
+          redis.set(
+            `votingPost:${votingPostId}`,
+            JSON.stringify({
+              ...baseData,
+              concluded: true,
+              status: "cancelled",
+              decidedAt,
+              reason: "cancelled",
+            }),
+          ),
           redis.del(`votingPostId:${username}`),
           redis.del(`votes:${username}`),
           redis.set(
             `voteStatus:${username}`,
-            JSON.stringify({ status: "cancelled", decidedAt: Date.now(), reason: "cancelled" }),
+            JSON.stringify({ status: "cancelled", decidedAt, reason: "cancelled" }),
           ),
           redis.del(`voteJobId:${username}`),
         ]);
@@ -1449,12 +1534,11 @@ router.get<Record<string, never>, WikiSuggestionsResponse | ErrorResponse>(
         res.status(401).json({ status: "error", message: "Not logged in" });
         return;
       }
-      const isMod = await checkIsMod(username);
-      if (!isMod) {
+      const [isMod, config] = await Promise.all([checkIsMod(username), getConfig()]);
+      if (!config.collaborativeMode) {
         res.status(403).json({ status: "error", message: "Not authorized" });
         return;
       }
-      const config = await getConfig();
       const members = await redis.zRange("suggestions", 0, -1);
       const suggestions: WikiSuggestionWithVoting[] = [];
       for (const m of members) {
@@ -1465,7 +1549,7 @@ router.get<Record<string, never>, WikiSuggestionsResponse | ErrorResponse>(
             const votingPostId = await redis.get(`votingPostId:${m.member}`).catch(() => null);
             let voteStatus: VoteStatus | null = null;
             if (votingPostId) {
-              voteStatus = await getVoteStatus(m.member, config, username, true);
+              voteStatus = await getVoteStatus(m.member, config, username, isMod);
             }
             suggestions.push({ ...suggestion, votingPostId: votingPostId ?? null, voteStatus });
           } catch {}
@@ -1616,21 +1700,35 @@ router.get<Record<string, never>, CollabInfoResponse | ErrorResponse>(
         return;
       }
 
-      const [bannedUsers, flairTemplatesRaw, subInfo, storedFlairId, advCountRaw, advFlairId] =
-        await Promise.all([
-          reddit
-            .getBannedWikiContributors({ subredditName: subreddit })
-            .all()
-            .catch(() => []),
-          reddit.getUserFlairTemplates(subreddit).catch(() => []),
-          reddit.getSubredditInfoByName(subreddit).catch(() => null),
-          redis.get("suggestionFlairTemplateId"),
-          redis.get("advancedContributorCount"),
-          redis.get("advancedContributorFlairTemplateId"),
-        ]);
+      const [
+        bannedUsers,
+        userFlairTemplatesRaw,
+        linkFlairTemplatesRaw,
+        subInfo,
+        storedFlairId,
+        advCountRaw,
+        advFlairId,
+      ] = await Promise.all([
+        reddit
+          .getBannedWikiContributors({ subredditName: subreddit })
+          .all()
+          .catch(() => []),
+        reddit.getUserFlairTemplates(subreddit).catch(() => []),
+        reddit.getPostFlairTemplates(subreddit).catch(() => []),
+        reddit.getSubredditInfoByName(subreddit).catch(() => null),
+        redis.get("suggestionFlairTemplateId"),
+        redis.get("advancedContributorCount"),
+        redis.get("advancedContributorFlairTemplateId"),
+      ]);
 
       const banned = bannedUsers.map((u) => u.username);
-      const flairTemplates: FlairTemplateInfo[] = flairTemplatesRaw.map((t) => ({
+      const flairTemplates: FlairTemplateInfo[] = userFlairTemplatesRaw.map((t) => ({
+        id: t.id,
+        text: t.text,
+        textColor: t.textColor,
+        backgroundColor: t.backgroundColor,
+      }));
+      const linkFlairTemplates: FlairTemplateInfo[] = linkFlairTemplatesRaw.map((t) => ({
         id: t.id,
         text: t.text,
         textColor: t.textColor,
@@ -1644,6 +1742,7 @@ router.get<Record<string, never>, CollabInfoResponse | ErrorResponse>(
         banned,
         flairTemplateId: storedFlairId ?? null,
         flairTemplates,
+        linkFlairTemplates,
         advancedContributorCount: Math.max(0, parseInt(advCountRaw ?? "0", 10) || 0),
         advancedContributorFlairTemplateId: advFlairId ?? null,
       });
