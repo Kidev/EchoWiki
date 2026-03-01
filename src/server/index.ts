@@ -89,6 +89,7 @@ const DEFAULT_CONFIG: GameConfig = {
   votingFlairTemplateId: null,
   votingMinVotersForTiming: 0,
   votingMaxSuggestionEdits: 1,
+  suggestionEditCooldownMinutes: 0,
 };
 
 const VALID_HOME_BACKGROUNDS = new Set<string>(["ripple", "banner", "both", "none"]);
@@ -147,18 +148,35 @@ async function getConfig(): Promise<GameConfig> {
       0,
       parseInt(raw["votingMaxSuggestionEdits"] ?? "1", 10) || 0,
     ),
+    suggestionEditCooldownMinutes: Math.max(
+      0,
+      parseInt(raw["suggestionEditCooldownMinutes"] ?? "0", 10) || 0,
+    ),
   };
 }
 
-async function checkIsMod(username: string): Promise<boolean> {
-  if (!context.subredditName) return false;
+async function getModLevel(username: string): Promise<"config" | "wiki" | null> {
+  if (!context.subredditName) return null;
   try {
     const mods = reddit.getModerators({ subredditName: context.subredditName, username });
     const modList = await mods.all();
-    return modList.length > 0;
+    if (modList.length === 0) return null;
+    const mod = modList[0]!;
+    const perms = await mod.getModPermissionsForSubreddit(context.subredditName);
+    if (perms.includes("all") || perms.includes("config")) return "config";
+    if (perms.includes("wiki")) return "wiki";
+    return null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+async function checkIsMod(username: string): Promise<boolean> {
+  return (await getModLevel(username)) !== null;
+}
+
+async function checkIsAllMod(username: string): Promise<boolean> {
+  return (await getModLevel(username)) === "config";
 }
 
 async function checkEligibility(
@@ -217,20 +235,38 @@ function expandVotingTitle(template: string, username: string, page: string): st
     .replace(/%shortPathPage%/g, shortPathPage);
 }
 
-async function upsertBotComment(votingPostId: string, text: string): Promise<void> {
-  const key = `votingBotCommentId:${votingPostId}`;
-  const existingId = await redis.get(key).catch(() => null);
+async function appendBotComment(
+  votingPostId: string,
+  listEntry: string,
+  newStatus?: string | undefined,
+): Promise<void> {
+  const idKey = `votingBotCommentId:${votingPostId}`;
+  const listKey = `votingBotCommentList:${votingPostId}`;
+  const statusKey = `votingBotCommentStatus:${votingPostId}`;
+  const [existingId, existingListRaw, existingStatus] = await Promise.all([
+    redis.get(idKey).catch(() => null),
+    redis.get(listKey).catch(() => null),
+    redis.get(statusKey).catch(() => null),
+  ]);
+  const entries: string[] = existingListRaw ? (JSON.parse(existingListRaw) as string[]) : [];
+  entries.push(listEntry);
+  const status = newStatus ?? existingStatus ?? "Active";
+  const newText = `# [WIKI] Vote status: ${status}\n\n- ${entries.join("\n- ")}`;
+  await Promise.all([redis.set(listKey, JSON.stringify(entries)), redis.set(statusKey, status)]);
   if (existingId) {
     try {
       const comment = await reddit.getCommentById(existingId as `t1_${string}`);
-      await comment.edit({ text });
+      await comment.edit({ text: newText });
       return;
     } catch {}
   }
   try {
-    const comment = await reddit.submitComment({ id: votingPostId as `t3_${string}`, text });
+    const comment = await reddit.submitComment({
+      id: votingPostId as `t3_${string}`,
+      text: newText,
+    });
     await comment.distinguish(true);
-    await redis.set(key, comment.id);
+    await redis.set(idKey, comment.id);
   } catch (err) {
     console.error("Failed to create bot comment:", err);
   }
@@ -377,6 +413,9 @@ async function cleanupVotingPost(
   outcome: "accepted" | "rejected",
   reason: VoteStatusData["reason"],
   votingPostId: string,
+  concludedSuggestion?: WikiSuggestion | null | undefined,
+  concludedAcceptCount?: number | undefined,
+  concludedRejectCount?: number | undefined,
 ): Promise<void> {
   const decidedAt = Date.now();
   await redis.set(`voteStatus:${username}`, JSON.stringify({ status: outcome, decidedAt, reason }));
@@ -389,22 +428,42 @@ async function cleanupVotingPost(
   await Promise.all([
     redis.set(
       `votingPost:${votingPostId}`,
-      JSON.stringify({ ...baseData, concluded: true, status: outcome, decidedAt, reason }),
+      JSON.stringify({
+        ...baseData,
+        concluded: true,
+        status: outcome,
+        decidedAt,
+        reason,
+        ...(concludedSuggestion
+          ? {
+              suggestion: {
+                page: concludedSuggestion.page,
+                content: concludedSuggestion.content,
+                description: concludedSuggestion.description,
+                createdAt: concludedSuggestion.createdAt,
+                previousDescriptions: concludedSuggestion.previousDescriptions,
+              },
+            }
+          : {}),
+        ...(concludedAcceptCount !== undefined ? { acceptCount: concludedAcceptCount } : {}),
+        ...(concludedRejectCount !== undefined ? { rejectCount: concludedRejectCount } : {}),
+      }),
     ),
     redis.del(`votingPostId:${username}`),
     redis.del(`votes:${username}`),
   ]);
 
-  const outcomeText = outcome === "accepted" ? "ACCEPTED" : "REJECTED";
+  const outcomeText = outcome === "accepted" ? "**ACCEPTED**" : "**REJECTED**";
   const reasonText = getVoteReasonText(reason);
   const dateStr = new Date().toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
   });
-  await upsertBotComment(
+  await appendBotComment(
     votingPostId,
-    `**Vote concluded: ${outcomeText}**\n\nDecided on ${dateStr}: ${reasonText}.`,
+    `**Vote decided** on ${dateStr}: **${reasonText}**`,
+    outcomeText,
   );
   try {
     const post = await reddit.getPostById(votingPostId as `t3_${string}`);
@@ -428,12 +487,35 @@ async function finalizeVote(
   votingPostId: string,
   subredditName: string,
 ): Promise<void> {
+  const [suggestionRaw, votesRaw] = await Promise.all([
+    redis.get(`suggestion:${username}`).catch(() => null),
+    redis.hGetAll(`votes:${username}`).catch(() => null),
+  ]);
+  const concludedSuggestion = suggestionRaw ? (JSON.parse(suggestionRaw) as WikiSuggestion) : null;
+  let concludedAcceptCount = 0;
+  let concludedRejectCount = 0;
+  for (const v of Object.values(votesRaw ?? {})) {
+    const colonIdx = v.indexOf(":");
+    if (colonIdx < 0) continue;
+    const voteType = v.slice(0, colonIdx);
+    if (voteType === "accept") concludedAcceptCount++;
+    else if (voteType === "reject") concludedRejectCount++;
+  }
+
   if (outcome === "accepted") {
     await performAcceptCore(username, subredditName, "vote");
   } else {
     await Promise.all([redis.del(`suggestion:${username}`), redis.zRem("suggestions", [username])]);
   }
-  await cleanupVotingPost(username, outcome, reason, votingPostId);
+  await cleanupVotingPost(
+    username,
+    outcome,
+    reason,
+    votingPostId,
+    concludedSuggestion,
+    concludedAcceptCount,
+    concludedRejectCount,
+  );
 }
 
 async function checkAndMaybeFinalize(
@@ -543,17 +625,11 @@ router.get<Record<string, never>, InitResponse | VotingInitResponse | ErrorRespo
         getSubredditAppearance(),
       ]);
 
-      let isMod = false;
-      if (username && context.subredditName) {
-        try {
-          const mods = reddit.getModerators({
-            subredditName: context.subredditName,
-            username,
-          });
-          const modList = await mods.all();
-          isMod = modList.length > 0;
-        } catch {}
+      let modLevel: "config" | "wiki" | null = null;
+      if (username) {
+        modLevel = await getModLevel(username);
       }
+      const isMod = modLevel !== null;
 
       // Check if this is a voting post
       const votingPostRaw = await redis.get(`votingPost:${postId}`).catch(() => null);
@@ -565,6 +641,15 @@ router.get<Record<string, never>, InitResponse | VotingInitResponse | ErrorRespo
           status?: "accepted" | "rejected" | "cancelled";
           decidedAt?: number;
           reason?: VoteStatusData["reason"];
+          suggestion?: {
+            page: string;
+            content: string;
+            description: string;
+            createdAt: number;
+            previousDescriptions?: string[];
+          };
+          acceptCount?: number;
+          rejectCount?: number;
         };
         const votingPostData = JSON.parse(votingPostRaw) as VotingPostData;
         const { username: suggestionUsername } = votingPostData;
@@ -591,13 +676,15 @@ router.get<Record<string, never>, InitResponse | VotingInitResponse | ErrorRespo
         if (!raw) {
           let voteStatus: VoteStatus;
           if (votingPostData.concluded && votingPostData.status) {
+            const storedAccept = votingPostData.acceptCount ?? 0;
+            const storedReject = votingPostData.rejectCount ?? 0;
             voteStatus = {
               status: votingPostData.status,
               decidedAt: votingPostData.decidedAt ?? null,
               reason: votingPostData.reason ?? null,
-              acceptCount: 0,
-              rejectCount: 0,
-              totalVoters: 0,
+              acceptCount: storedAccept,
+              rejectCount: storedReject,
+              totalVoters: storedAccept + storedReject,
               votes: [],
             };
           } else {
@@ -608,23 +695,43 @@ router.get<Record<string, never>, InitResponse | VotingInitResponse | ErrorRespo
               isMod,
             );
           }
-          const placeholder: WikiSuggestion = {
-            username: suggestionUsername,
-            page: "",
-            content: "",
-            description: "",
-            createdAt: 0,
-          };
+
+          let placeholder: WikiSuggestion;
+          let concludedContent = "";
+          if (votingPostData.suggestion) {
+            placeholder = {
+              username: suggestionUsername,
+              page: votingPostData.suggestion.page,
+              content: votingPostData.suggestion.content,
+              description: votingPostData.suggestion.description,
+              createdAt: votingPostData.suggestion.createdAt,
+              ...(votingPostData.suggestion.previousDescriptions !== undefined
+                ? { previousDescriptions: votingPostData.suggestion.previousDescriptions }
+                : {}),
+            };
+            try {
+              const wikiPage = await reddit.getWikiPage(subreddit, placeholder.page);
+              concludedContent = wikiPage.content;
+            } catch {}
+          } else {
+            placeholder = {
+              username: suggestionUsername,
+              page: "",
+              content: "",
+              description: "",
+              createdAt: 0,
+            };
+          }
           res.json({
             type: "voting-init",
             postId,
             subredditName: subreddit,
             username: username ?? "anonymous",
-            isMod,
+            modLevel,
             config,
             appearance,
             suggestion: placeholder,
-            currentContent: "",
+            currentContent: concludedContent,
             voteStatus,
             canVote: false,
             myVote: null,
@@ -694,7 +801,7 @@ router.get<Record<string, never>, InitResponse | VotingInitResponse | ErrorRespo
           postId,
           subredditName: subreddit,
           username: username ?? "anonymous",
-          isMod,
+          modLevel,
           config,
           appearance,
           suggestion,
@@ -735,7 +842,7 @@ router.get<Record<string, never>, InitResponse | VotingInitResponse | ErrorRespo
         postId,
         subredditName: context.subredditName ?? "",
         username: username ?? "anonymous",
-        isMod,
+        modLevel,
         config,
         appearance,
         collaborativeMode: config.collaborativeMode,
@@ -767,6 +874,16 @@ router.post<Record<string, never>, ConfigUpdateResponse | ErrorResponse, ConfigU
   "/api/config",
   async (req, res): Promise<void> => {
     try {
+      const configUsername = await reddit.getCurrentUsername();
+      if (!configUsername) {
+        res.status(401).json({ status: "error", message: "Not logged in" });
+        return;
+      }
+      const isAllMod = await checkIsAllMod(configUsername);
+      if (!isAllMod) {
+        res.status(403).json({ status: "error", message: "Not authorized" });
+        return;
+      }
       const body = req.body as ConfigUpdateRequest;
       const fields: Record<string, string> = {};
 
@@ -854,6 +971,11 @@ router.post<Record<string, never>, ConfigUpdateResponse | ErrorResponse, ConfigU
       if (body.votingMaxSuggestionEdits !== undefined) {
         fields["votingMaxSuggestionEdits"] = String(
           Math.max(0, Math.floor(body.votingMaxSuggestionEdits)),
+        );
+      }
+      if (body.suggestionEditCooldownMinutes !== undefined) {
+        fields["suggestionEditCooldownMinutes"] = String(
+          Math.max(0, Math.floor(body.suggestionEditCooldownMinutes)),
         );
       }
 
@@ -1197,6 +1319,16 @@ router.post<Record<string, never>, WikiUpdateResponse | ErrorResponse, WikiUpdat
   "/api/wiki/update",
   async (req, res): Promise<void> => {
     try {
+      const updatingUsername = await reddit.getCurrentUsername();
+      if (!updatingUsername) {
+        res.status(401).json({ status: "error", message: "Not logged in" });
+        return;
+      }
+      const canUpdate = await checkIsMod(updatingUsername);
+      if (!canUpdate) {
+        res.status(403).json({ status: "error", message: "Not authorized" });
+        return;
+      }
       const subreddit = context.subredditName;
       if (!subreddit) {
         res.status(400).json({
@@ -1269,29 +1401,37 @@ router.post<Record<string, never>, WikiSuggestionResponse | ErrorResponse, WikiS
         return;
       }
 
-      const bannedList = await reddit
-        .getBannedWikiContributors({ subredditName: subreddit, username })
-        .all()
-        .catch(() => []);
+      const isMod = await checkIsMod(username);
 
-      if (bannedList.length > 0) {
-        res
-          .status(403)
-          .json({ status: "error", message: "You are banned from editing this wiki." });
-        return;
-      }
+      if (!isMod) {
+        const bannedList = await reddit
+          .getBannedWikiContributors({ subredditName: subreddit, username })
+          .all()
+          .catch(() => []);
 
-      const eligible = await checkEligibility(username, config.minKarma, config.minAccountAgeDays);
-      if (!eligible) {
-        const parts: string[] = [];
-        if (config.minKarma > 0) parts.push(`${config.minKarma.toLocaleString()} karma`);
-        if (config.minAccountAgeDays > 0)
-          parts.push(`account at least ${config.minAccountAgeDays} days old`);
-        res.status(403).json({
-          status: "error",
-          message: `You don't meet the requirements to suggest changes: ${parts.join(" and ")}.`,
-        });
-        return;
+        if (bannedList.length > 0) {
+          res
+            .status(403)
+            .json({ status: "error", message: "You are banned from editing this wiki." });
+          return;
+        }
+
+        const eligible = await checkEligibility(
+          username,
+          config.minKarma,
+          config.minAccountAgeDays,
+        );
+        if (!eligible) {
+          const parts: string[] = [];
+          if (config.minKarma > 0) parts.push(`${config.minKarma.toLocaleString()} karma`);
+          if (config.minAccountAgeDays > 0)
+            parts.push(`account at least ${config.minAccountAgeDays} days old`);
+          res.status(403).json({
+            status: "error",
+            message: `You don't meet the requirements to suggest changes: ${parts.join(" and ")}.`,
+          });
+          return;
+        }
       }
 
       const existingRaw = await redis.get(`suggestion:${username}`).catch(() => null);
@@ -1310,6 +1450,19 @@ router.post<Record<string, never>, WikiSuggestionResponse | ErrorResponse, WikiS
       }
 
       const now = Date.now();
+
+      if (existingSuggestion && config.suggestionEditCooldownMinutes > 0) {
+        const lastEditAt = existingSuggestion.lastEditAt ?? existingSuggestion.createdAt;
+        const elapsedMinutes = (now - lastEditAt) / 60000;
+        if (elapsedMinutes < config.suggestionEditCooldownMinutes) {
+          const remaining = Math.ceil(config.suggestionEditCooldownMinutes - elapsedMinutes);
+          res.status(429).json({
+            status: "error",
+            message: `Edit cooldown: ${remaining} minute${remaining !== 1 ? "s" : ""} remaining before you can update your suggestion.`,
+          });
+          return;
+        }
+      }
       const suggestion: WikiSuggestion = {
         username,
         page: body.page,
@@ -1319,6 +1472,7 @@ router.post<Record<string, never>, WikiSuggestionResponse | ErrorResponse, WikiS
         ...(existingSuggestion
           ? {
               editCount: (existingSuggestion.editCount ?? 0) + 1,
+              lastEditAt: now,
               previousDescriptions: [
                 ...(existingSuggestion.previousDescriptions ?? []),
                 existingSuggestion.description,
@@ -1343,16 +1497,14 @@ router.post<Record<string, never>, WikiSuggestionResponse | ErrorResponse, WikiS
               JSON.stringify({ status: "active", decidedAt: null, reason: null }),
             ),
           ]);
-          const dateStr = new Date().toLocaleDateString("en-US", {
+          const updateDateStr = new Date().toLocaleDateString("en-US", {
             month: "short",
             day: "numeric",
             year: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
           });
-          await upsertBotComment(
+          await appendBotComment(
             existingVotingPostId,
-            `**Suggestion updated** on ${dateStr}: all votes have been reset.`,
+            `**Suggestion updated** on ${updateDateStr}: all votes have been reset`,
           );
           if (config.votingDurationDays > 0) {
             const oldJobId = await redis.get(`voteJobId:${username}`).catch(() => null);
@@ -1405,11 +1557,9 @@ router.post<Record<string, never>, WikiSuggestionResponse | ErrorResponse, WikiS
 
             if (config.votingFlairTemplateId) {
               try {
-                await (
-                  votingPost as unknown as {
-                    setFlair: (opts: { flairTemplateId: string }) => Promise<void>;
-                  }
-                ).setFlair({
+                await reddit.setPostFlair({
+                  subredditName: subreddit,
+                  postId: newPostId as `t3_${string}`,
                   flairTemplateId: config.votingFlairTemplateId,
                 });
               } catch {}
@@ -1427,10 +1577,12 @@ router.post<Record<string, never>, WikiSuggestionResponse | ErrorResponse, WikiS
               ),
             ]);
 
-            await upsertBotComment(
-              newPostId,
-              `**EchoWiki Vote**\n\nStatus: Active. Vote to accept or reject the suggested changes.`,
-            );
+            const startDateStr = new Date().toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            });
+            await appendBotComment(newPostId, `**Vote started** on ${startDateStr}`, "Active");
 
             if (config.votingDurationDays > 0) {
               const jobId = await scheduler.runJob({
@@ -1466,6 +1618,24 @@ router.delete<Record<string, never>, WikiSuggestionActionResponse | ErrorRespons
         return;
       }
       const votingPostId = await redis.get(`votingPostId:${username}`).catch(() => null);
+
+      const [withdrawnRaw, withdrawnVotesRaw] = await Promise.all([
+        redis.get(`suggestion:${username}`).catch(() => null),
+        votingPostId ? redis.hGetAll(`votes:${username}`).catch(() => null) : Promise.resolve(null),
+      ]);
+      const withdrawnSuggestion = withdrawnRaw
+        ? (JSON.parse(withdrawnRaw) as WikiSuggestion)
+        : null;
+      let withdrawnAcceptCount = 0;
+      let withdrawnRejectCount = 0;
+      for (const v of Object.values(withdrawnVotesRaw ?? {})) {
+        const colonIdx = v.indexOf(":");
+        if (colonIdx < 0) continue;
+        const voteType = v.slice(0, colonIdx);
+        if (voteType === "accept") withdrawnAcceptCount++;
+        else if (voteType === "reject") withdrawnRejectCount++;
+      }
+
       await Promise.all([
         redis.del(`suggestion:${username}`),
         redis.zRem("suggestions", [username]),
@@ -1477,21 +1647,6 @@ router.delete<Record<string, never>, WikiSuggestionActionResponse | ErrorRespons
           day: "numeric",
           year: "numeric",
         });
-        await upsertBotComment(
-          votingPostId,
-          `**Vote concluded: WITHDRAWN**\n\nOn ${dateStr}: the author has retracted their suggestion.`,
-        );
-        try {
-          const post = await reddit.getPostById(votingPostId as `t3_${string}`);
-          await post.lock();
-        } catch {}
-        const jobId = await redis.get(`voteJobId:${username}`).catch(() => null);
-        if (jobId) {
-          try {
-            await scheduler.cancelJob(jobId);
-          } catch {}
-        }
-
         const existingRaw = await redis.get(`votingPost:${votingPostId}`).catch(() => null);
         const baseData = existingRaw
           ? (JSON.parse(existingRaw) as { username: string; subredditName: string })
@@ -1505,6 +1660,19 @@ router.delete<Record<string, never>, WikiSuggestionActionResponse | ErrorRespons
               status: "cancelled",
               decidedAt,
               reason: "cancelled",
+              ...(withdrawnSuggestion
+                ? {
+                    suggestion: {
+                      page: withdrawnSuggestion.page,
+                      content: withdrawnSuggestion.content,
+                      description: withdrawnSuggestion.description,
+                      createdAt: withdrawnSuggestion.createdAt,
+                      previousDescriptions: withdrawnSuggestion.previousDescriptions,
+                    },
+                  }
+                : {}),
+              acceptCount: withdrawnAcceptCount,
+              rejectCount: withdrawnRejectCount,
             }),
           ),
           redis.del(`votingPostId:${username}`),
@@ -1515,6 +1683,21 @@ router.delete<Record<string, never>, WikiSuggestionActionResponse | ErrorRespons
           ),
           redis.del(`voteJobId:${username}`),
         ]);
+        await appendBotComment(
+          votingPostId,
+          `**Vote concluded** on ${dateStr}: the author has retracted their suggestion`,
+          "**WITHDRAWN**",
+        );
+        try {
+          const post = await reddit.getPostById(votingPostId as `t3_${string}`);
+          await post.lock();
+        } catch {}
+        const jobId = await redis.get(`voteJobId:${username}`).catch(() => null);
+        if (jobId) {
+          try {
+            await scheduler.cancelJob(jobId);
+          } catch {}
+        }
       }
       res.json({ type: "wiki-suggestion-action" });
     } catch (error) {
@@ -1539,6 +1722,25 @@ router.get<Record<string, never>, WikiSuggestionsResponse | ErrorResponse>(
         res.status(403).json({ status: "error", message: "Not authorized" });
         return;
       }
+
+      if (!isMod) {
+        const raw = await redis.get(`suggestion:${username}`).catch(() => null);
+        const suggestions: WikiSuggestionWithVoting[] = [];
+        if (raw) {
+          try {
+            const suggestion = JSON.parse(raw) as WikiSuggestion;
+            const votingPostId = await redis.get(`votingPostId:${username}`).catch(() => null);
+            let voteStatus: VoteStatus | null = null;
+            if (votingPostId) {
+              voteStatus = await getVoteStatus(username, config, username, false);
+            }
+            suggestions.push({ ...suggestion, votingPostId: votingPostId ?? null, voteStatus });
+          } catch {}
+        }
+        res.json({ type: "wiki-suggestions", suggestions });
+        return;
+      }
+
       const members = await redis.zRange("suggestions", 0, -1);
       const suggestions: WikiSuggestionWithVoting[] = [];
       for (const m of members) {
@@ -1633,7 +1835,25 @@ router.post<
     // Finalize voting post if exists
     const votingPostId = await redis.get(`votingPostId:${body.username}`).catch(() => null);
     if (votingPostId) {
-      await cleanupVotingPost(body.username, "accepted", "mod_override", votingPostId);
+      const modVotesRaw = await redis.hGetAll(`votes:${body.username}`).catch(() => null);
+      let modAcceptCount = 0;
+      let modRejectCount = 0;
+      for (const v of Object.values(modVotesRaw ?? {})) {
+        const colonIdx = v.indexOf(":");
+        if (colonIdx < 0) continue;
+        const voteType = v.slice(0, colonIdx);
+        if (voteType === "accept") modAcceptCount++;
+        else if (voteType === "reject") modRejectCount++;
+      }
+      await cleanupVotingPost(
+        body.username,
+        "accepted",
+        "mod_override",
+        votingPostId,
+        suggestion,
+        modAcceptCount,
+        modRejectCount,
+      );
     }
 
     res.json({ type: "wiki-suggestion-action" });
@@ -1661,15 +1881,41 @@ router.post<
       return;
     }
     const body = req.body as WikiSuggestionActionRequest;
+
+    const denyVotingPostId = await redis.get(`votingPostId:${body.username}`).catch(() => null);
+    const [deniedRaw, deniedVotesRaw] = await Promise.all([
+      redis.get(`suggestion:${body.username}`).catch(() => null),
+      denyVotingPostId
+        ? redis.hGetAll(`votes:${body.username}`).catch(() => null)
+        : Promise.resolve(null),
+    ]);
+    const deniedSuggestion = deniedRaw ? (JSON.parse(deniedRaw) as WikiSuggestion) : null;
+    let denyAcceptCount = 0;
+    let denyRejectCount = 0;
+    for (const v of Object.values(deniedVotesRaw ?? {})) {
+      const colonIdx = v.indexOf(":");
+      if (colonIdx < 0) continue;
+      const voteType = v.slice(0, colonIdx);
+      if (voteType === "accept") denyAcceptCount++;
+      else if (voteType === "reject") denyRejectCount++;
+    }
+
     await Promise.all([
       redis.del(`suggestion:${body.username}`),
       redis.zRem("suggestions", [body.username]),
     ]);
 
     // Finalize voting post if exists
-    const votingPostId = await redis.get(`votingPostId:${body.username}`).catch(() => null);
-    if (votingPostId) {
-      await cleanupVotingPost(body.username, "rejected", "mod_override", votingPostId);
+    if (denyVotingPostId) {
+      await cleanupVotingPost(
+        body.username,
+        "rejected",
+        "mod_override",
+        denyVotingPostId,
+        deniedSuggestion,
+        denyAcceptCount,
+        denyRejectCount,
+      );
     }
 
     res.json({ type: "wiki-suggestion-action" });
@@ -1689,8 +1935,8 @@ router.get<Record<string, never>, CollabInfoResponse | ErrorResponse>(
         res.status(401).json({ status: "error", message: "Not logged in" });
         return;
       }
-      const isMod = await checkIsMod(modUsername);
-      if (!isMod) {
+      const isAllMod = await checkIsAllMod(modUsername);
+      if (!isAllMod) {
         res.status(403).json({ status: "error", message: "Not authorized" });
         return;
       }
@@ -1763,8 +2009,8 @@ router.post<Record<string, never>, SuggestionFlairResponse | ErrorResponse, Sugg
         res.status(401).json({ status: "error", message: "Not logged in" });
         return;
       }
-      const isMod = await checkIsMod(modUsername);
-      if (!isMod) {
+      const isAllMod = await checkIsAllMod(modUsername);
+      if (!isAllMod) {
         res.status(403).json({ status: "error", message: "Not authorized" });
         return;
       }
@@ -1794,8 +2040,8 @@ router.post<
       res.status(401).json({ status: "error", message: "Not logged in" });
       return;
     }
-    const isMod = await checkIsMod(modUsername);
-    if (!isMod) {
+    const isAllMod = await checkIsAllMod(modUsername);
+    if (!isAllMod) {
       res.status(403).json({ status: "error", message: "Not authorized" });
       return;
     }
@@ -1904,8 +2150,8 @@ router.post<Record<string, never>, WikiBanResponse | ErrorResponse, WikiBanReque
         res.status(401).json({ status: "error", message: "Not logged in" });
         return;
       }
-      const isMod = await checkIsMod(modUsername);
-      if (!isMod) {
+      const isAllMod = await checkIsAllMod(modUsername);
+      if (!isAllMod) {
         res.status(403).json({ status: "error", message: "Not authorized" });
         return;
       }
@@ -1944,8 +2190,8 @@ router.delete<Record<string, never>, WikiBanResponse | ErrorResponse>(
         res.status(401).json({ status: "error", message: "Not logged in" });
         return;
       }
-      const isMod = await checkIsMod(modUsername);
-      if (!isMod) {
+      const isAllMod = await checkIsAllMod(modUsername);
+      if (!isAllMod) {
         res.status(403).json({ status: "error", message: "Not authorized" });
         return;
       }
@@ -1979,8 +2225,8 @@ router.get<Record<string, never>, WikiBansResponse | ErrorResponse>(
         res.status(401).json({ status: "error", message: "Not logged in" });
         return;
       }
-      const isMod = await checkIsMod(modUsername);
-      if (!isMod) {
+      const isAllMod = await checkIsAllMod(modUsername);
+      if (!isAllMod) {
         res.status(403).json({ status: "error", message: "Not authorized" });
         return;
       }

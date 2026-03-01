@@ -35,6 +35,7 @@ export type GameConfig = {
   votingFlairTemplateId: string | null;
   votingMinVotersForTiming: number;
   votingMaxSuggestionEdits: number;
+  suggestionEditCooldownMinutes: number;
 };
 
 export type ConfigResponse = {
@@ -67,6 +68,7 @@ export type ConfigUpdateRequest = {
   votingFlairTemplateId?: string | null | undefined;
   votingMinVotersForTiming?: number | undefined;
   votingMaxSuggestionEdits?: number | undefined;
+  suggestionEditCooldownMinutes?: number | undefined;
 };
 
 export type ConfigUpdateResponse = {
@@ -89,7 +91,7 @@ export type InitResponse = {
   postId: string;
   subredditName: string;
   username: string;
-  isMod: boolean;
+  modLevel: "config" | "wiki" | null;
   config: GameConfig;
   appearance: SubredditAppearance;
   collaborativeMode: boolean;
@@ -185,6 +187,7 @@ export type WikiSuggestion = {
   description: string;
   createdAt: number;
   editCount?: number;
+  lastEditAt?: number;
   previousDescriptions?: string[];
 };
 
@@ -247,7 +250,7 @@ export type VotingInitResponse = {
   postId: string;
   subredditName: string;
   username: string;
-  isMod: boolean;
+  modLevel: "config" | "wiki" | null;
   config: GameConfig;
   appearance: SubredditAppearance;
   suggestion: WikiSuggestion;

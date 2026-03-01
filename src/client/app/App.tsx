@@ -1483,6 +1483,9 @@ function WikiSaveDialog({
   onDismiss,
   isSaving,
   error,
+  voteOnSave,
+  createVote,
+  onCreateVoteChange,
 }: {
   reason: string;
   onReasonChange: (r: string) => void;
@@ -1490,7 +1493,11 @@ function WikiSaveDialog({
   onDismiss: () => void;
   isSaving: boolean;
   error: string | null;
+  voteOnSave?: boolean | undefined;
+  createVote?: boolean | undefined;
+  onCreateVoteChange?: ((v: boolean) => void) | undefined;
 }) {
+  const isVoteMode = voteOnSave && createVote;
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
@@ -1500,15 +1507,30 @@ function WikiSaveDialog({
         className="bg-[var(--bg)] rounded-lg shadow-2xl p-6 max-w-sm w-full mx-4"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="font-semibold text-[var(--text)] mb-1">Save changes</h3>
+        <h3 className="font-semibold text-[var(--text)] mb-1">
+          {isVoteMode ? "Submit vote suggestion" : "Save changes"}
+        </h3>
         <p className="text-sm text-[var(--text-muted)] mb-4">
-          Summarize your edit for the revision history.
+          {isVoteMode
+            ? "Describe the changes you're proposing for the vote."
+            : "Summarize your edit for the revision history."}
         </p>
+        {voteOnSave && onCreateVoteChange && (
+          <label className="flex items-center gap-2 mb-3 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={!(createVote ?? true)}
+              onChange={(e) => onCreateVoteChange(!e.target.checked)}
+              className="accent-[var(--accent)]"
+            />
+            <span className="text-sm text-[var(--text)]">Bypass public vote</span>
+          </label>
+        )}
         <input
           type="text"
           value={reason}
           onChange={(e) => onReasonChange(e.target.value)}
-          placeholder="Reason for edit…"
+          placeholder={isVoteMode ? "Describe your changes…" : "Reason for edit…"}
           autoFocus
           onKeyDown={(e) => {
             if (e.key === "Enter" && !isSaving && reason.trim()) onConfirm();
@@ -1529,7 +1551,13 @@ function WikiSaveDialog({
             disabled={isSaving || !reason.trim()}
             className="text-sm px-3 py-1.5 rounded bg-[var(--accent)] text-white hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50"
           >
-            {isSaving ? "Saving…" : "Save"}
+            {isSaving
+              ? isVoteMode
+                ? "Submitting…"
+                : "Saving…"
+              : isVoteMode
+                ? "Submit vote"
+                : "Save"}
           </button>
         </div>
       </div>
@@ -1675,6 +1703,7 @@ const WikiView = memo(function WikiView({
   targetAnchor,
   onAnchorConsumed,
   canSuggest,
+  voteOnSaveAvailable,
   suggestionToLoad,
   onSuggestionLoaded,
   onNavigateToSuggestion,
@@ -1690,6 +1719,7 @@ const WikiView = memo(function WikiView({
   targetAnchor?: string | null | undefined;
   onAnchorConsumed?: (() => void) | undefined;
   canSuggest: boolean;
+  voteOnSaveAvailable?: boolean | undefined;
   suggestionToLoad?: string | null | undefined;
   onSuggestionLoaded?: (() => void) | undefined;
   onNavigateToSuggestion?: ((page: string, content: string) => void) | undefined;
@@ -1715,6 +1745,7 @@ const WikiView = memo(function WikiView({
   const [isDeletingSuggestion, setIsDeletingSuggestion] = useState(false);
   const [proposeViewMode, setProposeViewMode] = useState<"normal" | "source" | "diff">("normal");
   const [proposeHiddenPane, setProposeHiddenPane] = useState<null | "left" | "right">(null);
+  const [createVotePost, setCreateVotePost] = useState(true);
 
   useEffect(() => {
     if (proposeViewMode === "diff") setProposeHiddenPane(null);
@@ -1822,38 +1853,61 @@ const WikiView = memo(function WikiView({
   }, []);
 
   const handleSaveConfirm = useCallback(async () => {
-    if (!saveReason.trim()) {
-      setSaveError("Please enter a reason for the edit.");
+    if (saveReason.trim().length < 10) {
+      setSaveError("Description must be at least 10 characters.");
       return;
     }
+    const isVoteMode = (voteOnSaveAvailable ?? false) && createVotePost;
     setIsSaving(true);
     setSaveError(null);
     try {
-      const body: WikiUpdateRequest = {
-        page: currentPage,
-        content: editContent,
-        reason: username ? `${username}: ${saveReason.trim()}` : saveReason.trim(),
-      };
-      const res = await fetch("/api/wiki/update", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        const err = (await res.json()) as ErrorResponse;
-        setSaveError(err.message ?? "Failed to save changes.");
-        return;
+      if (isVoteMode) {
+        const body: WikiSuggestionRequest = {
+          page: currentPage,
+          content: editContent,
+          description: saveReason.trim(),
+        };
+        const res = await fetch("/api/wiki/suggestion", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const err = (await res.json()) as ErrorResponse;
+          setSaveError(err.message ?? "Failed to submit vote suggestion.");
+          return;
+        }
+        setIsEditing(false);
+        setShowSaveDialog(false);
+        setSaveReason("");
+        showToast("Vote suggestion submitted!");
+      } else {
+        const body: WikiUpdateRequest = {
+          page: currentPage,
+          content: editContent,
+          reason: username ? `${username}: ${saveReason.trim()}` : saveReason.trim(),
+        };
+        const res = await fetch("/api/wiki/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const err = (await res.json()) as ErrorResponse;
+          setSaveError(err.message ?? "Failed to save changes.");
+          return;
+        }
+        setContent(editContent);
+        setIsEditing(false);
+        setShowSaveDialog(false);
+        setSaveReason("");
       }
-      setContent(editContent);
-      setIsEditing(false);
-      setShowSaveDialog(false);
-      setSaveReason("");
     } catch {
       setSaveError("Network error. Please try again.");
     } finally {
       setIsSaving(false);
     }
-  }, [currentPage, editContent, saveReason, username]);
+  }, [createVotePost, currentPage, editContent, saveReason, username, voteOnSaveAvailable]);
 
   const handleSuggestConfirm = useCallback(async () => {
     if (!suggestDescription.trim()) {
@@ -2067,6 +2121,7 @@ const WikiView = memo(function WikiView({
                     <button
                       onClick={() => {
                         setSaveError(null);
+                        setCreateVotePost(true);
                         setShowSaveDialog(true);
                       }}
                       className="px-2 py-0.5 rounded bg-[var(--accent)] text-white hover:opacity-90 transition-opacity cursor-pointer"
@@ -2226,6 +2281,9 @@ const WikiView = memo(function WikiView({
           }}
           isSaving={isSaving}
           error={saveError}
+          voteOnSave={voteOnSaveAvailable}
+          createVote={createVotePost}
+          onCreateVoteChange={setCreateVotePost}
         />
       )}
 
@@ -3527,10 +3585,14 @@ function CollaborativePanel({
 
   const [minKarmaField, setMinKarmaField] = useState(String(config.minKarma));
   const [minAgeDaysField, setMinAgeDaysField] = useState(String(config.minAccountAgeDays));
+  const [editCooldownField, setEditCooldownField] = useState(
+    String(config.suggestionEditCooldownMinutes),
+  );
   const [isSavingThresholds, setIsSavingThresholds] = useState(false);
   const thresholdsDirty =
     minKarmaField !== String(config.minKarma) ||
-    minAgeDaysField !== String(config.minAccountAgeDays);
+    minAgeDaysField !== String(config.minAccountAgeDays) ||
+    editCooldownField !== String(config.suggestionEditCooldownMinutes);
 
   const [flairTemplateId, setFlairTemplateId] = useState<string | null>(null);
   const [flairTemplates, setFlairTemplates] = useState<FlairTemplateInfo[]>([]);
@@ -3593,23 +3655,25 @@ function CollaborativePanel({
   const handleSaveThresholds = useCallback(async () => {
     const minKarma = Math.max(0, parseInt(minKarmaField, 10) || 0);
     const minAccountAgeDays = Math.max(0, parseInt(minAgeDaysField, 10) || 0);
+    const suggestionEditCooldownMinutes = Math.max(0, parseInt(editCooldownField, 10) || 0);
     setIsSavingThresholds(true);
     try {
       const res = await fetch("/api/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ minKarma, minAccountAgeDays }),
+        body: JSON.stringify({ minKarma, minAccountAgeDays, suggestionEditCooldownMinutes }),
       });
       if (res.ok) {
         setMinKarmaField(String(minKarma));
         setMinAgeDaysField(String(minAccountAgeDays));
-        onConfigChanged({ ...config, minKarma, minAccountAgeDays });
+        setEditCooldownField(String(suggestionEditCooldownMinutes));
+        onConfigChanged({ ...config, minKarma, minAccountAgeDays, suggestionEditCooldownMinutes });
       }
     } catch {
     } finally {
       setIsSavingThresholds(false);
     }
-  }, [minKarmaField, minAgeDaysField, config, onConfigChanged]);
+  }, [minKarmaField, minAgeDaysField, editCooldownField, config, onConfigChanged]);
 
   const handleFlairChange = useCallback(async (templateId: string | null) => {
     setIsSavingFlair(true);
@@ -3754,6 +3818,21 @@ function CollaborativePanel({
                 className={`${inputCls} w-20`}
                 style={inputStyle}
               />
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-[var(--text-muted)] w-20 shrink-0">
+                Edit cooldown
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={editCooldownField}
+                onChange={(e) => setEditCooldownField(e.target.value)}
+                placeholder="0"
+                className={`${inputCls} w-20`}
+                style={inputStyle}
+              />
+              <span className="text-xs text-[var(--text-muted)] shrink-0">min between edits</span>
               <button
                 onClick={() => void handleSaveThresholds()}
                 disabled={!thresholdsDirty || isSavingThresholds}
@@ -4245,7 +4324,7 @@ function VotingView({
           )}
           {suggestion.description && (
             <div className="relative group">
-              <p className="text-[10px] truncate" style={{ color: "var(--text-muted)" }}>
+              <p className="text-[10px] truncate font-bold" style={{ color: "var(--text)" }}>
                 {suggestion.description}
               </p>
               {suggestion.previousDescriptions && suggestion.previousDescriptions.length > 0 && (
@@ -4738,10 +4817,12 @@ function VotingSettingsPanel({
 function SubmissionsPanel({
   subredditName,
   isMod,
+  username,
   wikiFontSize,
 }: {
   subredditName: string;
   isMod: boolean;
+  username: string;
   wikiFontSize: WikiFontSize;
 }) {
   const [suggestions, setSuggestions] = useState<WikiSuggestionWithVoting[]>([]);
@@ -4750,6 +4831,12 @@ function SubmissionsPanel({
   const [reviewCurrentContent, setReviewCurrentContent] = useState<string | null>(null);
   const [isActing, setIsActing] = useState(false);
   const [actError, setActError] = useState<string | null>(null);
+
+  const [editSuggestion, setEditSuggestion] = useState<WikiSuggestionWithVoting | null>(null);
+  const [editContent, setEditContent] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   const loadSuggestions = useCallback(async () => {
     setLoading(true);
@@ -4835,20 +4922,140 @@ function SubmissionsPanel({
     }
   }, [reviewSuggestion]);
 
-  const handleQuickDeny = useCallback(async (username: string) => {
+  const handleQuickDeny = useCallback(async (denyUsername: string) => {
     try {
-      const body: WikiSuggestionActionRequest = { username };
+      const body: WikiSuggestionActionRequest = { username: denyUsername };
       await fetch("/api/wiki/suggestion/deny", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      setSuggestions((prev) => prev.filter((s) => s.username !== username));
+      setSuggestions((prev) => prev.filter((s) => s.username !== denyUsername));
     } catch {}
   }, []);
 
+  const handleOpenEdit = useCallback((s: WikiSuggestionWithVoting) => {
+    setEditSuggestion(s);
+    setEditContent(s.content);
+    setEditDescription(s.description);
+    setEditError(null);
+  }, []);
+
+  const handleEditSave = useCallback(async () => {
+    if (!editSuggestion) return;
+    if (!editDescription.trim()) {
+      setEditError("Please provide a description.");
+      return;
+    }
+    setIsSubmittingEdit(true);
+    setEditError(null);
+    try {
+      const body: WikiSuggestionRequest = {
+        page: editSuggestion.page,
+        content: editContent,
+        description: editDescription.trim(),
+      };
+      const res = await fetch("/api/wiki/suggestion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = (await res.json()) as ErrorResponse;
+        setEditError(err.message ?? "Failed to update suggestion.");
+        return;
+      }
+      const data: WikiSuggestionResponse = await res.json();
+      if (data.suggestion) {
+        setSuggestions((prev) =>
+          prev.map((s) =>
+            s.username === editSuggestion.username
+              ? { ...s, ...data.suggestion!, voteStatus: s.voteStatus }
+              : s,
+          ),
+        );
+      }
+      setEditSuggestion(null);
+      showToast("Suggestion updated!");
+    } catch {
+      setEditError("Network error. Please try again.");
+    } finally {
+      setIsSubmittingEdit(false);
+    }
+  }, [editSuggestion, editContent, editDescription]);
+
   return (
     <>
+      {editSuggestion && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+          <div
+            className="flex flex-col w-full max-w-2xl max-h-[90vh] rounded-xl shadow-2xl overflow-hidden"
+            style={{ backgroundColor: "var(--bg)", border: "1px solid var(--thumb-bg)" }}
+          >
+            <div
+              className="flex items-center justify-between px-4 py-3 border-b"
+              style={{ borderColor: "var(--thumb-bg)" }}
+            >
+              <div className="flex flex-col min-w-0">
+                <span className="text-sm font-semibold text-[var(--text)]">Edit suggestion</span>
+                <span className="text-xs text-[var(--text-muted)] truncate">
+                  {editSuggestion.page.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                </span>
+              </div>
+              <button
+                onClick={() => setEditSuggestion(null)}
+                className="text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z" />
+                </svg>
+              </button>
+            </div>
+            <div className="flex flex-col gap-3 px-4 py-3 overflow-auto flex-1">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-[var(--text-muted)]">Description</label>
+                <input
+                  type="text"
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  placeholder="Describe your changes (min 10 characters)"
+                  className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)]"
+                  style={{ backgroundColor: "var(--control-bg)", color: "var(--control-text)" }}
+                />
+              </div>
+              <div className="flex flex-col gap-1 flex-1 min-h-0">
+                <label className="text-xs font-medium text-[var(--text-muted)]">Content</label>
+                <textarea
+                  value={editContent}
+                  onChange={(e) => setEditContent(e.target.value)}
+                  className="text-sm px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)] resize-none flex-1 font-mono min-h-60"
+                  style={{ backgroundColor: "var(--control-bg)", color: "var(--control-text)" }}
+                />
+              </div>
+              {editError && <p className="text-xs text-red-500">{editError}</p>}
+            </div>
+            <div
+              className="flex items-center justify-end gap-2 px-4 py-3 border-t"
+              style={{ borderColor: "var(--thumb-bg)" }}
+            >
+              <button
+                onClick={() => setEditSuggestion(null)}
+                disabled={isSubmittingEdit}
+                className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer disabled:opacity-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void handleEditSave()}
+                disabled={isSubmittingEdit}
+                className="text-xs px-3 py-1.5 rounded-lg bg-[var(--accent)] text-white hover:opacity-90 cursor-pointer disabled:opacity-50 transition-opacity"
+              >
+                {isSubmittingEdit ? "Saving…" : "Update suggestion"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {reviewSuggestion && (
         <SuggestionReviewModal
           suggestion={reviewSuggestion}
@@ -4939,6 +5146,14 @@ function SubmissionsPanel({
                         className="text-xs px-2 py-1 rounded border border-blue-300 text-blue-600 hover:bg-blue-50 cursor-pointer"
                       >
                         Vote post ↗
+                      </button>
+                    )}
+                    {p.username === username && (
+                      <button
+                        onClick={() => handleOpenEdit(p)}
+                        className="text-xs px-2 py-1 rounded border border-gray-300 text-[var(--text)] hover:bg-[var(--thumb-bg)] cursor-pointer"
+                      >
+                        Edit
                       </button>
                     )}
                     {isMod && (
@@ -5501,7 +5716,9 @@ export const App = () => {
   const [activeTab, setActiveTab] = useState<ActiveTab>("wiki");
   const [subredditName, setSubredditName] = useState("");
   const [config, setConfig] = useState<GameConfig | null>(null);
-  const [isMod, setIsMod] = useState(false);
+  const [modLevel, setModLevel] = useState<"config" | "wiki" | null>(null);
+  const isMod = modLevel !== null;
+  const isAllMod = modLevel === "config";
   const [canSuggest, setCanSuggest] = useState(false);
   const [username, setUsername] = useState("");
   const [suggestionToLoad, setSuggestionToLoad] = useState<string | null>(null);
@@ -5824,7 +6041,7 @@ export const App = () => {
         const initData = data as InitResponse;
         setSubredditName(initData.subredditName);
         setConfig(initData.config);
-        setIsMod(initData.isMod);
+        setModLevel(initData.modLevel);
         setCanSuggest(initData.canSuggest);
         setUsername(initData.username);
         setAppearance(initData.appearance);
@@ -6792,7 +7009,7 @@ export const App = () => {
                     )}
                   </button>
                 )}
-                {(isMod || (config?.collaborativeMode && config?.votingEnabled)) && (
+                {(isMod || config?.collaborativeMode) && (
                   <button
                     className={`text-sm px-3 py-1 rounded-full transition-colors cursor-pointer ${
                       activeTab === "submissions"
@@ -6815,7 +7032,7 @@ export const App = () => {
                     Submissions
                   </button>
                 )}
-                {isMod && (
+                {isAllMod && (
                   <button
                     className={`text-sm px-3 py-1 rounded-full transition-colors cursor-pointer ${
                       activeTab === "settings"
@@ -7101,6 +7318,9 @@ export const App = () => {
               targetAnchor={wikiTargetAnchor}
               onAnchorConsumed={handleAnchorConsumed}
               canSuggest={canSuggest}
+              voteOnSaveAvailable={
+                isMod && (config?.collaborativeMode ?? false) && (config?.votingEnabled ?? false)
+              }
               suggestionToLoad={suggestionToLoad}
               onSuggestionLoaded={handleSuggestionLoaded}
               onNavigateToSuggestion={handleNavigateToSuggestion}
@@ -7207,16 +7427,16 @@ export const App = () => {
             </>
           )}
 
-          {activeTab === "submissions" &&
-            (isMod || (config?.collaborativeMode && config?.votingEnabled)) && (
-              <SubmissionsPanel
-                subredditName={subredditName}
-                isMod={isMod}
-                wikiFontSize={style.wikiFontSize}
-              />
-            )}
+          {activeTab === "submissions" && (isMod || config?.collaborativeMode) && (
+            <SubmissionsPanel
+              subredditName={subredditName}
+              isMod={isMod}
+              username={username}
+              wikiFontSize={style.wikiFontSize}
+            />
+          )}
 
-          {activeTab === "settings" && isMod && config && (
+          {activeTab === "settings" && isAllMod && config && (
             <SettingsView
               mappingText={mappingText}
               style={style}

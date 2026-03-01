@@ -1,10 +1,10 @@
 # EchoWiki
 
-Rich wikis for Reddit communities. Live editing, advanced markdown, collaborative contributions, and for RPG Maker games: in-game assets from each player's own copy. No uploads.
+Rich wikis for Reddit communities. Live editing, advanced markdown, collaborative contributions with optional community voting, and for RPG Maker games: in-game assets from each player's own copy. No uploads.
 
 [EchoWiki is available on GitHub](https://github.com/Kidev/EchoWiki)
 
-EchoWiki turns a subreddit wiki into a proper editing and reading environment. Moderators write and update pages inside the app with a live Markdown preview. Readers get richer formatting than Reddit's native wiki. Contributors can propose changes that mods review before merging. For RPG Maker communities specifically, the app resolves special `echo://` links to in-game assets that each reader loads from their own copy of the game, without any files being uploaded anywhere.
+EchoWiki turns a subreddit wiki into a proper editing and reading environment. Moderators write and update pages inside the app with a live Markdown preview. Readers get richer formatting than Reddit's native wiki. Contributors can propose changes that mods review before merging, and optionally the community votes on whether to accept each suggestion. For RPG Maker communities specifically, the app resolves special `echo://` links to in-game assets that each reader loads from their own copy of the game, without any files being uploaded anywhere.
 
 ## Wiki
 
@@ -23,7 +23,11 @@ Navigation uses a breadcrumb bar that slides down from the top when hovering the
 
 ### Live Editor
 
-Moderators can edit wiki pages directly inside the app. An edit button appears in the top-right corner of the wiki view when in expanded mode. Clicking it opens a split-pane editor: the left pane shows a live Markdown preview and the right pane is a raw Markdown textarea. Saving requires entering a reason for the change. The reason is prefixed with the moderator's username and stored in the Reddit wiki revision history. Navigating away while editing prompts for confirmation before discarding changes.
+Moderators can edit wiki pages directly inside the app. An edit button appears in the top-right corner of the wiki view when in expanded mode. Clicking it opens a split-pane editor: the left pane shows a live Markdown preview and the right pane is a raw Markdown textarea.
+
+Saving requires entering a reason or description for the change. When collaborative mode and voting are both enabled, the save dialog includes a "Create vote post" checkbox, checked by default. With the checkbox checked, saving goes through the suggestion and voting flow instead of writing to the wiki directly. Unchecking it saves immediately without creating a vote post.
+
+When saving directly, the reason is prefixed with the moderator's username and stored in the Reddit wiki revision history. Navigating away while editing prompts for confirmation before discarding changes.
 
 HTML `style` attributes on echo image tags (e.g. `<img src="echo://..." style="width: 120px">`) are applied client-side, allowing layout control from wiki source.
 
@@ -42,13 +46,29 @@ Suggesting a change opens the same split-pane editor as the mod editor, with two
 - **Preview**: live rendered Markdown of the suggested content
 - **Highlight changes**: a unified diff view of the raw Markdown, with removed lines in red and added lines in green, and unchanged content collapsed to context blocks
 
-Submitting requires a short description of what changed. The suggestion is queued for mod review.
+Submitting requires a short description of what changed. The suggestion is then queued for mod review or community voting, depending on configuration.
+
+A user can update their pending suggestion from the Submissions tab. Each update resets any votes already cast on the suggestion. The maximum number of updates and the minimum time between updates are both configurable in mod settings.
+
+### Voting
+
+When voting is enabled, submitting a suggestion creates a separate Reddit post where community members cast accept or reject votes. A suggestion is finalized automatically when any of the following conditions are met:
+
+- The accept vote count reaches the configured threshold
+- The reject vote count reaches the configured threshold
+- The voting deadline passes and the percentage of accept votes meets the configured time-based threshold
+
+A minimum number of voters can be required before the time-based threshold applies. The suggestion author cannot vote on their own suggestion. Voter eligibility (karma and account age) is configurable separately from contributor eligibility.
+
+The voting post includes a pinned bot comment that records vote events: when the vote opened, when the suggestion was updated, and when the vote concluded with the outcome and reason. The comment is updated as events occur and locked when the vote concludes.
 
 ### Mod Review
 
-Moderators see a Submissions tab listing all pending suggestions. Clicking Review opens a full-screen modal showing the current page content alongside the suggested content. A "Highlight changes" button in the header switches the view from side-by-side rendered Markdown to a unified diff of the raw source.
+Moderators with "wiki" or "config" permissions see a Submissions tab listing all pending suggestions along with their vote status if voting is enabled. Clicking Review opens a full-screen modal showing the current page content alongside the suggested content. A "Highlight changes" button in the header switches the view from side-by-side rendered Markdown to a unified diff of the raw source.
 
-Mods can accept or deny each submission. Accepting writes the suggested content to the Reddit wiki with the contributor's username in the revision reason.
+Mods can accept or deny any pending submission at any time, overriding the vote result. Accepting writes the suggested content to the Reddit wiki with the contributor's username in the revision reason.
+
+Users can view their own pending suggestion in the Submissions tab, update the content and description, or retract it.
 
 ### Flair Rewards
 
@@ -111,7 +131,7 @@ A gallery view with filter tabs (Images, Audio) and subfolder navigation. Clicki
 
 ## Mod Settings
 
-Moderators see a Settings tab with sections for General, Game, Style, Theme, Mapping, and Collaborative configuration.
+The Settings tab is visible only to moderators with the "config" permission (or full moderators with no permission restrictions). Moderators with only "wiki" permission can access the Submissions tab and edit wiki pages directly, but not the Settings tab.
 
 ### General
 
@@ -159,9 +179,26 @@ Example:
 
 - **Collaborative mode**: Toggle to enable or disable community suggestions.
 - **Eligibility thresholds**: Minimum karma and account age required to submit suggestions.
+- **Edit cooldown**: Minimum number of minutes a user must wait between edits to their pending suggestion.
+- **Max suggestion edits**: Maximum number of times a suggestion can be updated while pending.
 - **Contributor flair**: Flair template awarded to users after their first accepted suggestion.
 - **Advanced contributor flair**: Flair template and acceptance count threshold for the advanced tier.
 - **Banned contributors**: List of users banned from submitting suggestions.
+
+### Voting
+
+- **Voting**: Toggle to enable or disable community voting on suggestions.
+- **Accept threshold**: Number of accept votes needed to approve a suggestion immediately.
+- **Reject threshold**: Number of reject votes needed to reject a suggestion immediately.
+- **Duration**: Voting period in days. Set to 0 to disable deadline-based finalization.
+- **Time-based threshold**: Percentage of votes that must be for acceptance when the deadline is reached. Requires duration to be set.
+- **Minimum voters for timing**: Number of voters required before the time-based threshold applies.
+- **Allow vote changes**: Whether voters can change their vote after casting.
+- **Vote change cooldown**: Minimum minutes between vote changes.
+- **Show voter names**: Whether voter names are visible to other users. Mods always see names.
+- **Voter eligibility**: Minimum karma and account age required to vote (separate from contributor eligibility).
+- **Voting post title**: Template for the title of created voting posts. Supports `%user%`, `%page%`, `%pathPage%`, and `%shortPathPage%` placeholders.
+- **Voting post flair**: Flair template applied to voting posts on creation.
 
 ## A Note to Game Developers
 
