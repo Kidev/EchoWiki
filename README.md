@@ -107,6 +107,43 @@ Editions combine with `&`:
 
 The asset preview lightbox includes interactive controls for applying editions. The generated echo link (copied via the copy button) includes the active edition suffixes.
 
+### Composition Blocks
+
+Wiki pages support a set of fenced block directives for building richer layouts and animations without writing raw HTML. Each block opens with `:::type [params]` and closes with `:::`. Parameter values containing spaces must be quoted: `key="some value"`.
+
+**`:::card`** renders a classic wiki infobox: a portrait image floated to one side with any markdown content (headings, tables, text) alongside it.
+
+```
+:::card image=echo://img/faces/hero.png size=120px align=right
+## Character Name
+Description and stats here.
+:::
+```
+
+**`:::scene`** stacks images at absolute positions inside a fixed-size container. `bg:` is the background layer, `layer:` places a sprite at custom CSS coordinates (append `bottom=`, `left=`, `height=`, etc.), and `fg:` is a foreground overlay with `pointer-events: none`.
+
+**`:::fbf`** (frame by frame) cycles through sprite frames using CSS opacity animation. List one `echo://` path per line. Use `fps` to set playback speed, `size` for the box pixel dimensions, and `alias=name` to name the block for use in `:::anim`.
+
+**`:::anim`** moves a sprite across a background scene. Reference an `:::fbf` block via `ref=alias`, or supply frames inline. Define the movement path as one or more keyframe lines (`N% key=value ...`). `pingpong=true` reverses direction at the end of each cycle instead of jumping back to start.
+
+```
+:::fbf alias=hero fps=11 size=48
+echo://img/characters/actor.png?sprite=12,8,0
+echo://img/characters/actor.png?sprite=12,8,1
+echo://img/characters/actor.png?sprite=12,8,2
+echo://img/characters/actor.png?sprite=12,8,1
+:::
+
+:::anim ref=hero duration=3s width=60% height=120px pingpong=true bg=echo://img/parallaxes/bg.png bgopacity=0.6
+0% left=8px bottom=24px
+100% left="calc(100% - 56px)" bottom=24px
+:::
+```
+
+Content can also be centered with `>>>content<<<`, which wraps anything between the markers in a centered div.
+
+The file `features-new.md` in the repository is a full showcase of all these features with live examples.
+
 ## Asset Import
 
 Users select their game folder. The app auto-detects the engine, extracts assets entirely in the browser, and stores them in IndexedDB. Nothing is uploaded.
