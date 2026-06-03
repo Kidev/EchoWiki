@@ -10,6 +10,8 @@ import { processRgssadArchive } from "./rgssad";
 import { processRgss3aArchive } from "./rgss3a";
 import { processTcoaalFiles } from "./tcoaal";
 import { processZipArchive } from "./zip";
+import { processGenericFiles } from "./generic";
+import { processCustomFiles } from "./custom";
 
 export type ImportProgress = {
   phase: "detecting" | "decrypting" | "storing" | "done" | "error";
@@ -23,6 +25,7 @@ export type ImportOptions = {
   files: File[];
   engineOverride?: EngineType | undefined;
   keyOverride?: string | undefined;
+  customTransformCode?: string | undefined;
   onProgress: (progress: ImportProgress) => void;
   signal?: AbortSignal | undefined;
 };
@@ -87,6 +90,7 @@ function getAssetGenerator(
   files: File[],
   detection: DetectionResult,
   keyOverride?: string,
+  customTransformCode?: string,
 ): AsyncGenerator<ProcessedAsset> | null {
   switch (engine) {
     case "rmmv":
@@ -117,13 +121,21 @@ function getAssetGenerator(
       return processRgss3aArchive(archiveFile);
     }
 
+    case "generic":
+      return processGenericFiles(files);
+
+    case "custom":
+      if (!customTransformCode) return null;
+      return processCustomFiles(files, customTransformCode);
+
     case "auto":
-      return null;
+      // Auto-detection didn't match a known engine: try generic scan as last resort
+      return processGenericFiles(files);
   }
 }
 
 export async function importGameFiles(options: ImportOptions): Promise<void> {
-  const { files, engineOverride, keyOverride, onProgress, signal } = options;
+  const { files, engineOverride, keyOverride, customTransformCode, onProgress, signal } = options;
 
   onProgress({
     phase: "detecting",
@@ -136,15 +148,9 @@ export async function importGameFiles(options: ImportOptions): Promise<void> {
   const detection = detectEngine(files);
   let engine = engineOverride && engineOverride !== "auto" ? engineOverride : detection.engine;
 
+  // "auto" after detection means nothing was recognized: fall back to generic scan
   if (engine === "auto") {
-    onProgress({
-      phase: "error",
-      processed: 0,
-      total: 0,
-      engine: "auto",
-      gameTitle: "",
-    });
-    throw new Error("Could not import: select a valid RPG Maker game root folder");
+    engine = "generic";
   }
 
   let gameTitle = await detectGameTitle(files, engine, detection.dataRoot);
@@ -159,6 +165,7 @@ export async function importGameFiles(options: ImportOptions): Promise<void> {
         ? { ...detection, engine: engineOverride }
         : detection,
       keyOverride,
+      customTransformCode,
     );
 
     if (eng === "rmxp" || eng === "rmvx" || eng === "rmvxace") {

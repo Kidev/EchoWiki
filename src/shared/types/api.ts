@@ -8,12 +8,15 @@ export type EngineType =
   | "rmmz"
   | "rmmz-encrypted"
   | "tcoaal"
+  | "generic"
+  | "custom"
   | "auto";
 
 export type GameConfig = {
   gameName: string;
   engine: EngineType;
   encryptionKey: string;
+  customTransformCode: string | null;
   wikiTitle: string;
   wikiDescription: string;
   homeBackground: HomeBackground;
@@ -47,6 +50,7 @@ export type ConfigUpdateRequest = {
   gameName?: string;
   engine?: EngineType;
   encryptionKey?: string;
+  customTransformCode?: string | null | undefined;
   wikiTitle?: string;
   wikiDescription?: string;
   homeBackground?: HomeBackground;

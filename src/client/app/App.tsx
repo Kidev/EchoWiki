@@ -51,7 +51,6 @@ import {
   ActiveTab,
   FilterType,
   PAGE_SIZE,
-  INIT_PRELOAD_COUNT,
   DEFAULT_STYLE,
   DEFAULT_APPEARANCE,
   getFontFamily,
@@ -70,7 +69,7 @@ import {
 } from "./assetUtils";
 import { extractEchoPathsFromMarkdown } from "./echoRender";
 import { EchoLinkDialog } from "./components/EchoLinkDialog";
-import { parseEchoLink } from "./components/WikiMarkdownContent";
+import { parseEchoLink } from "./wikiLinks";
 import { WikiView } from "./components/WikiView";
 import { AssetCard, FilterTabs, SubFilterTabs } from "./components/AssetBrowser";
 const AssetPreview = lazy(() =>
@@ -459,15 +458,13 @@ export const App = () => {
         setLoadingProgress(5);
 
         const mappingPromise = fetch("/api/mapping").catch(() => null);
-        const wikiIndexPromise = fetch("/api/wiki?page=index").catch(() => null);
 
         const m = await getMeta();
         setMeta(m ?? null);
         const allPaths = await listAssetPaths();
         setPaths(allPaths);
-        setLoadingProgress(12);
+        setLoadingProgress(50);
 
-        let pathToMappedInit = new Map<string, string>();
         try {
           const mappingRes = await mappingPromise;
           if (mappingRes?.ok) {
@@ -476,49 +473,13 @@ export const App = () => {
             setMappingText(data.text);
             if (data.mapping) {
               const result = await applyMapping(data.mapping);
-              pathToMappedInit = result;
               setPathToMapped(result);
               setReverseMapping(result);
             }
           }
         } catch {}
-        setLoadingProgress(22);
-
-        try {
-          const wikiIndexRes = await wikiIndexPromise;
-          if (wikiIndexRes?.ok) {
-            const data: WikiResponse = await wikiIndexRes.json();
-            if (data.content) {
-              const echoPaths = extractEchoPathsFromMarkdown(data.content);
-              const wikiN = planPreload(echoPaths);
-              setLoadingProgress(25);
-              if (wikiN > 0) {
-                await preloadPaths(echoPaths, (loaded) => {
-                  setLoadingProgress(25 + Math.round((loaded / wikiN) * 15));
-                });
-              }
-            }
-          }
-        } catch {}
-        setLoadingProgress(40);
-
-        const sortedImages = allPaths
-          .filter(isImagePath)
-          .sort((a, b) =>
-            naturalSortKey(a, pathToMappedInit).localeCompare(
-              naturalSortKey(b, pathToMappedInit),
-              undefined,
-              { numeric: true, sensitivity: "base" },
-            ),
-          );
-        const firstPage = sortedImages.slice(0, INIT_PRELOAD_COUNT);
-        const assetsN = planPreload(firstPage);
-        if (assetsN > 0) {
-          await preloadPaths(firstPage, (loaded) => {
-            setLoadingProgress(40 + Math.round((loaded / assetsN) * 58));
-          });
-        }
         setLoadingProgress(100);
+        // Assets and wiki images load lazily on demand: no bulk preload on startup
 
         if (
           initConfig?.gameName &&
@@ -693,6 +654,7 @@ export const App = () => {
           files,
           engineOverride: config?.engine,
           keyOverride: config?.encryptionKey || undefined,
+          customTransformCode: config?.customTransformCode || undefined,
           onProgress: (p) => {
             progressRef.current = p;
 
@@ -1595,7 +1557,7 @@ export const App = () => {
                     {isWiping ? (
                       <span className="inline-flex items-center gap-1.5">
                         <span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin inline-block" />
-                        Clearing…
+                        Clearing...
                       </span>
                     ) : (
                       "Exit"
@@ -1833,7 +1795,7 @@ export const App = () => {
                           {loadingMore ? (
                             <span className="inline-flex items-center gap-1.5">
                               <span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin inline-block" />
-                              Loading…
+                              Loading...
                             </span>
                           ) : (
                             <>

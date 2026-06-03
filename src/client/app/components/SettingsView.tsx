@@ -29,7 +29,8 @@ import type {
   WikiFontSize,
 } from "../../../shared/types/api";
 import { darkenHex } from "../appTypes";
-import { ColorPickerRow, MappingPanel, parseMappingText } from "./MappingPanel";
+import { ColorPickerRow, MappingPanel } from "./MappingPanel";
+import { parseMappingText } from "../mappingUtils";
 import { SegmentedControl } from "./AssetBrowser";
 
 type SettingsTab = "general" | "game" | "style" | "theme" | "mapping" | "collaborative" | "voting";
@@ -299,7 +300,7 @@ function CollaborativePanel({
                 disabled={!thresholdsDirty || isSavingThresholds}
                 className="ml-auto text-xs px-2.5 py-1 rounded-full bg-[var(--accent)] text-white cursor-pointer disabled:opacity-30 shrink-0"
               >
-                {isSavingThresholds ? "Saving…" : "Apply"}
+                {isSavingThresholds ? "Saving..." : "Apply"}
               </button>
             </div>
           </div>
@@ -368,7 +369,7 @@ function CollaborativePanel({
                 }
                 className="text-xs px-2.5 py-1 rounded-full bg-[var(--accent)] text-white cursor-pointer disabled:opacity-30 shrink-0"
               >
-                {isSavingAdv ? "Saving…" : "Apply"}
+                {isSavingAdv ? "Saving..." : "Apply"}
               </button>
             </div>
           </div>
@@ -398,7 +399,7 @@ function CollaborativePanel({
                 disabled={isBanning || !banInput.trim()}
                 className="text-xs px-3 py-1 rounded border border-red-300 text-red-600 hover:bg-red-50 transition-colors cursor-pointer disabled:opacity-40 shrink-0"
               >
-                {isBanning ? "Banning…" : "Ban"}
+                {isBanning ? "Banning..." : "Ban"}
               </button>
             </div>
             {banError && <span className="text-xs text-red-500">{banError}</span>}
@@ -818,7 +819,7 @@ function VotingSettingsPanel({
           disabled={!votingDirty || isSaving}
           className="text-xs px-3 py-1.5 rounded-lg bg-[var(--accent)] text-white cursor-pointer disabled:opacity-30 hover:opacity-90 transition-opacity"
         >
-          {isSaving ? "Saving…" : "Apply"}
+          {isSaving ? "Saving..." : "Apply"}
         </button>
       </div>
     </div>
@@ -855,6 +856,9 @@ export function SettingsView({
   const [homeLogo, setHomeLogo] = useState<HomeLogo>(config.homeLogo);
   const [engineField, setEngineField] = useState<EngineType>(config.engine);
   const [encryptionKeyField, setEncryptionKeyField] = useState(config.encryptionKey);
+  const [customTransformCodeField, setCustomTransformCodeField] = useState(
+    config.customTransformCode ?? "",
+  );
   const [savingConfig, setSavingConfig] = useState(false);
   const [votingPanelDirty, setVotingPanelDirty] = useState(false);
   const votingSaveRef = useRef<(() => Promise<void>) | null>(null);
@@ -880,7 +884,8 @@ export function SettingsView({
     homeBackground !== config.homeBackground ||
     homeLogo !== config.homeLogo ||
     engineField !== config.engine ||
-    encryptionKeyField !== config.encryptionKey;
+    encryptionKeyField !== config.encryptionKey ||
+    customTransformCodeField !== (config.customTransformCode ?? "");
 
   const handleSaveConfig = useCallback(async () => {
     setSavingConfig(true);
@@ -896,6 +901,7 @@ export function SettingsView({
           homeLogo,
           engine: engineField,
           encryptionKey: encryptionKeyField,
+          customTransformCode: customTransformCodeField || null,
         }),
       });
       if (res.ok) {
@@ -914,6 +920,7 @@ export function SettingsView({
     homeLogo,
     engineField,
     encryptionKeyField,
+    customTransformCodeField,
     onConfigChanged,
   ]);
 
@@ -1124,6 +1131,7 @@ export function SettingsView({
                     }}
                   >
                     <option value="auto">Auto-detect</option>
+                    <option value="generic">Generic (any game)</option>
                     <option value="rm2k3">RPG Maker 2003</option>
                     <option value="rmxp">RPG Maker XP</option>
                     <option value="rmvx">RPG Maker VX</option>
@@ -1133,34 +1141,90 @@ export function SettingsView({
                     <option value="rmmz">RPG Maker MZ</option>
                     <option value="rmmz-encrypted">RPG Maker MZ (Encrypted)</option>
                     <option value="tcoaal">TCOAAL</option>
+                    <option value="custom">Custom transform</option>
                   </select>
                   <span className="text-[10px] text-[var(--text-muted)]">
                     {isTcoaalDetected
                       ? "Auto-detected from game title."
-                      : "Override the engine auto-detection. Leave on Auto-detect if unsure."}
+                      : engineField === "generic"
+                        ? "Scans any game folder for images and audio; also extracts .zip and .rpa (RenPy) archives."
+                        : engineField === "custom"
+                          ? "Run custom JavaScript on each imported file: handles any game format."
+                          : "Override engine auto-detection. Leave on Auto-detect if unsure."}
                   </span>
                 </div>
 
-                <div className="flex flex-col gap-2">
-                  <span className="text-xs font-medium">Encryption Key</span>
-                  <input
-                    type="text"
-                    value={encryptionKeyField}
-                    onChange={(e) => setEncryptionKeyField(e.target.value)}
-                    disabled={isTcoaalDetected}
-                    placeholder="Leave empty for auto-detection"
-                    className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)] disabled:opacity-50"
-                    style={{
-                      backgroundColor: "var(--control-bg)",
-                      color: "var(--control-text)",
-                    }}
-                  />
-                  <span className="text-[10px] text-[var(--text-muted)]">
-                    {isTcoaalDetected
-                      ? "TCOAAL does not use a user-provided key."
-                      : "Override the encryption key used for decryption. Leave empty if unsure."}
-                  </span>
-                </div>
+                {engineField !== "custom" && (
+                  <div className="flex flex-col gap-2">
+                    <span className="text-xs font-medium">Encryption Key</span>
+                    <input
+                      type="text"
+                      value={encryptionKeyField}
+                      onChange={(e) => setEncryptionKeyField(e.target.value)}
+                      disabled={isTcoaalDetected || engineField === "generic"}
+                      placeholder="Leave empty for auto-detection"
+                      className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)] disabled:opacity-50"
+                      style={{
+                        backgroundColor: "var(--control-bg)",
+                        color: "var(--control-text)",
+                      }}
+                    />
+                    <span className="text-[10px] text-[var(--text-muted)]">
+                      {isTcoaalDetected
+                        ? "TCOAAL does not use a user-provided key."
+                        : engineField === "generic"
+                          ? "Generic mode does not use an encryption key."
+                          : "Override the encryption key used for decryption. Leave empty if unsure."}
+                    </span>
+                  </div>
+                )}
+
+                {engineField === "custom" && (
+                  <div className="flex flex-col gap-2">
+                    <span className="text-xs font-medium">Custom Transform Code</span>
+                    <textarea
+                      value={customTransformCodeField}
+                      onChange={(e) => setCustomTransformCodeField(e.target.value)}
+                      rows={10}
+                      spellCheck={false}
+                      placeholder={`// Called for every file in the game folder.
+// Return an object to include the file, or null/undefined to skip it.
+// Available: file.name, file.webkitRelativePath, file.arrayBuffer(), file.text()
+
+const rel = file.webkitRelativePath;
+const parts = rel.split('/').slice(1); // strip root folder
+if (parts.length === 0) return null;
+
+const name = parts[parts.length - 1] ?? '';
+if (!name.match(/\\.(png|jpg|jpeg|gif|ogg|mp3|wav|m4a)$/i)) return null;
+
+const parent = parts.length > 1 ? parts[parts.length - 2] : 'root';
+const mime = name.endsWith('.png') ? 'image/png'
+  : name.endsWith('.ogg') ? 'audio/ogg'
+  : name.endsWith('.mp3') ? 'audio/mpeg'
+  : name.endsWith('.wav') ? 'audio/wav'
+  : 'application/octet-stream';
+
+return { path: parent + '/' + name.toLowerCase(), data: await file.arrayBuffer(), mimeType: mime };`}
+                      className="text-xs font-mono px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)] resize-y"
+                      style={{
+                        backgroundColor: "var(--control-bg)",
+                        color: "var(--control-text)",
+                        minHeight: 180,
+                      }}
+                    />
+                    <span className="text-[10px] text-amber-600">
+                      ⚠ This code runs in users' browsers when they import game files. Only set
+                      this if you trust the source.
+                    </span>
+                    <span className="text-[10px] text-[var(--text-muted)]">
+                      The function body receives <code>file</code> (a File object) and must return{" "}
+                      <code>{"{ path, data, mimeType }"}</code> or <code>null</code> to skip. Use{" "}
+                      <code>await file.arrayBuffer()</code> to read bytes. Apply any custom
+                      decryption here.
+                    </span>
+                  </div>
+                )}
               </>
             )}
           </div>

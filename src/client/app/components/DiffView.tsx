@@ -22,7 +22,7 @@ export type SideBySideLine =
 const DIFF_CONTEXT = 3;
 const DIFF_LINE_LIMIT = 6000;
 
-export function computeLineDiff(a: string, b: string): DiffLine[] {
+function computeLineDiff(a: string, b: string): DiffLine[] {
   const aLines = a.split("\n");
   const bLines = b.split("\n");
   const m = aLines.length;

@@ -6,6 +6,7 @@ import {
   detectGroupsForFolder,
   getAssignedGroup,
 } from "../assetUtils";
+import { parseMappingText } from "../mappingUtils";
 
 export function ColorPickerRow({
   label,
@@ -63,17 +64,6 @@ export function ColorPickerRow({
       </div>
     </div>
   );
-}
-
-export function parseMappingText(text: string): Array<[string, string]> {
-  const cleaned = text.replace(/\/\/[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
-  const pairRegex = /"([^"]+)"\s*:\s*"([^"]+)"/g;
-  const results: Array<[string, string]> = [];
-  let match;
-  while ((match = pairRegex.exec(cleaned)) !== null) {
-    results.push([match[1]!.toLowerCase(), match[2]!.toLowerCase()]);
-  }
-  return results;
 }
 
 export function MappingPanel({
@@ -275,7 +265,7 @@ export function MappingPanel({
                 disabled={saving}
                 className="text-xs px-3 py-1.5 rounded-full bg-[var(--accent)] text-white cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
               >
-                {saving ? "Saving…" : "Apply"}
+                {saving ? "Saving..." : "Apply"}
               </button>
             </div>
           </div>

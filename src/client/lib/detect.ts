@@ -63,6 +63,14 @@ export function detectEngine(files: File[]): DetectionResult {
     return { engine: "tcoaal", dataRoot: "www/", hasEncryption: true };
   }
 
+  if (hasExt(idx, ".rpa")) {
+    return { engine: "generic", dataRoot: "", hasEncryption: false };
+  }
+
+  if (hasExt(idx, ".pck")) {
+    return { engine: "generic", dataRoot: "", hasEncryption: false };
+  }
+
   if (hasPath(idx, "www/img/system/e5230bf37c4fabb0")) {
     return { engine: "tcoaal", dataRoot: "www/", hasEncryption: true };
   }
@@ -99,11 +107,39 @@ export function detectEngine(files: File[]): DetectionResult {
     return { engine: "rm2k3", dataRoot: "", hasEncryption: false };
   }
 
+  if (hasPath(idx, "data.win") || hasPath(idx, "game.ios") || hasPath(idx, "game.unx")) {
+    return { engine: "generic", dataRoot: "", hasEncryption: false };
+  }
+
   if (hasPath(idx, "www/data/system.json")) {
     return { engine: "rmmv", dataRoot: "www/", hasEncryption: false };
   }
   if (hasPath(idx, "data/system.json")) {
     return { engine: "rmmz", dataRoot: "", hasEncryption: false };
+  }
+
+  // Fallback: if there are any image/audio files anywhere in the tree, use generic scan
+  const MEDIA_EXTS = [
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".bmp",
+    ".webp",
+    ".ogg",
+    ".mp3",
+    ".m4a",
+    ".wav",
+    ".mid",
+    ".opus",
+    ".flac",
+    ".mp4",
+    ".webm",
+  ];
+  for (const ext of MEDIA_EXTS) {
+    if (hasExt(idx, ext)) {
+      return { engine: "generic", dataRoot: "", hasEncryption: false };
+    }
   }
 
   return { engine: "auto", dataRoot: "", hasEncryption: false };

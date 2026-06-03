@@ -13,7 +13,6 @@ import {
 } from "../echoRender";
 import { EchoInlineAsset } from "./EchoInlineAsset";
 import { getFileName, slugify } from "../assetUtils";
-import type { EchoLinkTarget } from "../appTypes";
 
 function extractWikiPage(href: string, subredditName: string): string | null {
   const sub = subredditName.toLowerCase();
@@ -38,32 +37,6 @@ function extractWikiPage(href: string, subredditName: string): string | null {
     return pathMatch[2]!;
   }
 
-  return null;
-}
-
-export function parseEchoLink(
-  text: string,
-  subredditName: string,
-  wikiPages: string[],
-): EchoLinkTarget | null {
-  const trimmed = text.trim();
-  if (!trimmed.startsWith("echolink://r/")) return null;
-  const withoutScheme = trimmed.slice("echolink://r/".length);
-  const slashIdx = withoutScheme.indexOf("/");
-  if (slashIdx === -1) return null;
-  const sub = withoutScheme.slice(0, slashIdx);
-  if (sub.toLowerCase() !== subredditName.toLowerCase()) return null;
-  const path = withoutScheme.slice(slashIdx + 1);
-  if (path === "assets") return { type: "assets" };
-  if (path.startsWith("wiki/")) {
-    const pagePart = path.slice("wiki/".length);
-    const hashIdx = pagePart.indexOf("#");
-    const pageWithoutAnchor = hashIdx === -1 ? pagePart : pagePart.slice(0, hashIdx);
-    const anchor = hashIdx === -1 ? null : pagePart.slice(hashIdx + 1) || null;
-    if (wikiPages.includes(pageWithoutAnchor)) {
-      return { type: "wiki", page: pageWithoutAnchor, anchor };
-    }
-  }
   return null;
 }
 

@@ -68,6 +68,7 @@ const DEFAULT_CONFIG: GameConfig = {
   gameName: "",
   engine: "auto",
   encryptionKey: "",
+  customTransformCode: null,
   wikiTitle: "",
   wikiDescription: "",
   homeBackground: "ripple",
@@ -106,6 +107,7 @@ async function getConfig(): Promise<GameConfig> {
     gameName: raw["gameName"] ?? DEFAULT_CONFIG.gameName,
     engine: (raw["engine"] as GameConfig["engine"]) ?? DEFAULT_CONFIG.engine,
     encryptionKey: raw["encryptionKey"] ?? DEFAULT_CONFIG.encryptionKey,
+    customTransformCode: raw["customTransformCode"] ?? null,
     wikiTitle: raw["wikiTitle"] ?? DEFAULT_CONFIG.wikiTitle,
     wikiDescription: raw["wikiDescription"] ?? DEFAULT_CONFIG.wikiDescription,
     homeBackground:
@@ -895,6 +897,9 @@ router.post<Record<string, never>, ConfigUpdateResponse | ErrorResponse, ConfigU
       }
       if (body.encryptionKey !== undefined) {
         fields["encryptionKey"] = body.encryptionKey;
+      }
+      if (body.customTransformCode !== undefined) {
+        fields["customTransformCode"] = body.customTransformCode ?? "";
       }
       if (body.wikiTitle !== undefined) {
         fields["wikiTitle"] = body.wikiTitle;

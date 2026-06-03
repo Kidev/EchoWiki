@@ -11,13 +11,13 @@ import type {
 import { requestExpandedMode, navigateTo } from "@devvit/web/client";
 import { CompareView } from "./DiffView";
 
-export function formatAuthorKarma(karma: number): string {
+function formatAuthorKarma(karma: number): string {
   if (karma >= 1_000_000) return `${(karma / 1_000_000).toFixed(1)}M`;
   if (karma >= 1_000) return `${(karma / 1_000).toFixed(1)}k`;
   return String(karma);
 }
 
-export function formatAuthorAge(days: number): string {
+function formatAuthorAge(days: number): string {
   if (days < 30) return `${days}d`;
   if (days < 365) {
     const mo = Math.floor(days / 30);
@@ -28,7 +28,7 @@ export function formatAuthorAge(days: number): string {
   return mo > 0 ? `${yr}y ${mo}mo` : `${yr}y`;
 }
 
-export function formatTimeRemaining(ms: number): string {
+function formatTimeRemaining(ms: number): string {
   if (ms <= 0) return "deadline passed";
   const days = Math.floor(ms / 86400000);
   const hours = Math.floor((ms % 86400000) / 3600000);
@@ -39,7 +39,7 @@ export function formatTimeRemaining(ms: number): string {
   return "< 1m left";
 }
 
-export function voteReasonLabel(reason: VoteStatus["reason"]): string {
+function voteReasonLabel(reason: VoteStatus["reason"]): string {
   switch (reason) {
     case "threshold_accept":
       return "accept vote threshold reached";
