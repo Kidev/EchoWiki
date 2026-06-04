@@ -11,7 +11,7 @@ import {
   preprocessEchoBlocks,
   extractDisplayHints,
 } from "../echoRender";
-import { EchoInlineAsset } from "./EchoInlineAsset";
+import { EchoInlineAsset, EchoRawImage } from "./EchoInlineAsset";
 import { getFileName, slugify } from "../assetUtils";
 
 function extractWikiPage(href: string, subredditName: string): string | null {
@@ -271,6 +271,14 @@ export function WikiMarkdownContent({
             }) => {
               if (src?.startsWith("echo://")) {
                 const rawPath = src.slice("echo://".length).toLowerCase();
+                // Images emitted by :::scene / :::fbf / :::anim blocks are marked
+                // with the `echo-raw` class. They carry their own positioning and
+                // animation styles, so render them bare (no inline-asset wrapper).
+                if (imgClass?.split(/\s+/).includes("echo-raw")) {
+                  return (
+                    <EchoRawImage path={rawPath} alt={alt} style={style} className={imgClass} />
+                  );
+                }
                 const { hints, cleanPath } = extractDisplayHints(rawPath);
                 const hintStyle: CSSProperties = {};
                 if (hints.has("emoji")) {

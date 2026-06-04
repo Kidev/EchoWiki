@@ -161,7 +161,7 @@ export function renderFbfBlock(
   const overlayImgs = frames
     .map(
       (src, i) =>
-        `<img src="${src}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;animation:${uid}-f${i} ${period}s linear infinite;" alt="">`,
+        `<img class="echo-raw" src="${src}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;animation:${uid}-f${i} ${period}s linear infinite;" alt="">`,
     )
     .join("");
 
@@ -170,7 +170,7 @@ export function renderFbfBlock(
     return `<style>${kf}</style><span style="position:relative;display:inline-block;width:${px}px;height:${px}px;vertical-align:middle;">${overlayImgs}</span>`;
   }
 
-  const sizeDriver = `<img src="${frames[0]}" style="display:block;width:auto;height:auto;max-width:100%;visibility:hidden;pointer-events:none;" alt="">`;
+  const sizeDriver = `<img class="echo-raw" src="${frames[0]}" style="display:block;width:auto;height:auto;max-width:100%;visibility:hidden;pointer-events:none;" alt="">`;
   return `<style>${kf}</style><span style="position:relative;display:inline-block;max-width:100%;vertical-align:middle;">${sizeDriver}<span style="position:absolute;inset:0;">${overlayImgs}</span></span>`;
 }
 
@@ -193,11 +193,11 @@ export function renderSceneBlock(params: Record<string, string>, lines: string[]
       const pos = parseEchoBlockParams(posStr);
       let posStyle = "position:absolute;display:block;";
       for (const [k, v] of Object.entries(pos)) posStyle += `${k}:${v};`;
-      layerImgs.push(`<img src="${src}" style="${posStyle}" alt="">`);
+      layerImgs.push(`<img class="echo-raw" src="${src}" style="${posStyle}" alt="">`);
     }
   }
   const fgHtml = fgSrc
-    ? `<img src="${fgSrc}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none;display:block;" alt="">`
+    ? `<img class="echo-raw" src="${fgSrc}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none;display:block;" alt="">`
     : "";
   const overlayHtml = `<div style="position:absolute;inset:0;overflow:hidden;">${layerImgs.join("")}${fgHtml}</div>`;
   const baseStyle = `position:relative;display:block;width:${width};max-width:100%;border-radius:6px;overflow:hidden;line-height:0;`;
@@ -205,11 +205,11 @@ export function renderSceneBlock(params: Record<string, string>, lines: string[]
   if (bgSrc) {
     if (heightRaw?.endsWith("%")) {
       const hPct = parseFloat(heightRaw);
-      const bgImg = `<img src="${bgSrc}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;" alt="">`;
+      const bgImg = `<img class="echo-raw" src="${bgSrc}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;" alt="">`;
       return `<div style="${baseStyle}aspect-ratio:${(100 / hPct).toFixed(4)} / 1;">${bgImg}${overlayHtml}</div>`;
     }
 
-    const bgImg = `<img src="${bgSrc}" style="display:block;width:100%;height:auto;" alt="">`;
+    const bgImg = `<img class="echo-raw" src="${bgSrc}" style="display:block;width:100%;height:auto;" alt="">`;
     return `<div style="${baseStyle}">${bgImg}${overlayHtml}</div>`;
   }
 
@@ -286,14 +286,14 @@ export function renderAnimBlock(
   const frameImgs = frames
     .map(
       (src, i) =>
-        `<img src="${src}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;animation:${uid}-f${i} ${period}s linear infinite;" alt="">`,
+        `<img class="echo-raw" src="${src}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;animation:${uid}-f${i} ${period}s linear infinite;" alt="">`,
     )
     .join("");
 
   const spriteNatural = !spriteSizeRaw || spriteSizeRaw.includes("%");
   let spriteDiv: string;
   if (spriteNatural) {
-    const sizeDriver = `<img src="${frames[0]}" style="display:block;width:auto;height:auto;max-width:100%;visibility:hidden;pointer-events:none;" alt="">`;
+    const sizeDriver = `<img class="echo-raw" src="${frames[0]}" style="display:block;width:auto;height:auto;max-width:100%;visibility:hidden;pointer-events:none;" alt="">`;
     spriteDiv = `<div style="position:absolute;${moveStyle}">${sizeDriver}<div style="position:absolute;inset:0;">${frameImgs}</div></div>`;
   } else {
     const px = parseInt(spriteSizeRaw, 10);
@@ -306,11 +306,11 @@ export function renderAnimBlock(
   if (bg) {
     if (heightRaw?.endsWith("%")) {
       const hPct = parseFloat(heightRaw);
-      const bgImg = `<img src="${bg}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:${bgOpacity};display:block;" alt="">`;
+      const bgImg = `<img class="echo-raw" src="${bg}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:${bgOpacity};display:block;" alt="">`;
       return `<style>${framekf} ${moveKf}</style><div style="${baseStyle}aspect-ratio:${(100 / hPct).toFixed(4)} / 1;">${bgImg}${overlayDiv}</div>`;
     }
 
-    const bgImg = `<img src="${bg}" style="display:block;width:100%;height:auto;opacity:${bgOpacity};" alt="">`;
+    const bgImg = `<img class="echo-raw" src="${bg}" style="display:block;width:100%;height:auto;opacity:${bgOpacity};" alt="">`;
     return `<style>${framekf} ${moveKf}</style><div style="${baseStyle}">${bgImg}${overlayDiv}</div>`;
   }
 
@@ -452,7 +452,7 @@ export function renderMultiPhaseAnimBlock(
       kfStops.push("100%{opacity:0}");
       cssOut += `@keyframes ${animName}{${kfStops.join("")}}`;
       frameEls.push(
-        `<img src="${src}" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain;animation:${animName} ${totalDuration.toFixed(3)}s linear infinite;" alt="">`,
+        `<img class="echo-raw" src="${src}" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain;animation:${animName} ${totalDuration.toFixed(3)}s linear infinite;" alt="">`,
       );
     }
   }
@@ -481,7 +481,7 @@ export function renderMultiPhaseAnimBlock(
   if (spriteNatural) {
     const firstSrc = phases[0]?.frames[0] ?? "";
     const sizeDriver = firstSrc
-      ? `<img src="${firstSrc}" style="display:block;width:auto;height:auto;max-width:100%;visibility:hidden;pointer-events:none;" alt="">`
+      ? `<img class="echo-raw" src="${firstSrc}" style="display:block;width:auto;height:auto;max-width:100%;visibility:hidden;pointer-events:none;" alt="">`
       : "";
     spriteDiv = `<div style="position:absolute;animation:${uid}-move ${totalDuration.toFixed(3)}s linear infinite;">${sizeDriver}<div style="position:absolute;inset:0;">${frameEls.join("")}</div></div>`;
   } else {
@@ -495,10 +495,10 @@ export function renderMultiPhaseAnimBlock(
   if (bg) {
     if (height?.endsWith("%")) {
       const hPct = parseFloat(height);
-      const bgImg = `<img src="${bg}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:${bgOpacity};display:block;" alt="">`;
+      const bgImg = `<img class="echo-raw" src="${bg}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:${bgOpacity};display:block;" alt="">`;
       return `<style>${cssOut}</style><div style="${baseStyle}aspect-ratio:${(100 / hPct).toFixed(4)} / 1;">${bgImg}${overlayDiv}</div>`;
     }
-    const bgImg = `<img src="${bg}" style="display:block;width:100%;height:auto;opacity:${bgOpacity};" alt="">`;
+    const bgImg = `<img class="echo-raw" src="${bg}" style="display:block;width:100%;height:auto;opacity:${bgOpacity};" alt="">`;
     return `<style>${cssOut}</style><div style="${baseStyle}">${bgImg}${overlayDiv}</div>`;
   }
 

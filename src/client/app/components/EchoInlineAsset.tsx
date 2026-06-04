@@ -44,6 +44,34 @@ function EchoInlineImageLoader({
   );
 }
 
+// Renders a bare <img> for echo paths embedded inside raw-HTML echo blocks
+// (:::scene, :::fbf, :::anim). These images carry their own absolute-position /
+// animation inline styles and MUST NOT be wrapped in an extra positioning span,
+// otherwise the layout context that their `inset:0` / `width:100%` rely on is lost.
+// The element stays mounted with no src until the blob URL resolves, so it slots
+// into the surrounding layout exactly as the block renderer intended.
+export function EchoRawImage({
+  path,
+  alt,
+  style,
+  className,
+}: {
+  path: string;
+  alt?: string | undefined;
+  style?: CSSProperties | undefined;
+  className?: string | undefined;
+}) {
+  const { url } = useEchoUrl(path);
+  return (
+    <img
+      src={url ?? undefined}
+      alt={alt ?? getFileName(parseEditions(path).basePath)}
+      style={style}
+      className={className}
+    />
+  );
+}
+
 export function EchoInlineImage({
   url,
   alt,
