@@ -10,6 +10,8 @@ EchoWiki turns a subreddit wiki into a proper editing and reading environment. M
 
 Wiki pages are fetched from the subreddit's wiki via the Reddit API and rendered inside the app with a full Markdown engine.
 
+![img](docs/wiki.png)
+
 Supported formatting:
 
 - Standard GFM: tables, code blocks, lists, blockquotes, horizontal rules
@@ -31,6 +33,8 @@ When saving directly, the reason is prefixed with the moderator's username and s
 
 HTML `style` attributes on echo image tags (e.g. `<img src="echo://..." style="width: 120px">`) are applied client-side, allowing layout control from wiki source.
 
+![img](docs/editor.png)
+
 ### Section Links
 
 Every heading has a copy-link button that appears on hover. Clicking it copies an `echolink://` URL pointing to that specific section. These links can be shared with other users of the same subreddit's EchoWiki. To open one, use the link icon in the top bar to open the EchoLink dialog, then paste the URL. The dialog also accepts `echo://` asset paths to jump directly to a file in the asset browser.
@@ -38,6 +42,8 @@ Every heading has a copy-link button that appears on hover. Clicking it copies a
 ## Collaborative Editing
 
 When collaborative mode is enabled, users who meet the subreddit's eligibility thresholds (karma and account age, both configurable) can suggest changes to any wiki page. Each user can have one active suggestion at a time.
+
+![img](docs/suggestions.png)
 
 ### Suggestions
 
@@ -61,6 +67,9 @@ When voting is enabled, submitting a suggestion creates a separate Reddit post w
 A minimum number of voters can be required before the time-based threshold applies. The suggestion author cannot vote on their own suggestion. Voter eligibility (karma and account age) is configurable separately from contributor eligibility.
 
 The voting post includes a pinned bot comment that records vote events: when the vote opened, when the suggestion was updated, and when the vote concluded with the outcome and reason. The comment is updated as events occur and locked when the vote concludes.
+
+![img](docs/vote1.png)
+![img](docs/vote2.png)
 
 ### Mod Review
 
@@ -124,7 +133,19 @@ Description and stats here.
 
 **`:::fbf`** (frame by frame) cycles through sprite frames using CSS opacity animation. List one `echo://` path per line. Use `fps` to set playback speed, `size` for the box pixel dimensions, and `alias=name` to name the block for use in `:::anim`.
 
-**`:::anim`** moves a sprite across a background scene. Reference an `:::fbf` block via `ref=alias`, or supply frames inline. Define the movement path as one or more keyframe lines (`N% key=value ...`). `pingpong=true` reverses direction at the end of each cycle instead of jumping back to start.
+**`:::anim`** moves a sprite across a background scene. Reference an `:::fbf` block via `ref=alias`, or supply frames inline. Define the movement path as one or more keyframe lines (`N% key=value ...`).
+
+| Param              | Default | Description                                                                                                                                                                                                               |
+| ------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ref`              |         | Alias of an `:::fbf` block to use as the sprite                                                                                                                                                                           |
+| `fps`              | `2.5`   | Frames per second. Treated as a target: see `hold`. Ignored when `ref` is set                                                                                                                                            |
+| `spritesize`       | `48`    | Sprite pixel size (ignored when `ref` is set)                                                                                                                                                                             |
+| `loops`            | `1`     | Number of whole walk cycles per movement; movement time is derived as `loops × frames ÷ fps`. Ignored when `duration` is set                                                                                              |
+| `duration`         | `3s`    | Explicit time for one full movement. Overrides `loops`                                                                                                                                                                    |
+| `hold`             | `true`  | Locks the walk to the movement: the cycle is snapped so a whole number of cycles exactly fills the movement, so the sprite never switches direction mid-stride. `hold=false` keeps the raw `fps` and lets the cycle drift |
+| `pingpong`         | `false` | `true` reverses direction at the end of each cycle instead of jumping back to start (sprite does not flip)                                                                                                                |
+| `width` / `height` | `50%`   | Scene container size (use `%` height with a background)                                                                                                                                                                   |
+| `bg` / `bgopacity` |         | Background image path and opacity (`0`-`1`)                                                                                                                                                                               |
 
 ```
 :::fbf alias=hero fps=11 size=48
@@ -134,9 +155,30 @@ echo://img/characters/actor.png?sprite=12,8,2
 echo://img/characters/actor.png?sprite=12,8,1
 :::
 
-:::anim ref=hero duration=3s width=60% height=120px pingpong=true bg=echo://img/parallaxes/bg.png bgopacity=0.6
+:::anim ref=hero loops=3 width=60% height=120px pingpong=true bg=echo://img/parallaxes/bg.png bgopacity=0.6
 0% left=8px bottom=24px
 100% left="calc(100% - 56px)" bottom=24px
+:::
+```
+
+**Multi-phase animations** swap the sprite mid-loop: add `---` separators inside `:::anim`, each with its own frames and movement keyframes (and optional `fps`, `spritesize`, `loops`, `duration`, `hold`). They composite into one seamless loop: e.g. a right-facing walk left-to-right, then a left-facing walk back: so the character always faces the way it is walking.
+
+```
+:::anim width=75% height=50% bg=echo://img/parallaxes/bg.png?crop bgopacity=1
+--- fps=6 spritesize=100% loops=3
+echo://img/characters/actor.png?sprite=12,8,24
+echo://img/characters/actor.png?sprite=12,8,25
+echo://img/characters/actor.png?sprite=12,8,26
+echo://img/characters/actor.png?sprite=12,8,25
+0% left=10% bottom=5%
+100% left=60% bottom=5%
+--- fps=6 spritesize=100% loops=3
+echo://img/characters/actor.png?sprite=12,8,12
+echo://img/characters/actor.png?sprite=12,8,13
+echo://img/characters/actor.png?sprite=12,8,14
+echo://img/characters/actor.png?sprite=12,8,13
+0% left=60% bottom=5%
+100% left=10% bottom=5%
 :::
 ```
 
@@ -150,6 +192,9 @@ Users select their game folder. The app auto-detects the engine, extracts assets
 
 ### Supported Engines
 
+Engine detection is automatic. All games using mkxp with RTP archives (.dat files) are supported. 
+ RPG Maker games are also supported:
+
 | Engine               | Format            |
 | -------------------- | ----------------- |
 | **RPG Maker 2003**   | XYZ image format  |
@@ -159,8 +204,6 @@ Users select their game folder. The app auto-detects the engine, extracts assets
 | **RPG Maker MV**     | Individual files  |
 | **RPG Maker MZ**     | Individual files  |
 | **TCOAAL 3.0+**      | Individual files  |
-
-Engine detection is automatic. Games using mkxp with RTP archives (.dat files) are also supported.
 
 ## Asset Browser
 

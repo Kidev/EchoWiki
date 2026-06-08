@@ -135,6 +135,72 @@ export function parseEchoBlockParams(str: string): Record<string, string> {
 
 export type EchoBlockDef = { params: Record<string, string>; body: string };
 
+/**
+ * Small stable string hash (djb2/xor), base36-encoded. Used to derive animation
+ * `uid`s from a block's content so that the generated `@keyframes` names change
+ * whenever (and only when) the block itself changes. In the live editor this
+ * forces every animation in an edited block to restart together: keeping the
+ * sprite frames and the movement in sync: instead of the browser swapping
+ * keyframes under a stable name and leaving the clocks at different offsets.
+ */
+export function hashString(s: string): string {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) {
+    h = (((h << 5) + h) ^ s.charCodeAt(i)) >>> 0;
+  }
+  return h.toString(36);
+}
+
+/**
+ * Parse an fps value, falling back to a safe positive default. Guards against
+ * empty / NaN / zero / negative input (e.g. while a value is mid-edit in the
+ * live editor) which would otherwise produce a non-finite frame period and, in
+ * the multi-phase animator, an infinite keyframe-building loop.
+ */
+export function parseFps(raw: string | undefined, fallback = 2.5): number {
+  const v = parseFloat(raw ?? "");
+  return Number.isFinite(v) && v > 0 ? v : fallback;
+}
+
+/** Parse a boolean-ish param value. Absent/empty -> fallback; falsy strings -> false. */
+export function parseBoolParam(raw: string | undefined, fallback: boolean): boolean {
+  if (raw === undefined) return fallback;
+  const v = raw.trim().toLowerCase();
+  if (v === "") return fallback;
+  return !(v === "false" || v === "0" || v === "no" || v === "off");
+}
+
+/**
+ * Resolve the duration (in seconds) of an animation phase. An explicit
+ * `duration` always wins. Otherwise the duration is derived from whole walk
+ * cycles: `loops × frames / fps`. This keeps the sprite's frame animation
+ * perfectly in sync with its movement, so the character always finishes facing
+ * the right way.
+ *
+ * When `loops` is absent: if `deriveWhenUnset` is true the phase plays exactly
+ * one cycle (`loops=1`); otherwise `fallbackSeconds` is used (legacy default).
+ */
+export function resolvePhaseDuration(
+  params: Record<string, string>,
+  frameCount: number,
+  fps: number,
+  fallbackSeconds: number,
+  deriveWhenUnset: boolean,
+): number {
+  const durRaw = params["duration"];
+  if (durRaw !== undefined && durRaw.trim() !== "") {
+    const d = parseFloat(durRaw.replace(/s$/i, "").trim());
+    if (Number.isFinite(d) && d > 0) return d;
+  }
+  const loopsRaw = params["loops"];
+  if (frameCount > 0 && (loopsRaw !== undefined || deriveWhenUnset)) {
+    const loops = parseFloat(loopsRaw ?? "1");
+    const safeLoops = Number.isFinite(loops) && loops > 0 ? loops : 1;
+    return (safeLoops * frameCount) / fps;
+  }
+  return fallbackSeconds;
+}
+
 export function buildFrameKeyframes(uid: string, n: number): string {
   return Array.from({ length: n }, (_, i) => {
     const sp = ((i / n) * 100).toFixed(1);
@@ -154,7 +220,7 @@ export function renderFbfBlock(
   frames: string[],
 ): string {
   if (frames.length === 0) return "";
-  const fps = parseFloat(params["fps"] ?? "2.5");
+  const fps = parseFps(params["fps"]);
   const sizeRaw = params["size"] ?? "";
   const period = (frames.length / fps).toFixed(3);
   const kf = buildFrameKeyframes(uid, frames.length);
@@ -238,27 +304,37 @@ export function renderAnimBlock(
   const ref = params["ref"];
   if (ref !== undefined && aliases.has(ref)) {
     const alias = aliases.get(ref)!;
-    fps = parseFloat(alias.params["fps"] ?? "2.5");
+    fps = parseFps(alias.params["fps"]);
     spriteSizeRaw = alias.params["size"] ?? "";
     frames = alias.body
       .split("\n")
       .map((l) => l.trim())
       .filter((l) => l.startsWith("echo://"));
   } else {
-    fps = parseFloat(params["fps"] ?? "2.5");
+    fps = parseFps(params["fps"]);
     spriteSizeRaw = params["spritesize"] ?? "";
     frames = lines.filter((l) => l.startsWith("echo://"));
   }
 
   if (frames.length === 0) return "";
 
-  const duration = params["duration"] ?? "3s";
+  // `duration` wins; otherwise derive from `loops` whole cycles. When neither
+  // is set, keep the historical 3s default (deriveWhenUnset=false).
+  const durationSecs = resolvePhaseDuration(params, frames.length, fps, 3, false);
+  const duration = `${durationSecs.toFixed(3)}s`;
   const width = params["width"] ?? "50%";
   const heightRaw = params["height"];
   const bg = params["bg"] ?? "";
   const bgOpacity = params["bgopacity"] ?? "1";
   const pingpong = params["pingpong"] === "true";
-  const period = (frames.length / fps).toFixed(3);
+  // "hold" (default): lock the walk to the movement so the steps and the travel
+  // share one clock. The cycle is snapped so a whole number of cycles exactly
+  // fills the move duration (fps is treated as a target). hold=false keeps the
+  // raw fps, letting the frame cycle drift against the movement (old behavior).
+  const hold = parseBoolParam(params["hold"], true);
+  const rawPeriod = frames.length / fps;
+  const cycles = hold ? Math.max(1, Math.round(durationSecs / rawPeriod)) : 0;
+  const period = (hold ? durationSecs / cycles : rawPeriod).toFixed(3);
   const animDir = pingpong ? "alternate" : "normal";
   const framekf = buildFrameKeyframes(uid, frames.length);
 
@@ -387,8 +463,10 @@ export function renderMultiPhaseAnimBlock(
 
   const flushPhase = () => {
     if (!curPhaseParams) return;
-    const dStr = (curPhaseParams["duration"] ?? "2s").replace("s", "");
-    const d = parseFloat(dStr) || 2;
+    const fps = parseFps(curPhaseParams["fps"]);
+    // Default to one walk cycle when no duration/loops given (deriveWhenUnset),
+    // keeping the sprite animation in sync with the movement.
+    const d = resolvePhaseDuration(curPhaseParams, curFrames.length, fps, 2, true);
     phases.push({ params: curPhaseParams, frames: curFrames, moveLines: curMove, duration: d });
   };
 
@@ -430,26 +508,49 @@ export function renderMultiPhaseAnimBlock(
     const D = phase.duration;
     const N = phase.frames.length;
     if (N === 0) continue;
-    const fps = parseFloat(phase.params["fps"] ?? "2.5");
-    const period = N / fps;
+    const rawFps = parseFps(phase.params["fps"]);
+    const rawPeriod = N / rawFps;
+
+    // "hold" (default): lock the walk to the movement by snapping the cycle so a
+    // whole number of cycles exactly fills the phase. The sprite then steps in
+    // sync with its travel and completes a stride exactly as the move finishes,
+    // so it never switches direction mid-stride. `hold=false` keeps the raw fps
+    // and lets the cycle drift / clamp at the phase boundary (old behavior).
+    const hold = parseBoolParam(phase.params["hold"] ?? params["hold"], true);
+    const cycles = hold ? Math.max(1, Math.round(D / rawPeriod)) : 0;
+    const period = hold ? D / cycles : rawPeriod;
 
     for (let fi = 0; fi < N; fi++) {
       const src = phase.frames[fi]!;
       const animName = `${uid}-p${pi}-f${fi}`;
 
       const kfStops: string[] = ["0%{opacity:0}"];
-      for (let k = 0; ; k++) {
+      let endsVisible = false;
+      for (let k = 0; k < 10000; k++) {
         const ws = S + k * period + (fi / N) * period;
         const we = S + k * period + ((fi + 1) / N) * period;
-        if (ws >= S + D) break;
+        if (ws >= S + D - 1e-6) break;
         const sp = (Math.max(ws, S) / totalDuration) * 100;
         const ep = (Math.min(we, S + D) / totalDuration) * 100;
         if (sp > 0.01) kfStops.push(`${(sp - 0.01).toFixed(2)}%{opacity:0}`);
         kfStops.push(`${sp.toFixed(2)}%{opacity:1}`);
         kfStops.push(`${ep.toFixed(2)}%{opacity:1}`);
-        if (ep < 99.99) kfStops.push(`${(ep + 0.01).toFixed(2)}%{opacity:0}`);
+        if (ep < 99.99) {
+          kfStops.push(`${(ep + 0.01).toFixed(2)}%{opacity:0}`);
+          endsVisible = false;
+        } else {
+          endsVisible = true;
+        }
       }
-      kfStops.push("100%{opacity:0}");
+      // Always anchor an explicit 100% keyframe. Without one the browser
+      // synthesizes 100% from the element's underlying opacity (1), which made
+      // inactive frames ramp back up to fully visible over the tail of the loop
+      // so a previous phase's sprite reappeared underneath the current one.
+      // The single frame still on screen at the loop boundary stays visible (1);
+      // every other frame is pinned hidden (0). Pinning to 0 (not the blackout
+      // the previous fix avoided) is correct here because the boundary frame is
+      // the one that hands off to frame 0 at the wrap.
+      kfStops.push(endsVisible ? "100%{opacity:1}" : "100%{opacity:0}");
       cssOut += `@keyframes ${animName}{${kfStops.join("")}}`;
       frameEls.push(
         `<img class="echo-raw" src="${src}" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain;animation:${animName} ${totalDuration.toFixed(3)}s linear infinite;" alt="">`,
@@ -537,7 +638,11 @@ export function preprocessEchoBlocks(md: string): string {
     BLOCK_RE(),
     (match, type: string, paramStr: string | undefined, body: string) => {
       counter++;
-      const uid = `ew${counter}`;
+      // uid is derived from the block's content (not just its position) so that
+      // editing a block in the live editor changes all its keyframe names at
+      // once, forcing a synchronized restart of its frame + movement animations.
+      // The counter is kept only as a tie-breaker against hash collisions.
+      const uid = `ew${counter}h${hashString(`${type}|${paramStr ?? ""}|${body}`)}`;
       const params = parseEchoBlockParams((paramStr ?? "").trim());
       const lines = (body as string)
         .split("\n")
