@@ -1,10 +1,12 @@
 # EchoWiki
 
-Rich wikis for Reddit communities. Live editing, advanced markdown, collaborative contributions with optional community voting, and for RPG Maker games: in-game assets from each player's own copy. No uploads.
+Rich wikis for Reddit communities. Live editing, advanced markdown, collaborative contributions with optional community voting, and for a lot of games: in-game assets from each player's own copy. No uploads.
 
 [EchoWiki is available on GitHub](https://github.com/Kidev/EchoWiki)
 
-EchoWiki turns a subreddit wiki into a proper editing and reading environment. Moderators write and update pages inside the app with a live Markdown preview. Readers get richer formatting than Reddit's native wiki. Contributors can propose changes that mods review before merging, and optionally the community votes on whether to accept each suggestion. For RPG Maker communities specifically, the app resolves special `echo://` links to in-game assets that each reader loads from their own copy of the game, without any files being uploaded anywhere.
+EchoWiki turns a subreddit wiki into a proper editing and reading environment. Moderators write and update pages inside the app with a live Markdown preview. Readers get richer formatting than Reddit's native wiki. Contributors can propose changes that mods review before merging, and optionally the community votes on whether to accept each suggestion. For a lot of games communities specifically, the app resolves special `echo://` links to in-game assets that each reader loads from their own copy of the game, without any files being uploaded anywhere, making it respect the copyrights.
+
+[Watch all the features in the demo video](https://youtu.be/8LDJ3MG-C0I "EchoWiki features demo video")
 
 ## Wiki
 
@@ -16,22 +18,25 @@ Supported formatting:
 
 - Standard GFM: tables, code blocks, lists, blockquotes, horizontal rules
 - GitHub-style alerts (`> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]`, `> [!CAUTION]`) with colored borders and icons
-- Raw HTML via `rehype-raw`, enabling floating infoboxes, layout grids, and inline style overrides
+- Raw HTML for custom layouts (floating infoboxes, multi-column grids, inline styles)
 - Echo links resolved as inline images and audio players
+- [Composition blocks](#composition-blocks): cards, stat-table infoboxes, layered scenes, and frame-by-frame or moving-sprite animations built from game assets
 - Anchor links scrolling to the target heading within the page
 - External links opening in the browser
 
 Navigation uses a breadcrumb bar that slides down from the top when hovering the Wiki tab. Each segment in the breadcrumb has a dropdown showing sibling pages at that level.
 
+For more details, [watch the demo video](https://youtu.be/8LDJ3MG-C0I "EchoWiki features demo video")
+
 ### Live Editor
 
-Moderators can edit wiki pages directly inside the app. An edit button appears in the top-right corner of the wiki view when in expanded mode. Clicking it opens a split-pane editor: the left pane shows a live Markdown preview and the right pane is a raw Markdown textarea.
+Moderators can edit wiki pages directly inside the app. An edit button appears in the top-right corner of the wiki view when in expanded mode. Clicking it opens the editor, where the Markdown source sits next to a live preview that updates as you type.
 
-Saving requires entering a reason or description for the change. When collaborative mode and voting are both enabled, the save dialog includes a "Create vote post" checkbox, checked by default. With the checkbox checked, saving goes through the suggestion and voting flow instead of writing to the wiki directly. Unchecking it saves immediately without creating a vote post.
+An **Insert** toolbar above the editor builds the trickier syntax for you: dialogs for inserting an asset image (with an asset picker), an infobox, a layered scene, a frame-by-frame or moving animation, and `:::def` path aliases, plus quick buttons for centered text, bold, italic, inline code, and a table template.
+
+Saving requires a short description of the change (at least 10 characters). When collaborative mode and voting are both enabled, the save dialog shows a "Bypass public vote" checkbox, unchecked by default: leaving it unchecked sends the edit through the suggestion and voting flow, while checking it writes straight to the wiki without a vote post.
 
 When saving directly, the reason is prefixed with the moderator's username and stored in the Reddit wiki revision history. Navigating away while editing prompts for confirmation before discarding changes.
-
-HTML `style` attributes on echo image tags (e.g. `<img src="echo://..." style="width: 120px">`) are applied client-side, allowing layout control from wiki source.
 
 ![img](docs/editor.png)
 
@@ -43,22 +48,25 @@ Every heading has a copy-link button that appears on hover. Clicking it copies a
 
 When collaborative mode is enabled, users who meet the subreddit's eligibility thresholds (karma and account age, both configurable) can suggest changes to any wiki page. Each user can have one active suggestion at a time.
 
-![img](docs/suggestions.png)
-
 ### Suggestions
 
-Suggesting a change opens the same split-pane editor as the mod editor, with two tabs in the preview pane:
+Suggesting a change opens the same editor as the mod editor, with three ways to preview your work:
 
-- **Preview**: live rendered Markdown of the suggested content
-- **Highlight changes**: a unified diff view of the raw Markdown, with removed lines in red and added lines in green, and unchanged content collapsed to context blocks
+- **Normal**: live rendered Markdown of the suggested content
+- **Source**: the raw Markdown of the suggestion
+- **Diff**: a side-by-side comparison of the current page and the suggestion, with changed text highlighted character by character (removed in red, added in green) and unchanged stretches collapsed
 
-Submitting requires a short description of what changed. The suggestion is then queued for mod review or community voting, depending on configuration.
+Submitting requires a description of what changed (at least 10 characters). The suggestion is then queued for mod review or community voting, depending on configuration.
 
 A user can update their pending suggestion from the Submissions tab. Each update resets any votes already cast on the suggestion. The maximum number of updates and the minimum time between updates are both configurable in mod settings.
 
+![img](docs/suggestions.png)
+
 ### Voting
 
-When voting is enabled, submitting a suggestion creates a separate Reddit post where community members cast accept or reject votes. A suggestion is finalized automatically when any of the following conditions are met:
+When voting is enabled, submitting a suggestion creates a separate Reddit post where community members cast votes. The voting post embeds the same side-by-side comparison as the editor (Normal / Source / Diff modes) so voters can review exactly what is changing, then vote **✓ FOR** or **✗ AGAINST**; clicking the chosen side again retracts the vote. Running tallies, the thresholds, and the time remaining are shown along the top.
+
+A suggestion is finalized automatically when any of the following conditions are met:
 
 - The accept vote count reaches the configured threshold
 - The reject vote count reaches the configured threshold
@@ -66,18 +74,19 @@ When voting is enabled, submitting a suggestion creates a separate Reddit post w
 
 A minimum number of voters can be required before the time-based threshold applies. The suggestion author cannot vote on their own suggestion. Voter eligibility (karma and account age) is configurable separately from contributor eligibility.
 
-The voting post includes a pinned bot comment that records vote events: when the vote opened, when the suggestion was updated, and when the vote concluded with the outcome and reason. The comment is updated as events occur and locked when the vote concludes.
+The voting post includes a pinned bot comment that records vote events: when the vote opened, when the suggestion was updated, and when the vote concluded with the outcome and reason. The comment is updated as events occur, and the post is locked once the vote concludes.
 
-![img](docs/vote1.png)
-![img](docs/vote2.png)
+![img](docs/vote.png)
 
 ### Mod Review
 
-Moderators with "wiki" or "config" permissions see a Submissions tab listing all pending suggestions along with their vote status if voting is enabled. Clicking Review opens a full-screen modal showing the current page content alongside the suggested content. A "Highlight changes" button in the header switches the view from side-by-side rendered Markdown to a unified diff of the raw source.
+Moderators with "wiki" or "config" permissions see a Submissions tab listing all pending suggestions, each with the contributor, target page, description, and vote status if voting is enabled. Clicking Review opens a full-screen modal comparing the current page (left) and the suggestion (right), with the same Normal / Source / Diff modes as the editor; either column can be collapsed by clicking its label.
 
-Mods can accept or deny any pending submission at any time, overriding the vote result. Accepting writes the suggested content to the Reddit wiki with the contributor's username in the revision reason.
+Mods can Accept or Deny from the review modal, or Deny a suggestion straight from the list, at any time and regardless of the vote result. When a voting post exists, a link to it is shown. Accepting writes the suggested content to the Reddit wiki with the contributor's username in the revision reason.
 
-Users can view their own pending suggestion in the Submissions tab, update the content and description, or retract it.
+Contributors also see the Submissions tab, where they can edit their own pending suggestion's content and description. A suggestion can be withdrawn entirely from the suggest dialog (which offers to delete the current one when you start another).
+
+![img](docs/suggestions-mod.png)
 
 ### Flair Rewards
 
@@ -120,12 +129,22 @@ The asset preview lightbox includes interactive controls for applying editions. 
 
 Wiki pages support a set of fenced block directives for building richer layouts and animations without writing raw HTML. Each block opens with `:::type [params]` and closes with `:::`. Parameter values containing spaces must be quoted: `key="some value"`.
 
-**`:::card`** renders a classic wiki infobox: a portrait image floated to one side with any markdown content (headings, tables, text) alongside it.
+**`:::card`** floats a portrait image to one side with any markdown content (headings, tables, text) flowing alongside it.
 
 ```
 :::card image=echo://img/faces/hero.png size=120px align=right
 ## Character Name
 Description and stats here.
+:::
+```
+
+**`:::infobox`** renders a classic stat-table infobox: an optional title header and image on top of a list of `Label | value` rows, floated to one side of the page.
+
+```
+:::infobox title="Character Name" image=echo://img/faces/hero.png align=right
+Class | Hero
+HP | 9999
+Weapon | Echo Blade
 :::
 ```
 
@@ -138,8 +157,8 @@ Description and stats here.
 | Param              | Default | Description                                                                                                                                                                                                               |
 | ------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ref`              |         | Alias of an `:::fbf` block to use as the sprite                                                                                                                                                                           |
-| `fps`              | `2.5`   | Frames per second. Treated as a target: see `hold`. Ignored when `ref` is set                                                                                                                                            |
-| `spritesize`       | `48`    | Sprite pixel size (ignored when `ref` is set)                                                                                                                                                                             |
+| `fps`              | `2.5`   | Frames per second. Treated as a target: see `hold`. Ignored when `ref` is set                                                                                                                                             |
+| `spritesize`       | natural | Sprite size: a pixel value (e.g. `48`) fixes the size; omit it (or use a `%`) to render the sprite at its natural size. Ignored when `ref` is set                                                                         |
 | `loops`            | `1`     | Number of whole walk cycles per movement; movement time is derived as `loops × frames ÷ fps`. Ignored when `duration` is set                                                                                              |
 | `duration`         | `3s`    | Explicit time for one full movement. Overrides `loops`                                                                                                                                                                    |
 | `hold`             | `true`  | Locks the walk to the movement: the cycle is snapped so a whole number of cycles exactly fills the movement, so the sprite never switches direction mid-stride. `hold=false` keeps the raw `fps` and lets the cycle drift |
@@ -182,7 +201,20 @@ echo://img/characters/actor.png?sprite=12,8,13
 :::
 ```
 
+**`:::def`** defines reusable aliases for long echo paths. List `name = echo://path` lines inside the block, then reference them anywhere on the page as `echo://~name`.
+
+```
+:::def
+hero = echo://img/characters/actor1.png
+theme = echo://audio/bgm/battle.ogg
+:::
+
+![Hero](echo://~hero?crop)
+```
+
 Content can also be centered with `>>>content<<<`, which wraps anything between the markers in a centered div.
+
+Inline echo images accept two display hints appended like editions: `?emoji` shrinks the image to the height of the surrounding text so it reads as an inline icon, and `?outline` draws a dashed accent-colored outline around it. They combine with editions and with each other.
 
 The file `features-new.md` in the repository is a full showcase of all these features with live examples.
 
@@ -192,8 +224,7 @@ Users select their game folder. The app auto-detects the engine, extracts assets
 
 ### Supported Engines
 
-Engine detection is automatic. All games using mkxp with RTP archives (.dat files) are supported. 
- RPG Maker games are also supported:
+Engine detection is automatic. RPG Maker games are decrypted natively, including their archive formats:
 
 | Engine               | Format            |
 | -------------------- | ----------------- |
@@ -205,9 +236,17 @@ Engine detection is automatic. All games using mkxp with RTP archives (.dat file
 | **RPG Maker MZ**     | Individual files  |
 | **TCOAAL 3.0+**      | Individual files  |
 
+Beyond RPG Maker, most other games work too. When no known engine is matched, EchoWiki falls back to a generic scan that picks up image and audio files from anywhere in the folder, using each file's parent folder as its category. Along the way it automatically unpacks common archives: RenPy `.rpa`, `.zip`, and `.nw` packages, so Godot, GameMaker, and RenPy titles are supported out of the box.
+
+For anything unusual, mods can supply a custom transform: a short snippet of JavaScript that receives each file and returns the decoded asset. This lets a community add support for an engine EchoWiki doesn't recognize on its own.
+
 ## Asset Browser
 
-A gallery view with filter tabs (Images, Audio) and subfolder navigation. Clicking any asset opens a full preview with a close button, an image lightbox or an audio player with frequency visualization. Right-clicking or using the copy button copies the echo Markdown to the clipboard. When a filename mapping is configured, assets display their mapped names. Pagination loads more assets on demand.
+A gallery view with filter tabs (Images, Audio) and subfolder navigation. Each card has a copy button that copies its echo Markdown to the clipboard (Ctrl/Cmd+click copies the link with the original, unmapped filename instead). When a filename mapping is configured, cards display their mapped names. A "Load more" button pages in additional assets on demand.
+
+Clicking any asset opens a full preview: an image lightbox, or an audio player with a waveform you can click to seek. The lightbox carries interactive [edition](#asset-editions) controls (crop, sprite-cell picker, audio speed and pitch); the copy button there bakes the active editions into the link, and right-clicking the preview copies it directly.
+
+![img](docs/assets.png)
 
 ## Mod Settings
 
@@ -218,11 +257,16 @@ The Settings tab is visible only to moderators with the "config" permission (or 
 - **Wiki Title**: Displayed on the home screen below the logo. Leave empty for default.
 - **Wiki Description**: Short text shown below the title.
 
+![img](docs/general.png)
+
 ### Game
 
 - **Game Title**: Displayed to users during import. A warning appears if the detected title does not match.
-- **Engine**: Select the engine type or leave on auto for automatic detection.
-- **Encryption Key**: Required for games with encrypted assets.
+- **Engine**: Leave on Auto-detect, or force a specific engine (the RPG Maker family, Generic, TCOAAL, or Custom transform).
+- **Encryption Key**: Override the decryption key for games with encrypted assets. Leave empty for auto-detection. Not used by Generic or TCOAAL.
+- **Custom Transform Code**: Shown when the engine is set to Custom. A JavaScript snippet, run in each reader's browser, that receives every game file and returns the decoded asset (or skips it), letting mods support formats EchoWiki doesn't handle natively. A warning notes that it runs in users' browsers, so only set it from a trusted source.
+
+![img](docs/game.png)
 
 ### Style
 
@@ -232,15 +276,17 @@ The Settings tab is visible only to moderators with the "config" permission (or 
 - **Home Background**: Ripple animation, subreddit banner, both, or none.
 - **Home Logo**: EchoWiki logo or subreddit icon.
 
+![img](docs/style.png)
+
 ### Theme
 
 Separate light and dark mode configuration. Each color has a reset button to restore the default derived from the subreddit's appearance settings. The app follows the user's system light/dark preference.
 
+![img](docs/theme.png)
+
 ### Mapping
 
-Split-pane editor with a draggable divider. The top panel shows a live preview table of parsed mappings (Original / Mapped To). The bottom panel is a code editor with syntax highlighting for strings, colons, and comments.
-
-Mods define `"original": "mapped"` pairs (one per line, comments supported). Mapped names replace raw filenames in the asset browser and in echo links.
+Mods define `"original": "mapped"` pairs (one per line, comments supported), with a live preview table showing how each pair is parsed (Original / Mapped To). Mapped names replace raw filenames in the asset browser and in echo links.
 
 When a mapping is changed or removed, any wiki echo links referencing the old mapped name are automatically replaced with the original filename. A notification shows how many replacements were made and which pages were updated.
 
@@ -255,30 +301,35 @@ Example:
 "dungeon_a1": "cave_floor"
 ```
 
+![img](docs/mapping.png)
+
 ### Collaborative
 
 - **Collaborative mode**: Toggle to enable or disable community suggestions.
 - **Eligibility thresholds**: Minimum karma and account age required to submit suggestions.
 - **Edit cooldown**: Minimum number of minutes a user must wait between edits to their pending suggestion.
-- **Max suggestion edits**: Maximum number of times a suggestion can be updated while pending.
 - **Contributor flair**: Flair template awarded to users after their first accepted suggestion.
 - **Advanced contributor flair**: Flair template and acceptance count threshold for the advanced tier.
 - **Banned contributors**: List of users banned from submitting suggestions.
 
+![img](docs/collaborative.png)
+
 ### Voting
 
-- **Voting**: Toggle to enable or disable community voting on suggestions.
-- **Accept threshold**: Number of accept votes needed to approve a suggestion immediately.
-- **Reject threshold**: Number of reject votes needed to reject a suggestion immediately.
+- **Voting**: Toggle to enable or disable community voting on suggestions (requires collaborative mode).
+- **Accept threshold**: Number of accept votes that approve a suggestion immediately. 0 disables the instant accept.
+- **Reject threshold**: Number of reject votes that reject a suggestion immediately. 0 disables the instant reject.
 - **Duration**: Voting period in days. Set to 0 to disable deadline-based finalization.
-- **Time-based threshold**: Percentage of votes that must be for acceptance when the deadline is reached. Requires duration to be set.
 - **Minimum voters for timing**: Number of voters required before the time-based threshold applies.
-- **Allow vote changes**: Whether voters can change their vote after casting.
-- **Vote change cooldown**: Minimum minutes between vote changes.
-- **Show voter names**: Whether voter names are visible to other users. Mods always see names.
+- **Time-based threshold**: Percentage of accept votes required to pass when the deadline is reached. 0 means a simple majority wins.
+- **Allow vote changes**: Whether voters can change their vote after casting, with an optional cooldown between changes.
+- **Show voter names**: Whether voter names are visible to other users. Mods and the suggestion author always see names.
+- **Max suggestion updates**: Maximum number of times a pending suggestion can be updated (0 for unlimited).
 - **Voter eligibility**: Minimum karma and account age required to vote (separate from contributor eligibility).
-- **Voting post title**: Template for the title of created voting posts. Supports `%user%`, `%page%`, `%pathPage%`, and `%shortPathPage%` placeholders.
 - **Voting post flair**: Flair template applied to voting posts on creation.
+- **Voting post title**: Template for the title of created voting posts. Supports `%user%`, `%page%`, `%pathPage%`, and `%shortPathPage%` placeholders.
+
+![img](docs/voting.png)
 
 ## A Note to Game Developers
 
@@ -288,4 +339,4 @@ EchoWiki takes a different approach. No asset is ever uploaded, hosted, or distr
 
 ## Privacy
 
-All game files are processed locally in the browser using IndexedDB. No assets are uploaded anywhere. Server-side storage (Redis) holds only mod configuration: game title, style settings, filename mappings, and collaborative settings. See [PRIVACY_POLICY.md](https://raw.githubusercontent.com/Kidev/EchoWiki/refs/heads/main/PRIVACY_POLICY.md) and [TERMS_AND_CONDITIONS.md](https://raw.githubusercontent.com/Kidev/EchoWiki/refs/heads/main/TERMS_AND_CONDITIONS.md).
+All game files are processed locally in the browser using IndexedDB. No assets are uploaded anywhere. Server-side storage (Redis) holds only mod configuration (game title, style settings, filename mappings, collaborative and voting settings) plus the text of pending suggestions and vote records. See [PRIVACY_POLICY.md](https://raw.githubusercontent.com/Kidev/EchoWiki/refs/heads/main/PRIVACY_POLICY.md) and [TERMS_AND_CONDITIONS.md](https://raw.githubusercontent.com/Kidev/EchoWiki/refs/heads/main/TERMS_AND_CONDITIONS.md).
