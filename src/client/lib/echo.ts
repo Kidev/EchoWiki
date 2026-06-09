@@ -56,14 +56,19 @@ export async function resolveEchoPath(path: string): Promise<string | null> {
   const { basePath, editions } = parseEditions(normalized);
 
   if (editions.length === 0) {
-    const cached = blobUrlCache.get(normalized);
+    // Key by basePath, not the full path: a path may carry trailing display
+    // params that aren't editions (e.g. a 3D model's ?spin / ?bg / ?height /
+    // ?texture). Those don't change the underlying asset, so they must be
+    // stripped before the IDB lookup: otherwise getAsset() misses and the
+    // asset reads as "not found". This matches how preloadPaths keys the cache.
+    const cached = blobUrlCache.get(basePath);
     if (cached) return cached;
 
-    const blob = await resolveBaseAsset(normalized);
+    const blob = await resolveBaseAsset(basePath);
     if (!blob) return null;
 
     const url = URL.createObjectURL(blob);
-    blobUrlCache.set(normalized, url);
+    blobUrlCache.set(basePath, url);
     return url;
   }
 
@@ -187,9 +192,9 @@ export function planPreload(paths: string[]): number {
 export function areCached(paths: string[]): boolean {
   for (const p of paths) {
     const normalized = p.toLowerCase();
-    const { editions } = parseEditions(normalized);
+    const { basePath, editions } = parseEditions(normalized);
     if (editions.length === 0) {
-      if (!blobUrlCache.has(normalized)) return false;
+      if (!blobUrlCache.has(basePath)) return false;
     } else {
       if (getEditionBlobUrl(normalized) === undefined) return false;
     }
@@ -204,17 +209,17 @@ export function useEchoUrl(echoPath: string | null): {
   const [url, setUrl] = useState<string | null>(() => {
     if (!echoPath) return null;
     const normalized = echoPath.toLowerCase();
-    const { editions } = parseEditions(normalized);
+    const { basePath, editions } = parseEditions(normalized);
     return (
-      (editions.length === 0 ? blobUrlCache.get(normalized) : getEditionBlobUrl(normalized)) ?? null
+      (editions.length === 0 ? blobUrlCache.get(basePath) : getEditionBlobUrl(normalized)) ?? null
     );
   });
   const [loading, setLoading] = useState<boolean>(() => {
     if (!echoPath) return false;
     const normalized = echoPath.toLowerCase();
-    const { editions } = parseEditions(normalized);
+    const { basePath, editions } = parseEditions(normalized);
     return editions.length === 0
-      ? !blobUrlCache.has(normalized)
+      ? !blobUrlCache.has(basePath)
       : getEditionBlobUrl(normalized) === undefined;
   });
   const mountedRef = useRef(true);
@@ -234,10 +239,10 @@ export function useEchoUrl(echoPath: string | null): {
     }
 
     const normalized = echoPath.toLowerCase();
-    const { editions } = parseEditions(normalized);
+    const { basePath, editions } = parseEditions(normalized);
 
-    if (editions.length === 0 && blobUrlCache.has(normalized)) {
-      setUrl(blobUrlCache.get(normalized) ?? null);
+    if (editions.length === 0 && blobUrlCache.has(basePath)) {
+      setUrl(blobUrlCache.get(basePath) ?? null);
       setLoading(false);
       return;
     }

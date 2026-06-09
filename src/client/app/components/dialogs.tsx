@@ -101,7 +101,7 @@ export function WikiSaveDialog({
           type="text"
           value={reason}
           onChange={(e) => onReasonChange(e.target.value)}
-          placeholder={isVoteMode ? "Describe your changes…" : "Reason for edit…"}
+          placeholder={isVoteMode ? "Describe your changes..." : "Reason for edit..."}
           autoFocus
           onKeyDown={(e) => {
             if (e.key === "Enter" && !isSaving && reason.trim()) onConfirm();
@@ -124,8 +124,8 @@ export function WikiSaveDialog({
           >
             {isSaving
               ? isVoteMode
-                ? "Submitting…"
-                : "Saving…"
+                ? "Submitting..."
+                : "Saving..."
               : isVoteMode
                 ? "Submit vote"
                 : "Save"}
@@ -172,7 +172,7 @@ export function WikiSuggestDialog({
           type="text"
           value={description}
           onChange={(e) => onDescriptionChange(e.target.value)}
-          placeholder="Description of changes (min. 10 chars)…"
+          placeholder="Description of changes (min. 10 chars)..."
           autoFocus
           onKeyDown={(e) => {
             if (e.key === "Enter" && !isSaving && description.trim().length >= 10) onConfirm();
@@ -199,7 +199,7 @@ export function WikiSuggestDialog({
             disabled={isSaving || description.trim().length < 10}
             className="text-sm px-3 py-1.5 rounded bg-[var(--accent)] text-white hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50"
           >
-            {isSaving ? "Submitting…" : "Submit"}
+            {isSaving ? "Submitting..." : "Submit"}
           </button>
         </div>
       </div>
@@ -248,7 +248,7 @@ export function WikiExistingSuggestionDialog({
             disabled={isDeleting}
             className="text-sm px-3 py-2 rounded border border-red-300 text-red-600 hover:bg-red-50 transition-colors cursor-pointer disabled:opacity-50 text-left"
           >
-            {isDeleting ? "Deleting…" : "Delete current suggestion"}
+            {isDeleting ? "Deleting..." : "Delete current suggestion"}
           </button>
           <button
             onClick={onCancel}

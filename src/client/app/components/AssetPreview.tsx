@@ -180,6 +180,12 @@ export function AssetPreview({
   const [spriteHover, setSpriteHover] = useState<number | null>(null);
   const [speed, setSpeed] = useState(1.0);
   const [pitch, setPitch] = useState(0);
+  // 3D models can be given an explicit texture (a path to an imported image
+  // asset) for models that resolved without one, or to retexture them. The
+  // input is committed on Enter/blur so each keystroke doesn't rebuild the
+  // viewer; the committed value rides the echo path as `?texture=`.
+  const [textureInput, setTextureInput] = useState("");
+  const [textureApplied, setTextureApplied] = useState("");
   const [imgSize, setImgSize] = useState<{ w: number; h: number } | null>(null);
   const imgRef = useRef<HTMLImageElement>(null);
 
@@ -255,10 +261,22 @@ export function AssetPreview({
     return parts.length > 0 ? `${displayName} ${parts.join(", ")}` : displayName;
   }, [displayName, editions]);
 
-  const isEmbeddable = isImagePath(path) || isModelPath(path);
+  const isModel = isModelPath(path);
+  const isEmbeddable = isImagePath(path) || isModel;
+
+  // For models, the committed texture (scheme stripped) rides the echo path as
+  // a `?texture=` param: both for the live preview and the copied markdown.
+  const textureRef = useMemo(() => {
+    const t = textureApplied.trim();
+    if (!t) return "";
+    return t.toLowerCase().startsWith("echo://") ? t.slice("echo://".length) : t;
+  }, [textureApplied]);
+  const modelEchoPath = textureRef ? `${echoPath}?texture=${textureRef}` : echoPath;
+  const exportPath = isModel ? modelEchoPath : fullEchoPath;
+
   const echoMarkdown = isEmbeddable
-    ? `![${editedDisplayName}](echo://${fullEchoPath})`
-    : `[${editedDisplayName}](echo://${fullEchoPath})`;
+    ? `![${editedDisplayName}](echo://${exportPath})`
+    : `[${editedDisplayName}](echo://${exportPath})`;
 
   const originalMarkdown = isEmbeddable
     ? `![${toDisplayName(path)}](echo://${path})`
@@ -470,7 +488,7 @@ export function AssetPreview({
                   </div>
                 }
               >
-                <ModelViewer path={echoPath} alt={displayName} variant="preview" />
+                <ModelViewer path={modelEchoPath} alt={displayName} variant="preview" />
               </Suspense>
             </div>
           ) : (
@@ -586,6 +604,24 @@ export function AssetPreview({
                     </span>
                   </label>
                 </>
+              )}
+
+              {isModel && (
+                <label className="flex items-center gap-1.5 text-white/80 text-[10px] flex-1 min-w-0">
+                  <span className="flex-shrink-0">Texture</span>
+                  <input
+                    type="text"
+                    value={textureInput}
+                    onChange={(e) => setTextureInput(e.target.value)}
+                    onBlur={() => setTextureApplied(textureInput)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") setTextureApplied(textureInput);
+                    }}
+                    placeholder="echo://img/diffuse.png"
+                    title="Path to an imported image asset to use as this model's texture"
+                    className="flex-1 min-w-0 text-[10px] px-1.5 py-0.5 rounded bg-white/20 text-white border border-white/30 placeholder-white/40 focus:outline-none"
+                  />
+                </label>
               )}
 
               <div className="flex-1" />

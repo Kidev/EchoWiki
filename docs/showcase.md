@@ -77,12 +77,21 @@ Append display hints to the path, combined with `&`:
 | `?height` (alias `?h`) | `?height=400px` | Set the viewer height |
 | `?width` (alias `?w`) | `?width=80%` | Set the viewer width |
 | `?bg` | `?bg=111` | Background color (hex, `#` is added for you) |
+| `?texture` (alias `?tex`) | `?texture=img/diffuse.png` | Use an imported image as the model's texture |
 
 ```
 ![King statue](echo://meshes/king.glb?spin&height=420px&bg=151515)
 ```
 
 **Supported formats:** `glb`, `gltf`, `obj`, `stl`, `ply`, `fbx`, `dae` (Collada), `3mf`. GLB is recommended because it packs geometry and textures into a single self-contained file; OBJ/Collada that rely on sibling `.mtl` or texture files render geometry only. Unity games are special-cased: their meshes ship as raw GPU buffers rather than model files, so EchoWiki rebuilds each one into a self-contained GLB and links it to its base-color texture.
+
+When a model loads untextured (e.g. an OBJ whose materials live in external files), give it one with `?texture=`, pointing at any imported image asset:
+
+```
+![King statue](echo://meshes/king.obj?texture=img/king_diffuse.png)
+```
+
+The asset browser's model preview has a matching **Texture** field; whatever you set there is baked into the link it copies.
 
 The viewer is lazy-loaded: the three.js runtime and the loader for a given format are only downloaded the first time a reader opens a model, so pages without 3D content carry no extra weight.
 
@@ -436,6 +445,7 @@ echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,13
 | Interactive 3D model | `![alt](echo://path/to/model.glb)` |
 | Model: auto-rotate | `?autorotate` (alias `?spin`) appended to a model path |
 | Model: size / background | `?height=400px`, `?width=80%`, `?bg=111` |
+| Model: texture | `?texture=img/diffuse.png` (alias `?tex`) |
 | Sprite cell | `?sprite=cols,rows,index` appended to an image path |
 | Crop transparent padding | `?crop` appended to an image path |
 | Inline emoji-size image | `?emoji` appended to any image path |

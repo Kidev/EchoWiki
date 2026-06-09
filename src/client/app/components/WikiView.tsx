@@ -532,7 +532,7 @@ export const WikiView = memo(function WikiView({
                 value={editContent}
                 onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setEditContent(e.target.value)}
                 spellCheck={false}
-                placeholder="Write wiki markdown here…"
+                placeholder="Write wiki markdown here..."
               />
             </div>
           </div>

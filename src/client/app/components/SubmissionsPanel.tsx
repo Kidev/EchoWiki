@@ -66,7 +66,7 @@ function SuggestionReviewModal({
             disabled={isActing}
             className="text-xs px-3 py-1.5 rounded bg-[var(--accent)] text-white hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50"
           >
-            {isActing ? "Applying…" : "Accept"}
+            {isActing ? "Applying..." : "Accept"}
           </button>
           <button
             onClick={onClose}
@@ -336,7 +336,7 @@ function SubmissionsPanel({
                 disabled={isSubmittingEdit}
                 className="text-xs px-3 py-1.5 rounded-lg bg-[var(--accent)] text-white hover:opacity-90 cursor-pointer disabled:opacity-50 transition-opacity"
               >
-                {isSubmittingEdit ? "Saving…" : "Update suggestion"}
+                {isSubmittingEdit ? "Saving..." : "Update suggestion"}
               </button>
             </div>
           </div>
@@ -375,7 +375,7 @@ function SubmissionsPanel({
         {loading ? (
           <div className="flex items-center gap-2 text-sm text-[var(--text-muted)] py-4">
             <div className="w-3.5 h-3.5 border border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
-            Loading…
+            Loading...
           </div>
         ) : suggestions.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 gap-2">

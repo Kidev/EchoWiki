@@ -339,7 +339,7 @@ function VotingView({
             </button>
             {pageLabel && (
               <>
-                <span style={{ color: "var(--text-muted)" }}>→</span>
+                <span style={{ color: "var(--text-muted)" }}>{"->"}</span>
                 <span className="font-medium italic" style={{ color: "var(--text)" }}>
                   {pageLabel}
                 </span>

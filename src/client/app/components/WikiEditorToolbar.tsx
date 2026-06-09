@@ -264,10 +264,16 @@ function ModelInsertDialog({
   const [alt, setAlt] = useState("");
   const [autorotate, setAutorotate] = useState(true);
   const [height, setHeight] = useState("");
+  const [texture, setTexture] = useState("");
 
   const params: string[] = [];
   if (autorotate) params.push("autorotate");
   if (height.trim()) params.push(`height=${height.trim()}`);
+  const tex = texture.trim();
+  if (tex) {
+    const ref = tex.toLowerCase().startsWith("echo://") ? tex.slice("echo://".length) : tex;
+    params.push(`texture=${ref}`);
+  }
   const query = params.length > 0 ? `?${params.join("&")}` : "";
   const preview = path ? `![${alt || getFileName(path)}](echo://${path}${query})` : "";
 
@@ -321,6 +327,22 @@ function ModelInsertDialog({
                   className="w-20 text-xs px-2 py-1 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none"
                 />
               </label>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-[var(--text-muted)] block mb-1">
+                Texture (optional)
+              </label>
+              <input
+                type="text"
+                value={texture}
+                onChange={(e) => setTexture(e.target.value)}
+                placeholder="echo://img/diffuse.png"
+                className="w-full text-xs px-2 py-1.5 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none"
+              />
+              <p className="text-[10px] text-[var(--text-muted)] mt-1">
+                Path to an imported image to use as the model&apos;s texture. Useful for models that
+                load without one (e.g. OBJ with external materials).
+              </p>
             </div>
             <div className="bg-[var(--thumb-bg)] rounded p-2">
               <p className="text-[10px] text-[var(--text-muted)] mb-1">Preview markdown</p>

@@ -3,29 +3,47 @@ import * as THREE from "three";
 import { useEchoUrl, resolveEchoPath } from "../../lib/echo";
 import { getExt, getFileName } from "../assetUtils";
 
-// Unity-extracted meshes don't embed their texture; the material carries an
-// `extras.echoTex` reference to a separate echo asset (deduplicated, loaded
-// once). Walk the loaded graph, resolve each reference, and apply it to the
-// material: so the geometry renders immediately and the texture pops in when
-// ready. Returns the THREE.Textures created so the caller can dispose them.
-async function applyEchoTextures(root: THREE.Object3D): Promise<THREE.Texture[]> {
+// Resolve an echo asset reference into a configured THREE.Texture. `flipY`
+// follows the model's UV convention: glTF/GLB store UVs top-left (flipY=false),
+// while OBJ/STL/PLY/FBX/Collada use the conventional bottom-left (flipY=true).
+async function loadEchoTexture(
+  loader: THREE.TextureLoader,
+  ref: string,
+  flipY: boolean,
+): Promise<THREE.Texture | null> {
+  const url = await resolveEchoPath(ref);
+  if (!url) return null;
+  const tex = await loader.loadAsync(url);
+  tex.flipY = flipY;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = 4;
+  return tex;
+}
+
+// Apply textures to a loaded model graph and return the created THREE.Textures
+// so the caller can dispose them. Two sources, in priority order:
+//   1. `override`: an explicit echo path supplied by the author (?texture= on
+//      the path, or the preview's texture field). Applied to every mesh
+//      material, with the base color neutralised to white so the texture shows
+//      faithfully. This is what lets a user texture a plain GLB/OBJ, or
+//      retexture a model that resolved without one.
+//   2. Otherwise, each material's own `userData.echoTex` reference: the pointer
+//      Unity-extracted meshes carry to their separately-stored base-color
+//      texture (geometry renders immediately; the texture pops in when ready).
+async function applyEchoTextures(
+  root: THREE.Object3D,
+  override: string | undefined,
+  flipY: boolean,
+): Promise<THREE.Texture[]> {
   const loader = new THREE.TextureLoader();
   const byRef = new Map<string, Promise<THREE.Texture | null>>();
 
   const loadRef = (ref: string): Promise<THREE.Texture | null> => {
     let p = byRef.get(ref);
     if (!p) {
-      p = (async () => {
-        const url = await resolveEchoPath(ref);
-        if (!url) return null;
-        const tex = await loader.loadAsync(url);
-        tex.flipY = false; // our UVs use the glTF (top-left) convention
-        tex.colorSpace = THREE.SRGBColorSpace;
-        tex.wrapS = THREE.RepeatWrapping;
-        tex.wrapT = THREE.RepeatWrapping;
-        tex.anisotropy = 4;
-        return tex;
-      })();
+      p = loadEchoTexture(loader, ref, flipY);
       byRef.set(ref, p);
     }
     return p;
@@ -37,13 +55,17 @@ async function applyEchoTextures(root: THREE.Object3D): Promise<THREE.Texture[]>
     if (!mesh.isMesh) return;
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     for (const mat of mats) {
-      const ref = (mat?.userData?.["echoTex"] as string | undefined) ?? undefined;
+      if (!mat) continue;
+      const ref = override ?? (mat.userData?.["echoTex"] as string | undefined);
       if (!ref) continue;
       tasks.push(
         loadRef(ref).then((tex) => {
           if (!tex) return;
           const std = mat as THREE.MeshStandardMaterial;
           std.map = tex;
+          // An explicit override replaces whatever the loader's default
+          // material tinted the surface with, so clear the base color.
+          if (override && std.color) std.color.set(0xffffff);
           std.needsUpdate = true;
         }),
       );
@@ -60,7 +82,7 @@ async function applyEchoTextures(root: THREE.Object3D): Promise<THREE.Texture[]>
 }
 
 // Display options parsed from the echo path query string, e.g.
-//   echo://3d/king.glb?autorotate&height=400px&bg=111
+//   echo://3d/king.glb?autorotate&height=400px&bg=111&texture=img/king_diffuse.png
 // Unknown keys are ignored by parseEditions (path resolution), so they are
 // safe to carry on the same path and read here for presentation only.
 type ModelOptions = {
@@ -68,6 +90,7 @@ type ModelOptions = {
   width: string | undefined;
   height: string | undefined;
   bg: string | undefined;
+  texture: string | undefined;
 };
 
 function parseModelOptions(path: string): ModelOptions {
@@ -76,6 +99,7 @@ function parseModelOptions(path: string): ModelOptions {
     width: undefined,
     height: undefined,
     bg: undefined,
+    texture: undefined,
   };
   const qIdx = path.indexOf("?");
   if (qIdx === -1) return opts;
@@ -91,6 +115,11 @@ function parseModelOptions(path: string): ModelOptions {
       opts.height = val || undefined;
     } else if (key === "bg") {
       opts.bg = val ? (/^[0-9a-f]{3,8}$/i.test(val) ? `#${val}` : val) : undefined;
+    } else if (key === "texture" || key === "tex") {
+      // The value is an echo asset path. Accept it with or without the
+      // `echo://` scheme; resolveEchoPath works on the bare, scheme-less path.
+      const t = val.startsWith("echo://") ? val.slice("echo://".length) : val;
+      opts.texture = t || undefined;
     }
   }
   return opts;
@@ -164,7 +193,17 @@ function disposeObject(obj: THREE.Object3D): void {
   });
 }
 
-function ModelCanvas({ url, ext, autorotate }: { url: string; ext: string; autorotate: boolean }) {
+function ModelCanvas({
+  url,
+  ext,
+  autorotate,
+  textureOverride,
+}: {
+  url: string;
+  ext: string;
+  autorotate: boolean;
+  textureOverride: string | undefined;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -238,7 +277,11 @@ function ModelCanvas({ url, ext, autorotate }: { url: string; ext: string; autor
 
         // Load referenced textures lazily; geometry is already on screen. The
         // running render loop picks up the material change once they resolve.
-        void applyEchoTextures(object).then((loaded) => {
+        // glTF/GLB carry top-left UVs (flipY=false); other formats use the
+        // conventional bottom-left, so flip the override texture accordingly.
+        const e = ext.replace(/^\./, "").toLowerCase();
+        const texFlipY = !(e === "glb" || e === "gltf");
+        void applyEchoTextures(object, textureOverride, texFlipY).then((loaded) => {
           if (cancelled) {
             for (const t of loaded) t.dispose();
           } else {
@@ -317,7 +360,7 @@ function ModelCanvas({ url, ext, autorotate }: { url: string; ext: string; autor
         renderer.domElement.remove();
       }
     };
-  }, [url, ext]);
+  }, [url, ext, textureOverride]);
 
   return (
     <div className="absolute inset-0">
@@ -437,7 +480,12 @@ export default function ModelViewer({
       style={boxStyle}
     >
       {url ? (
-        <ModelCanvas url={url} ext={ext} autorotate={opts.autorotate} />
+        <ModelCanvas
+          url={url}
+          ext={ext}
+          autorotate={opts.autorotate}
+          textureOverride={opts.texture}
+        />
       ) : (
         <span className="absolute inset-0 flex items-center justify-center">
           {loading ? (

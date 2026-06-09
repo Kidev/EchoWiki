@@ -167,18 +167,19 @@ Interactive 3D models are a first-class echo asset, embedded with the same Markd
 
 The model loads in an inline WebGL viewer (powered by three.js): drag to orbit, scroll to zoom, and use the corner buttons to auto-rotate or reset the view. Display hints can be appended to the path like editions and combined with `&`:
 
-| Hint            | Syntax          | Description                                      |
-| --------------- | --------------- | ------------------------------------------------ |
-| **Auto-rotate** | `?autorotate`   | Start the model slowly spinning (alias `?spin`)  |
-| **Height**      | `?height=400px` | Viewer height (alias `?h`)                       |
-| **Width**       | `?width=80%`    | Viewer width (alias `?w`)                        |
-| **Background**  | `?bg=111`       | Background color, hex (the `#` is added for you) |
+| Hint            | Syntax                     | Description                                                 |
+| --------------- | -------------------------- | ----------------------------------------------------------- |
+| **Auto-rotate** | `?autorotate`              | Start the model slowly spinning (alias `?spin`)             |
+| **Height**      | `?height=400px`            | Viewer height (alias `?h`)                                  |
+| **Width**       | `?width=80%`               | Viewer width (alias `?w`)                                   |
+| **Background**  | `?bg=111`                  | Background color, hex (the `#` is added for you)            |
+| **Texture**     | `?texture=img/diffuse.png` | Use an imported image as the model's texture (alias `?tex`) |
 
 ```markdown
 ![King statue](echo://meshes/king.glb?spin&height=420px&bg=151515)
 ```
 
-Supported formats are `glb`, `gltf`, `obj`, `stl`, `ply`, `fbx`, `dae` (Collada), and `3mf`. GLB is recommended because it packs geometry and textures into a single self-contained file; OBJ/Collada that rely on sibling `.mtl` or texture files render geometry only. Models appear in the asset browser under their own **Models** category, and like every other asset they are resolved from each reader's own copy of the game, never uploaded.
+Supported formats are `glb`, `gltf`, `obj`, `stl`, `ply`, `fbx`, `dae` (Collada), and `3mf`. GLB is recommended because it packs geometry and textures into a single self-contained file; OBJ/Collada that rely on sibling `.mtl` or texture files render geometry only. When a model loads without a texture, point `?texture=` at an imported image asset to apply one (the asset browser's model preview has a matching **Texture** field that bakes the same parameter into the copied link). Models appear in the asset browser under their own **Models** category, and like every other asset they are resolved from each reader's own copy of the game, never uploaded.
 
 ![Models in the asset browser](docs/assets-models.png)
 
