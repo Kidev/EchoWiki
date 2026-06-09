@@ -71,22 +71,6 @@ export function detectEngine(files: File[]): DetectionResult {
     return { engine: "generic", dataRoot: "", hasEncryption: false };
   }
 
-  // Unreal Engine pak archives (media carved out of uncompressed entries)
-  if (hasExt(idx, ".pak")) {
-    return { engine: "generic", dataRoot: "", hasEncryption: false };
-  }
-
-  // Unity builds: asset bundles or serialized files (Texture2D extraction)
-  if (
-    hasExt(idx, ".assets") ||
-    hasExt(idx, ".bundle") ||
-    hasExt(idx, ".unity3d") ||
-    hasExt(idx, ".assetbundle") ||
-    hasPath(idx, "globalgamemanagers")
-  ) {
-    return { engine: "generic", dataRoot: "", hasEncryption: false };
-  }
-
   if (hasPath(idx, "www/img/system/e5230bf37c4fabb0")) {
     return { engine: "tcoaal", dataRoot: "www/", hasEncryption: true };
   }
@@ -132,6 +116,27 @@ export function detectEngine(files: File[]): DetectionResult {
   }
   if (hasPath(idx, "data/system.json")) {
     return { engine: "rmmz", dataRoot: "", hasEncryption: false };
+  }
+
+  // Generic archive heuristics: checked only after all specific engine
+  // fingerprints, since these extensions also appear in unrelated runtimes
+  // (e.g. NW.js/Chromium ships resources.pak, so TCOAAL and RPG Maker MV/MZ
+  // games must be matched above before this catches their runtime files).
+
+  // Unreal Engine pak archives (media carved out of uncompressed entries)
+  if (hasExt(idx, ".pak")) {
+    return { engine: "generic", dataRoot: "", hasEncryption: false };
+  }
+
+  // Unity builds: asset bundles or serialized files (Texture2D extraction)
+  if (
+    hasExt(idx, ".assets") ||
+    hasExt(idx, ".bundle") ||
+    hasExt(idx, ".unity3d") ||
+    hasExt(idx, ".assetbundle") ||
+    hasPath(idx, "globalgamemanagers")
+  ) {
+    return { engine: "generic", dataRoot: "", hasEncryption: false };
   }
 
   // Fallback: if there are any image/audio files anywhere in the tree, use generic scan
