@@ -256,21 +256,20 @@ If enabled, the users select their game folder. The app auto-detects the engine,
 
 ### Supported Engines
 
-Engine detection is automatic. EchoWiki reads the two biggest modern engines, Unity and Unreal, directly from their packaged data.
+Engine detection is automatic. EchoWiki reads the biggest modern general-purpose engines, Unity, Unreal, and Godot, directly from their packaged data.
 
 **Unity.** EchoWiki reads Unity's serialized files (`resources.assets`, `sharedassets*.assets`, `globalgamemanagers`, `levelN`) and UnityFS asset bundles (`.bundle` / `.unity3d`), including LZ4/LZ4HC-compressed bundles. It extracts `Texture2D` objects: resolving streamed `.resS`/`.resource` pixel data: and decodes the common GPU formats (uncompressed RGBA/RGB/etc. and the DXT/BC1-BC5 block family) into PNGs entirely in the browser. Formats that need heavyweight decoders (BC7, ETC/EAC, ASTC, crunched) and LZMA-compressed bundles are skipped.
 
 **Unreal.** A full cooked-asset reader isn't feasible in the browser: shipping titles Oodle-compress their pak index and store textures in proprietary GPU formats, often encrypted. EchoWiki instead carves out any self-contained media (OGG, WAV, PNG, JPEG) stored uncompressed inside a `.pak`, reconstructing each file from its own length fields. Compressed/encrypted/cooked data is never matched, so it never produces garbage: it simply extracts what it safely can.
 
+**Godot.** EchoWiki reads Godot's `.pck` pack files (the `GDPC` container used by both Godot 3 and 4), walking the file index to pull out the bundled images and audio.
+
 Most other games work too. When no known engine is matched, EchoWiki falls back to a generic scan that picks up image and audio files from anywhere in the folder, using each file's parent folder as its category. Along the way it automatically unpacks common archives so these engines are supported out of the box:
 
-| Engine        | Format                     | What's extracted                               |
-| ------------- | -------------------------- | ---------------------------------------------- |
-| **Unity**     | `.assets`, UnityFS bundles | `Texture2D` images decoded to PNG              |
-| **Unreal**    | `.pak` archive             | Embedded uncompressed media (OGG/WAV/PNG/JPEG) |
-| **Godot**     | `.pck` pack                | Image/audio files                              |
-| **GameMaker** | `data.win` / `FORM`        | Texture pages + audio blobs                    |
-| **RenPy**     | `.rpa` archive             | Image/audio files                              |
+| Engine        | Format              | What's extracted            |
+| ------------- | ------------------- | --------------------------- |
+| **RenPy**     | `.rpa` archive      | Image/audio files           |
+| **GameMaker** | `data.win` / `FORM` | Texture pages + audio blobs |
 
 It also unpacks plain `.zip` and `.nw` (NW.js) packages.
 
@@ -278,15 +277,18 @@ RPG Maker games are decrypted natively, including their archive formats:
 
 | Engine               | Format            |
 | -------------------- | ----------------- |
-| **RPG Maker 2003**   | XYZ image format  |
-| **RPG Maker XP**     | RGSSAD v1 archive |
-| **RPG Maker VX**     | RGSSAD v1 archive |
-| **RPG Maker VX Ace** | RGSS3A v3 archive |
 | **RPG Maker MV**     | Individual files  |
 | **RPG Maker MZ**     | Individual files  |
-| **TCOAAL 3.0+**      | Individual files  |
+| **RPG Maker VX Ace** | RGSS3A v3 archive |
+| **RPG Maker VX**     | RGSSAD v1 archive |
+| **RPG Maker XP**     | RGSSAD v1 archive |
+| **RPG Maker 2003**   | XYZ image format  |
 
-For anything unusual, mods can supply a custom transform: a short snippet of JavaScript that receives each file and returns the decoded asset. This lets a community add support for an engine EchoWiki doesn't recognize on its own.
+And a few title-specific readers, such as **TCOAAL** (_The Coffin of Andy and Leyley_) 3.0+, are handled natively as well.
+
+For anything unusual, mods can supply a [custom transform](#custom-transform): a short snippet of JavaScript that receives each file and returns the decoded asset. This lets a community add support for an engine EchoWiki doesn't recognize on its own.
+
+When forcing the engine in the [Game settings](#game), the choices are: **Auto-detect** (recommended), then Unity, Unreal, and Godot, followed by the **RPG Maker** group (the full family above), **Other** (Generic scan, TCOAAL), and **Advanced** (Custom transform).
 
 ## Asset Browser
 
@@ -312,9 +314,41 @@ The Settings tab is visible only to moderators with the "config" permission (or 
 ![img](docs/game.png)
 
 - **Game Title**: Displayed to users during import. A warning appears if the detected title does not match.
-- **Engine**: Leave on Auto-detect, or force a specific engine (the RPG Maker family, Generic, TCOAAL, or Custom transform).
-- **Encryption Key**: Override the decryption key for games with encrypted assets. Leave empty for auto-detection. Not used by Generic or TCOAAL.
-- **Custom Transform Code**: Shown when the engine is set to Custom. A JavaScript snippet, run in each reader's browser, that receives every game file and returns the decoded asset (or skips it), letting mods support formats EchoWiki doesn't handle natively. A warning notes that it runs in users' browsers, so only set it from a trusted source.
+- **Engine**: Leave on Auto-detect, or force a specific engine. The dropdown lists Unity, Unreal, and Godot first, then groups the rest for clarity: **RPG Maker** (MV, MZ, VX Ace, VX, XP, 2003: with encrypted variants for MV/MZ), **Other** (Generic scan covering RenPy, GameMaker, and any other game; plus TCOAAL), and **Advanced** (Custom transform).
+- **Encryption Key**: Override the decryption key for games with encrypted assets. Leave empty for auto-detection. Not used by Unity, Unreal, Godot, Generic, or TCOAAL.
+- **Custom Transform Code**: Shown when the engine is set to Custom. See [Custom transform](#custom-transform) below.
+
+#### Custom transform
+
+When no built-in reader fits, set the engine to **Custom transform** and provide a JavaScript snippet. The snippet is a function body that runs in each reader's browser during import. It is called once for every file in the selected game folder and receives a single `file` argument (a [`File`](https://developer.mozilla.org/en-US/docs/Web/API/File) object). Return `{ path, data, mimeType }` to include the decoded asset, or `null`/`undefined` to skip the file. Read raw bytes with `await file.arrayBuffer()` and apply any custom decryption there.
+
+```js
+// Called for every file in the game folder.
+// Return an object to include the file, or null/undefined to skip it.
+// Available: file.name, file.webkitRelativePath, file.arrayBuffer(), file.text()
+
+const rel = file.webkitRelativePath;
+const parts = rel.split("/").slice(1); // strip root folder
+if (parts.length === 0) return null;
+
+const name = parts[parts.length - 1] ?? "";
+if (!name.match(/\.(png|jpg|jpeg|gif|ogg|mp3|wav|m4a)$/i)) return null;
+
+const parent = parts.length > 1 ? parts[parts.length - 2] : "root";
+const mime = name.endsWith(".png")
+  ? "image/png"
+  : name.endsWith(".ogg")
+    ? "audio/ogg"
+    : name.endsWith(".mp3")
+      ? "audio/mpeg"
+      : name.endsWith(".wav")
+        ? "audio/wav"
+        : "application/octet-stream";
+
+return { path: parent + "/" + name.toLowerCase(), data: await file.arrayBuffer(), mimeType: mime };
+```
+
+> ⚠ This code runs in users' browsers when they import game files. Only set it from a source you trust.
 
 ### Style
 

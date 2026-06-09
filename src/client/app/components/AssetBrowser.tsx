@@ -323,97 +323,97 @@ export function SubFilterTabs({
             : undefined
         }
       >
-      <div
-        ref={tabsRef}
-        className="relative flex flex-wrap gap-1 transition-transform"
-        style={{ transform: collapsed ? `translateY(-${activeOffset}px)` : "translateY(0)" }}
-      >
-      {subcategories.map((s) => {
-        const isActive = active === s.name;
+        <div
+          ref={tabsRef}
+          className="relative flex flex-wrap gap-1 transition-transform"
+          style={{ transform: collapsed ? `translateY(-${activeOffset}px)` : "translateY(0)" }}
+        >
+          {subcategories.map((s) => {
+            const isActive = active === s.name;
 
-        const folderHasGroups = foldersWithGroups.has(s.name);
+            const folderHasGroups = foldersWithGroups.has(s.name);
 
-        const dropdownEnabled = isActive && groups.length > 0;
-        return (
-          <div key={s.name} className="relative" data-sub-active={isActive}>
-            <button
-              className={`text-[10px] px-2 py-0.5 rounded-full transition-colors cursor-pointer inline-flex items-center gap-0.5 ${
-                isActive ? "bg-[var(--accent)] text-white" : "text-[var(--text-muted)]"
-              }`}
-              style={!isActive ? { backgroundColor: "transparent" } : undefined}
-              onMouseEnter={(e) => {
-                if (!isActive) e.currentTarget.style.backgroundColor = "var(--thumb-bg)";
-              }}
-              onMouseLeave={(e) => {
-                if (!isActive) e.currentTarget.style.backgroundColor = "transparent";
-              }}
-              onClick={() => {
-                onChange(s.name);
-                setDropdownOpen(false);
-              }}
-              onContextMenu={(e) => {
-                if (dropdownEnabled) {
-                  e.preventDefault();
-                  setDropdownOpen((o) => !o);
-                }
-              }}
-            >
-              {s.name.charAt(0).toUpperCase() + s.name.slice(1)}
-              <span className="opacity-70">{s.count}</span>
-              {folderHasGroups && (
-                <span
-                  className={`text-[7px] leading-none px-1 py-0.5 -my-0.5 ${
-                    dropdownEnabled ? "opacity-70 cursor-pointer" : "opacity-30"
+            const dropdownEnabled = isActive && groups.length > 0;
+            return (
+              <div key={s.name} className="relative" data-sub-active={isActive}>
+                <button
+                  className={`text-[10px] px-2 py-0.5 rounded-full transition-colors cursor-pointer inline-flex items-center gap-0.5 ${
+                    isActive ? "bg-[var(--accent)] text-white" : "text-[var(--text-muted)]"
                   }`}
-                  onClick={(e) => {
-                    if (!dropdownEnabled) return;
-                    e.stopPropagation();
-                    setDropdownOpen((o) => !o);
+                  style={!isActive ? { backgroundColor: "transparent" } : undefined}
+                  onMouseEnter={(e) => {
+                    if (!isActive) e.currentTarget.style.backgroundColor = "var(--thumb-bg)";
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isActive) e.currentTarget.style.backgroundColor = "transparent";
+                  }}
+                  onClick={() => {
+                    onChange(s.name);
+                    setDropdownOpen(false);
+                  }}
+                  onContextMenu={(e) => {
+                    if (dropdownEnabled) {
+                      e.preventDefault();
+                      setDropdownOpen((o) => !o);
+                    }
                   }}
                 >
-                  &#9662;
-                </span>
-              )}
-            </button>
-            {dropdownEnabled && dropdownOpen && (
-              <div
-                className="absolute top-full left-0 z-50 mt-1 py-1 rounded-lg shadow-lg border border-gray-200 min-w-[140px] max-h-48 overflow-y-auto"
-                style={{ backgroundColor: "var(--bg)" }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                {([null, ...groups] as (string | null)[]).map((g) => {
-                  const label = g === null ? "All" : groupLabel(g);
-                  const isActiveGroup = activeGroup === g;
-                  return (
-                    <button
-                      key={g ?? "__all"}
-                      className="w-full text-left text-xs px-3 py-1.5 cursor-pointer text-[var(--text)]"
-                      style={{
-                        backgroundColor: isActiveGroup ? "var(--thumb-bg)" : "transparent",
-                      }}
-                      onMouseEnter={(e) =>
-                        (e.currentTarget.style.backgroundColor = "var(--thumb-bg)")
-                      }
-                      onMouseLeave={(e) =>
-                        (e.currentTarget.style.backgroundColor = isActiveGroup
-                          ? "var(--thumb-bg)"
-                          : "transparent")
-                      }
-                      onClick={() => {
-                        onGroupChange(g);
-                        setDropdownOpen(false);
+                  {s.name.charAt(0).toUpperCase() + s.name.slice(1)}
+                  <span className="opacity-70">{s.count}</span>
+                  {folderHasGroups && (
+                    <span
+                      className={`text-[7px] leading-none px-1 py-0.5 -my-0.5 ${
+                        dropdownEnabled ? "opacity-70 cursor-pointer" : "opacity-30"
+                      }`}
+                      onClick={(e) => {
+                        if (!dropdownEnabled) return;
+                        e.stopPropagation();
+                        setDropdownOpen((o) => !o);
                       }}
                     >
-                      {label}
-                    </button>
-                  );
-                })}
+                      &#9662;
+                    </span>
+                  )}
+                </button>
+                {dropdownEnabled && dropdownOpen && (
+                  <div
+                    className="absolute top-full left-0 z-50 mt-1 py-1 rounded-lg shadow-lg border border-gray-200 min-w-[140px] max-h-48 overflow-y-auto"
+                    style={{ backgroundColor: "var(--bg)" }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {([null, ...groups] as (string | null)[]).map((g) => {
+                      const label = g === null ? "All" : groupLabel(g);
+                      const isActiveGroup = activeGroup === g;
+                      return (
+                        <button
+                          key={g ?? "__all"}
+                          className="w-full text-left text-xs px-3 py-1.5 cursor-pointer text-[var(--text)]"
+                          style={{
+                            backgroundColor: isActiveGroup ? "var(--thumb-bg)" : "transparent",
+                          }}
+                          onMouseEnter={(e) =>
+                            (e.currentTarget.style.backgroundColor = "var(--thumb-bg)")
+                          }
+                          onMouseLeave={(e) =>
+                            (e.currentTarget.style.backgroundColor = isActiveGroup
+                              ? "var(--thumb-bg)"
+                              : "transparent")
+                          }
+                          onClick={() => {
+                            onGroupChange(g);
+                            setDropdownOpen(false);
+                          }}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        );
-      })}
-      </div>
+            );
+          })}
+        </div>
       </div>
       {overflowing && (
         <div
@@ -421,8 +421,7 @@ export function SubFilterTabs({
           style={{
             opacity: collapsed ? 1 : 0,
             transition: "opacity 120ms ease",
-            background:
-              "linear-gradient(to right, transparent, var(--bg) 55%, var(--bg) 100%)",
+            background: "linear-gradient(to right, transparent, var(--bg) 55%, var(--bg) 100%)",
           }}
         >
           <span

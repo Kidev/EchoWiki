@@ -121,6 +121,9 @@ function getAssetGenerator(
       return processRgss3aArchive(archiveFile);
     }
 
+    case "unity":
+    case "unreal":
+    case "godot":
     case "generic":
       return processGenericFiles(files);
 

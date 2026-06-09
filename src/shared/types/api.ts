@@ -8,6 +8,9 @@ export type EngineType =
   | "rmmz"
   | "rmmz-encrypted"
   | "tcoaal"
+  | "unity"
+  | "unreal"
+  | "godot"
   | "generic"
   | "custom"
   | "auto";

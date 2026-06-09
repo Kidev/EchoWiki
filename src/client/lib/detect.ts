@@ -68,7 +68,7 @@ export function detectEngine(files: File[]): DetectionResult {
   }
 
   if (hasExt(idx, ".pck")) {
-    return { engine: "generic", dataRoot: "", hasEncryption: false };
+    return { engine: "godot", dataRoot: "", hasEncryption: false };
   }
 
   if (hasPath(idx, "www/img/system/e5230bf37c4fabb0")) {
@@ -125,7 +125,7 @@ export function detectEngine(files: File[]): DetectionResult {
 
   // Unreal Engine pak archives (media carved out of uncompressed entries)
   if (hasExt(idx, ".pak")) {
-    return { engine: "generic", dataRoot: "", hasEncryption: false };
+    return { engine: "unreal", dataRoot: "", hasEncryption: false };
   }
 
   // Unity builds: asset bundles or serialized files (Texture2D extraction)
@@ -136,7 +136,7 @@ export function detectEngine(files: File[]): DetectionResult {
     hasExt(idx, ".assetbundle") ||
     hasPath(idx, "globalgamemanagers")
   ) {
-    return { engine: "generic", dataRoot: "", hasEncryption: false };
+    return { engine: "unity", dataRoot: "", hasEncryption: false };
   }
 
   // Fallback: if there are any image/audio files anywhere in the tree, use generic scan

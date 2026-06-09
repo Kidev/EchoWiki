@@ -868,6 +868,14 @@ export function SettingsView({
     return t.includes("coffin") && t.includes("andy") && t.includes("leyley");
   }, [gameTitle]);
 
+  // Unity, Unreal and Godot are handled by the generic asset scanner; they share
+  // its "no encryption key" behaviour and only differ as friendlier dropdown labels.
+  const isGenericLike =
+    engineField === "generic" ||
+    engineField === "unity" ||
+    engineField === "unreal" ||
+    engineField === "godot";
+
   useEffect(() => {
     if (isTcoaalDetected) {
       setEngineField("tcoaal");
@@ -1130,27 +1138,42 @@ export function SettingsView({
                       color: "var(--control-text)",
                     }}
                   >
-                    <option value="auto">Auto-detect</option>
-                    <option value="generic">Generic (any game)</option>
-                    <option value="rm2k3">RPG Maker 2003</option>
-                    <option value="rmxp">RPG Maker XP</option>
-                    <option value="rmvx">RPG Maker VX</option>
-                    <option value="rmvxace">RPG Maker VX Ace</option>
-                    <option value="rmmv">RPG Maker MV</option>
-                    <option value="rmmv-encrypted">RPG Maker MV (Encrypted)</option>
-                    <option value="rmmz">RPG Maker MZ</option>
-                    <option value="rmmz-encrypted">RPG Maker MZ (Encrypted)</option>
-                    <option value="tcoaal">TCOAAL</option>
-                    <option value="custom">Custom transform</option>
+                    <option value="auto">Auto-detect (recommended)</option>
+                    <option value="unity">Unity (asset bundles)</option>
+                    <option value="unreal">Unreal Engine (.pak)</option>
+                    <option value="godot">Godot (.pck pack)</option>
+                    <optgroup label="RPG Maker">
+                      <option value="rmmv">RPG Maker MV</option>
+                      <option value="rmmv-encrypted">RPG Maker MV (Encrypted)</option>
+                      <option value="rmmz">RPG Maker MZ</option>
+                      <option value="rmmz-encrypted">RPG Maker MZ (Encrypted)</option>
+                      <option value="rmvxace">RPG Maker VX Ace</option>
+                      <option value="rmvx">RPG Maker VX</option>
+                      <option value="rmxp">RPG Maker XP</option>
+                      <option value="rm2k3">RPG Maker 2003</option>
+                    </optgroup>
+                    <optgroup label="Other">
+                      <option value="generic">Generic (RenPy, GameMaker, or any other game)</option>
+                      <option value="tcoaal">TCOAAL (The Coffin of Andy and Leyley)</option>
+                    </optgroup>
+                    <optgroup label="Advanced">
+                      <option value="custom">Custom transform (JavaScript)</option>
+                    </optgroup>
                   </select>
                   <span className="text-[10px] text-[var(--text-muted)]">
                     {isTcoaalDetected
                       ? "Auto-detected from game title."
-                      : engineField === "generic"
-                        ? "Scans any game folder for images and audio; also extracts .zip and .rpa (RenPy) archives."
-                        : engineField === "custom"
-                          ? "Run custom JavaScript on each imported file: handles any game format."
-                          : "Override engine auto-detection. Leave on Auto-detect if unsure."}
+                      : engineField === "unity"
+                        ? "Extracts Texture2D images and audio from Unity asset bundles (.assets, .bundle, .unity3d)."
+                        : engineField === "unreal"
+                          ? "Carves images and audio out of Unreal Engine .pak archives (uncompressed entries)."
+                          : engineField === "godot"
+                            ? "Extracts images and audio from Godot .pck pack files."
+                            : engineField === "generic"
+                              ? "Scans any game folder for images and audio; also unpacks RenPy (.rpa), GameMaker (data.win), .zip, and .nw archives."
+                              : engineField === "custom"
+                                ? "Run custom JavaScript on each imported file: handles any game format."
+                                : "Override engine auto-detection. Leave on Auto-detect if unsure."}
                   </span>
                 </div>
 
@@ -1161,7 +1184,7 @@ export function SettingsView({
                       type="text"
                       value={encryptionKeyField}
                       onChange={(e) => setEncryptionKeyField(e.target.value)}
-                      disabled={isTcoaalDetected || engineField === "generic"}
+                      disabled={isTcoaalDetected || isGenericLike}
                       placeholder="Leave empty for auto-detection"
                       className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)] disabled:opacity-50"
                       style={{
@@ -1172,8 +1195,8 @@ export function SettingsView({
                     <span className="text-[10px] text-[var(--text-muted)]">
                       {isTcoaalDetected
                         ? "TCOAAL does not use a user-provided key."
-                        : engineField === "generic"
-                          ? "Generic mode does not use an encryption key."
+                        : isGenericLike
+                          ? "This mode does not use an encryption key."
                           : "Override the encryption key used for decryption. Leave empty if unsure."}
                     </span>
                   </div>
