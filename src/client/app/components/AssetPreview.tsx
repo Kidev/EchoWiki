@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ClipboardEvent as ReactClipboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { useEchoUrl } from "../../lib/echo";
@@ -263,6 +264,24 @@ export function AssetPreview({
 
   const isModel = isModelPath(path);
   const isEmbeddable = isImagePath(path) || isModel;
+
+  // Pasting a link copied from the asset browser (e.g. `![abc](echo://path)`
+  // or a bare `echo://path`) should drop the markdown wrapper and commit the
+  // echo path straight away, so the model retextures without an extra step.
+  const handleTexturePaste = useCallback((e: ReactClipboardEvent<HTMLInputElement>) => {
+    const pasted = e.clipboardData.getData("text");
+    if (!/echo:\/\//i.test(pasted)) return;
+    const linkMatch = pasted.match(/\]\(\s*(echo:\/\/[^)\s]+)\s*\)/i);
+    const echoPathFromPaste = (
+      linkMatch?.[1] ??
+      pasted.match(/echo:\/\/[^)\s]+/i)?.[0] ??
+      ""
+    ).trim();
+    if (!echoPathFromPaste) return;
+    e.preventDefault();
+    setTextureInput(echoPathFromPaste);
+    setTextureApplied(echoPathFromPaste);
+  }, []);
 
   // For models, the committed texture (scheme stripped) rides the echo path as
   // a `?texture=` param: both for the live preview and the copied markdown.
@@ -613,6 +632,7 @@ export function AssetPreview({
                     type="text"
                     value={textureInput}
                     onChange={(e) => setTextureInput(e.target.value)}
+                    onPaste={handleTexturePaste}
                     onBlur={() => setTextureApplied(textureInput)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") setTextureApplied(textureInput);

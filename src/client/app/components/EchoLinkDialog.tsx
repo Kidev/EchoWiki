@@ -24,9 +24,9 @@ export function EchoLinkDialog({
       >
         <h3 className="font-semibold text-[var(--text)] mb-1">Open EchoLink</h3>
         <p className="text-sm text-[var(--text-muted)] mb-4">
-          Paste an <span className="font-mono text-xs">echolink://r/{subredditName}/...</span> to jump
-          to a wiki page or tab, or an <span className="font-mono text-xs">echo://...</span> to open
-          an asset.
+          Paste an <span className="font-mono text-xs">echolink://r/{subredditName}/...</span> to
+          jump to a wiki page or tab, or an <span className="font-mono text-xs">echo://...</span> to
+          open an asset.
         </p>
         <input
           type="text"

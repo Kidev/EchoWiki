@@ -91,7 +91,7 @@ When a model loads untextured (e.g. an OBJ whose materials live in external file
 ![King statue](echo://meshes/king.obj?texture=img/king_diffuse.png)
 ```
 
-The asset browser's model preview has a matching **Texture** field; whatever you set there is baked into the link it copies.
+The asset browser's model preview has a matching **Texture** field; whatever you set there is baked into the link it copies. You don't have to type the path by hand: open an image in the asset browser, hit its copy button, and paste the result straight into the Texture field. A pasted Markdown link like `![diffuse](echo://img/king_diffuse.png)` is trimmed down to its `echo://` path automatically and applied right away, so retexturing a model is a copy-then-paste.
 
 The viewer is lazy-loaded: the three.js runtime and the loader for a given format are only downloaded the first time a reader opens a model, so pages without 3D content carry no extra weight.
 
@@ -445,7 +445,7 @@ echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,13
 | Interactive 3D model | `![alt](echo://path/to/model.glb)` |
 | Model: auto-rotate | `?autorotate` (alias `?spin`) appended to a model path |
 | Model: size / background | `?height=400px`, `?width=80%`, `?bg=111` |
-| Model: texture | `?texture=img/diffuse.png` (alias `?tex`) |
+| Model: texture | `?texture=img/diffuse.png` (alias `?tex`); the preview's Texture field also accepts a pasted `![](echo://...)` link |
 | Sprite cell | `?sprite=cols,rows,index` appended to an image path |
 | Crop transparent padding | `?crop` appended to an image path |
 | Inline emoji-size image | `?emoji` appended to any image path |
