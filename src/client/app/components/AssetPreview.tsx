@@ -17,7 +17,15 @@ import {
   type Edition,
 } from "../../lib/editions";
 import { getAsset } from "../../lib/idb";
-import { getCategory, getFileName, isImagePath, isModelPath, toDisplayName } from "../assetUtils";
+import {
+  getCategory,
+  getExt,
+  getFileName,
+  getStem,
+  isImagePath,
+  isModelPath,
+  toDisplayName,
+} from "../assetUtils";
 
 const ModelViewer = lazy(() => import("./ModelViewer"));
 
@@ -308,6 +316,28 @@ export function AssetPreview({
     },
     [echoMarkdown, originalMarkdown, onCopied, path],
   );
+
+  // Download the asset to disk. Images carry their applied editions (crop /
+  // sprite) by downloading the edited blob; audio/model editions are applied at
+  // playback/render time, so those download the original file.
+  const handleDownload = useCallback(() => {
+    const downloadUrl = category === "images" ? (editedUrl ?? url) : url;
+    if (!downloadUrl) return;
+    const stem = getStem(mappedPath ?? path);
+    const ext = getExt(mappedPath ?? path);
+    const suffix =
+      category === "images" && editions.length > 0
+        ? serializeEditions("", editions)
+            .replace(/[^a-z0-9]+/gi, "-")
+            .replace(/^-+|-+$/g, "")
+        : "";
+    const a = document.createElement("a");
+    a.href = downloadUrl;
+    a.download = suffix ? `${stem}-${suffix}${ext}` : `${stem}${ext}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }, [category, editedUrl, url, mappedPath, path, editions]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -645,6 +675,23 @@ export function AssetPreview({
               )}
 
               <div className="flex-1" />
+              {category !== "data" && url && (
+                <button
+                  onClick={handleDownload}
+                  className="flex items-center gap-1 text-white text-[10px] font-medium cursor-pointer hover:opacity-80 transition-opacity flex-shrink-0 bg-white/20 px-2 py-0.5 rounded-full"
+                  title="Download asset"
+                >
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"
+                    />
+                  </svg>
+                  Download
+                </button>
+              )}
               <button
                 onClick={handleCopy}
                 className="flex items-center gap-1 text-white text-[10px] font-medium cursor-pointer hover:opacity-80 transition-opacity flex-shrink-0 bg-white/20 px-2 py-0.5 rounded-full"
