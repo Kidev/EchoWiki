@@ -14,6 +14,8 @@ import {
   getWebViewMode,
   requestExpandedMode,
   exitExpandedMode,
+  addWebViewModeListener,
+  removeWebViewModeListener,
   showToast,
 } from "@devvit/web/client";
 import type {
@@ -60,6 +62,7 @@ import {
 import {
   isImagePath,
   isAudioPath,
+  isModelPath,
   getFileName,
   getStem,
   getSubfolder,
@@ -67,6 +70,11 @@ import {
   getAssignedGroup,
   detectGroupsForFolder,
 } from "./assetUtils";
+
+// Predicate for the active asset-browser filter tab.
+function matchesFilter(p: string, f: FilterType): boolean {
+  return f === "images" ? isImagePath(p) : f === "audio" ? isAudioPath(p) : isModelPath(p);
+}
 import { extractEchoPathsFromMarkdown } from "./echoRender";
 import { EchoLinkDialog } from "./components/EchoLinkDialog";
 import { parseEchoLink } from "./wikiLinks";
@@ -501,14 +509,13 @@ export const App = () => {
   const currentFolderGroups = useMemo(() => {
     if (!subFilter) return [];
     const folderPaths = paths.filter(
-      (p) =>
-        (filter === "images" ? isImagePath(p) : isAudioPath(p)) && getSubfolder(p) === subFilter,
+      (p) => matchesFilter(p, filter) && getSubfolder(p) === subFilter,
     );
     return detectGroupsForFolder(folderPaths, (p) => getStem(pathToMapped.get(p) ?? p));
   }, [paths, filter, subFilter, pathToMapped]);
 
   const filteredPaths = useMemo(() => {
-    let result = filter === "images" ? paths.filter(isImagePath) : paths.filter(isAudioPath);
+    let result = paths.filter((p) => matchesFilter(p, filter));
     if (subFilter) {
       result = result.filter((p) => getSubfolder(p) === subFilter);
     }
@@ -537,8 +544,7 @@ export const App = () => {
   }, [paths, filter, subFilter, groupFilter, currentFolderGroups, search, pathToMapped]);
 
   const subcategories = useMemo(() => {
-    const categoryPaths =
-      filter === "images" ? paths.filter(isImagePath) : paths.filter(isAudioPath);
+    const categoryPaths = paths.filter((p) => matchesFilter(p, filter));
 
     const folderCounts = new Map<string, number>();
     for (const p of categoryPaths) {
@@ -584,8 +590,7 @@ export const App = () => {
     const result = new Set<string>();
     for (const s of subcategories) {
       const folderPaths = paths.filter(
-        (p) =>
-          (filter === "images" ? isImagePath(p) : isAudioPath(p)) && getSubfolder(p) === s.name,
+        (p) => matchesFilter(p, filter) && getSubfolder(p) === s.name,
       );
       if (detectGroupsForFolder(folderPaths, (p) => getStem(pathToMapped.get(p) ?? p)).length > 0) {
         result.add(s.name);
@@ -598,6 +603,7 @@ export const App = () => {
     () => ({
       images: paths.filter(isImagePath).length,
       audio: paths.filter(isAudioPath).length,
+      models: paths.filter(isModelPath).length,
     }),
     [paths],
   );
@@ -778,7 +784,12 @@ export const App = () => {
       try {
         localStorage.setItem(`echowiki:editPage:${postId}`, wikiCurrentPage);
       } catch {}
-      void requestExpandedMode(e, "app");
+      // Already expanded (e.g. the mode flipped between render and click):
+      // requesting expansion again throws "web view is already expanded".
+      if (getWebViewMode() === "expanded") return;
+      try {
+        requestExpandedMode(e, "app");
+      } catch {}
     },
     [postId, wikiCurrentPage],
   );
@@ -948,7 +959,11 @@ export const App = () => {
         }
         basePath = resolved;
       }
-      const newFilter: FilterType = isImagePath(basePath) ? "images" : "audio";
+      const newFilter: FilterType = isImagePath(basePath)
+        ? "images"
+        : isModelPath(basePath)
+          ? "models"
+          : "audio";
       const subfolder = getSubfolder(basePath);
       setShowEchoLinkDialog(false);
       setEchoLinkError(null);
@@ -986,7 +1001,21 @@ export const App = () => {
     setStyle(newStyle);
   }, []);
 
-  const isInline = getWebViewMode() === "inline";
+  // The web view mode can start as "inline" and only flip to "expanded" once the
+  // platform's immersive-mode message arrives. Tracking it as state (updated via
+  // the mode listener) ensures the UI re-renders when that happens: otherwise the
+  // inline "edit (opens expanded)" button lingers in the expanded view and clicking
+  // it calls requestExpandedMode while already expanded (which throws).
+  const [webViewMode, setWebViewModeState] = useState<string>(() => getWebViewMode());
+  useEffect(() => {
+    const handler = (mode: string) => setWebViewModeState(mode);
+    addWebViewModeListener(handler);
+    // Re-sync in case the mode changed between the initial render and this effect
+    // (the immersive-mode message can land in that gap and be missed otherwise).
+    setWebViewModeState(getWebViewMode());
+    return () => removeWebViewModeListener(handler);
+  }, []);
+  const isInline = webViewMode === "inline";
 
   useEffect(() => {
     if (!isInline || appState !== "ready" || isGameIndependent) return;

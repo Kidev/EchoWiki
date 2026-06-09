@@ -18,6 +18,7 @@ EchoWiki turns a subreddit wiki into a proper editing and reading environment. M
   - [Flair Rewards](#flair-rewards)
 - [Echo Links](#echo-links)
   - [Asset Editions](#asset-editions)
+  - [3D Models](#3d-models)
   - [Composition Blocks](#composition-blocks)
 - [Asset Import](#asset-import)
   - [Supported Engines](#supported-engines)
@@ -154,6 +155,35 @@ The asset preview lightbox includes interactive controls for applying editions. 
 
 ![Sprites](docs/sprites.png)
 
+### 3D Models
+
+![Models](docs/models.gif)
+
+Interactive 3D models are a first-class echo asset, embedded with the same Markdown image syntax as a picture:
+
+```markdown
+![King statue](echo://meshes/king.glb)
+```
+
+The model loads in an inline WebGL viewer (powered by three.js): drag to orbit, scroll to zoom, and use the corner buttons to auto-rotate or reset the view. Display hints can be appended to the path like editions and combined with `&`:
+
+| Hint            | Syntax          | Description                                      |
+| --------------- | --------------- | ------------------------------------------------ |
+| **Auto-rotate** | `?autorotate`   | Start the model slowly spinning (alias `?spin`)  |
+| **Height**      | `?height=400px` | Viewer height (alias `?h`)                       |
+| **Width**       | `?width=80%`    | Viewer width (alias `?w`)                        |
+| **Background**  | `?bg=111`       | Background color, hex (the `#` is added for you) |
+
+```markdown
+![King statue](echo://meshes/king.glb?spin&height=420px&bg=151515)
+```
+
+Supported formats are `glb`, `gltf`, `obj`, `stl`, `ply`, `fbx`, `dae` (Collada), and `3mf`. GLB is recommended because it packs geometry and textures into a single self-contained file; OBJ/Collada that rely on sibling `.mtl` or texture files render geometry only. Models appear in the asset browser under their own **Models** category, and like every other asset they are resolved from each reader's own copy of the game, never uploaded.
+
+![Models in the asset browser](docs/assets-models.png)
+
+The viewer and its format loaders are lazy-loaded: the three.js runtime is only fetched the first time a reader opens a model, so pages without 3D content carry no extra weight.
+
 ### Composition Blocks
 
 Wiki pages support a set of fenced block directives for building richer layouts and animations without writing raw HTML. Each block opens with `:::type [params]` and closes with `:::`. Parameter values containing spaces must be quoted: `key="some value"`.
@@ -258,7 +288,7 @@ If enabled, the users select their game folder. The app auto-detects the engine,
 
 Engine detection is automatic. EchoWiki reads the biggest modern general-purpose engines, Unity, Unreal, and Godot, directly from their packaged data.
 
-**Unity.** EchoWiki reads Unity's serialized files (`resources.assets`, `sharedassets*.assets`, `globalgamemanagers`, `levelN`) and UnityFS asset bundles (`.bundle` / `.unity3d`), including LZ4/LZ4HC-compressed bundles. It extracts `Texture2D` objects: resolving streamed `.resS`/`.resource` pixel data: and decodes the common GPU formats (uncompressed RGBA/RGB/etc. and the DXT/BC1-BC5 block family) into PNGs entirely in the browser. Formats that need heavyweight decoders (BC7, ETC/EAC, ASTC, crunched) and LZMA-compressed bundles are skipped.
+**Unity.** EchoWiki reads Unity's serialized files (`resources.assets`, `sharedassets*.assets`, `globalgamemanagers`, `levelN`) and UnityFS asset bundles (`.bundle` / `.unity3d`), including LZ4/LZ4HC-compressed bundles. It extracts `Texture2D` objects: resolving streamed `.resS`/`.resource` pixel data: and decodes the common GPU formats (uncompressed RGBA/RGB/etc. and the DXT/BC1-BC5 block family) into PNGs entirely in the browser. Formats that need heavyweight decoders (BC7, ETC/EAC, ASTC, crunched) and LZMA-compressed bundles are skipped. It also extracts `Mesh` objects: Unity bakes geometry into raw vertex/index buffers rather than shipping model files, so EchoWiki decodes those buffers, converts them from Unity's coordinate system to glTF, and emits a self-contained [GLB model](#3d-models) for each mesh, linked to its base-color texture. Skinned, blend-shape, and compressed meshes are skipped.
 
 **Unreal.** A full cooked-asset reader isn't feasible in the browser: shipping titles Oodle-compress their pak index and store textures in proprietary GPU formats, often encrypted. EchoWiki instead carves out any self-contained media (OGG, WAV, PNG, JPEG) stored uncompressed inside a `.pak`, reconstructing each file from its own length fields. Compressed/encrypted/cooked data is never matched, so it never produces garbage: it simply extracts what it safely can.
 

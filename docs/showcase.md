@@ -7,13 +7,14 @@ This page demonstrates every visual feature the echo system supports. Assets are
 
 [1. Inline image](#1-inline-image)  
 [2. Audio player](#2-audio-player)  
-[3. Sprites](#3-sprite-extraction)  
-[4. Crop](#4-crop-images)  
-[5. Emoji & outline](#5-emoji--outline-modifiers)  
-[6. Infobox](#6-infobox)  
-[7. Scene](#7-layered-scene)  
-[8. Frame-by-frame](#8-frame-by-frame-animation)  
-[9. Moving animation](#9-moving-animation)  
+[3. 3D models](#3-3d-models)  
+[4. Sprites](#4-sprite-extraction)  
+[5. Crop](#5-crop-images)  
+[6. Emoji & outline](#6-emoji--outline-modifiers)  
+[7. Infobox](#7-infobox)  
+[8. Scene](#8-layered-scene)  
+[9. Frame-by-frame](#9-frame-by-frame-animation)  
+[10. Moving animation](#10-moving-animation)  
 [Quick reference](#quick-reference)
 
 ---
@@ -57,7 +58,37 @@ Combine `?speed=` and `?pitch=` to shift playback:
 
 ---
 
-## 3. Sprite extraction
+## 3. 3D models
+
+Interactive 3D models embed with the **same image syntax** as a picture. The model loads in a small WebGL viewer: drag to orbit, scroll to zoom, and use the buttons in the corner to auto-rotate or reset the view.
+
+```
+![King statue](echo://meshes/king.glb)
+```
+
+> [!NOTE]
+> Unlike the image examples on this page, 3D models only appear for games that actually ship 3D assets (Unity, Unreal, Godot). *The Coffin of Andy and Leyley* is a 2D RPG Maker game, so the model paths in this section will not resolve in its demo. Swap in an `echo://` model path from your own asset browser.
+
+Append display hints to the path, combined with `&`:
+
+| Param | Example | Effect |
+|---|---|---|
+| `?autorotate` (alias `?spin`) | `?autorotate` | Start with the model slowly spinning |
+| `?height` (alias `?h`) | `?height=400px` | Set the viewer height |
+| `?width` (alias `?w`) | `?width=80%` | Set the viewer width |
+| `?bg` | `?bg=111` | Background color (hex, `#` is added for you) |
+
+```
+![King statue](echo://meshes/king.glb?spin&height=420px&bg=151515)
+```
+
+**Supported formats:** `glb`, `gltf`, `obj`, `stl`, `ply`, `fbx`, `dae` (Collada), `3mf`. GLB is recommended because it packs geometry and textures into a single self-contained file; OBJ/Collada that rely on sibling `.mtl` or texture files render geometry only. Unity games are special-cased: their meshes ship as raw GPU buffers rather than model files, so EchoWiki rebuilds each one into a self-contained GLB and links it to its base-color texture.
+
+The viewer is lazy-loaded: the three.js runtime and the loader for a given format are only downloaded the first time a reader opens a model, so pages without 3D content carry no extra weight.
+
+---
+
+## 4. Sprite extraction
 
 Extract one cell from a grid spritesheet with `?sprite=cols,rows,index`. Index counts left-to-right, top-to-bottom, zero-based.
 
@@ -74,7 +105,7 @@ Four consecutive cells from the same row:
 
 ---
 
-## 4. Crop images
+## 5. Crop images
 
 Trims transparent padding using `?crop`, keeping only the bounding box of visible pixels. Adding `?outline` on top shows the bounding box clearly.
 
@@ -89,7 +120,7 @@ The first image shows the original with `?outline` marking the full image bounds
 
 ---
 
-## 5. Emoji & outline modifiers
+## 6. Emoji & outline modifiers
 
 Two display hints can be appended to any image path.
 
@@ -136,7 +167,7 @@ You can combine `?outline` with `?crop`, `?sprite`, and `?emoji`:
 
 ---
 
-## 6. Infobox
+## 7. Infobox
 
 Use `:::infobox` to build a Wikipedia-style character infobox: a colored header, portrait, and a key-value table floated beside page content. Below is a full example of what a real character page looks like.
 
@@ -214,7 +245,7 @@ She possesses a dark sense of humor and often makes light of horrific situations
 
 ---
 
-## 7. Layered scene
+## 8. Layered scene
 
 Use `:::scene` to stack images at absolute positions in a fixed-size container.
 
@@ -240,7 +271,7 @@ fg: echo://img/parallaxes/backgrounds_157.png?crop
 
 ---
 
-## 8. Frame-by-frame animation
+## 9. Frame-by-frame animation
 
 Use `:::fbf` to cycle through sprite frames using CSS opacity animation. Each line is one `echo://` path for one frame. `fps` controls playback speed, `size` sets the pixel dimensions of the box.
 
@@ -287,7 +318,7 @@ Fast: `fps=12`
 
 ---
 
-## 9. Moving animation
+## 10. Moving animation
 
 Use `:::anim` to move a sprite across a scene. You can either reference an `:::fbf` block by alias (with `ref=name`) or supply frames inline. Movement is defined as CSS keyframes (`N% key=value ...`).
 
@@ -402,6 +433,9 @@ echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,13
 |---|---|
 | Inline image | `![alt](echo://path/to/image.png)` |
 | Audio player | `![label](echo://path/to/sound.ogg)` |
+| Interactive 3D model | `![alt](echo://path/to/model.glb)` |
+| Model: auto-rotate | `?autorotate` (alias `?spin`) appended to a model path |
+| Model: size / background | `?height=400px`, `?width=80%`, `?bg=111` |
 | Sprite cell | `?sprite=cols,rows,index` appended to an image path |
 | Crop transparent padding | `?crop` appended to an image path |
 | Inline emoji-size image | `?emoji` appended to any image path |

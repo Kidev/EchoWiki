@@ -8,7 +8,14 @@ import {
   useCallback,
 } from "react";
 import { useEchoUrl } from "../../lib/echo";
-import { getFileName, isImagePath, getCategory, toDisplayName, groupLabel } from "../assetUtils";
+import {
+  getFileName,
+  isImagePath,
+  isModelPath,
+  getCategory,
+  toDisplayName,
+  groupLabel,
+} from "../assetUtils";
 import type { FilterType } from "../appTypes";
 import type { CardSize } from "../../../shared/types/api";
 
@@ -70,11 +77,12 @@ export function AssetCard({
   const echoPath = mappedPath ?? path;
   const name = getFileName(path);
 
-  const echoMarkdown = isImagePath(path)
+  const isEmbeddable = isImagePath(path) || isModelPath(path);
+  const echoMarkdown = isEmbeddable
     ? `![${displayName}](echo://${echoPath})`
     : `[${displayName}](echo://${echoPath})`;
 
-  const originalMarkdown = isImagePath(path)
+  const originalMarkdown = isEmbeddable
     ? `![${toDisplayName(path)}](echo://${path})`
     : `[${toDisplayName(path)}](echo://${path})`;
 
@@ -153,6 +161,20 @@ export function AssetCard({
               d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"
             />
           </svg>
+        ) : category === "models" ? (
+          <svg
+            className="w-6 h-6 text-violet-400"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M12 2l9 5v10l-9 5-9-5V7l9-5zM3.5 7L12 12m0 0l8.5-5M12 12v10"
+            />
+          </svg>
         ) : (
           <svg
             className="w-6 h-6 text-amber-400"
@@ -190,7 +212,7 @@ export function AssetCard({
   );
 }
 
-export const FILTERS: readonly FilterType[] = ["images", "audio"] as const;
+export const FILTERS: readonly FilterType[] = ["images", "audio", "models"] as const;
 
 export function FilterTabs({
   active,
@@ -201,9 +223,12 @@ export function FilterTabs({
   counts: Record<FilterType, number>;
   onChange: (f: FilterType) => void;
 }) {
+  // Images and audio are always offered; the Models tab only appears once a game
+  // actually has 3D assets, keeping the bar uncluttered for the common case.
+  const visible = FILTERS.filter((f) => f === "images" || f === "audio" || counts[f] > 0);
   return (
     <div className="flex gap-1">
-      {FILTERS.map((f) => (
+      {visible.map((f) => (
         <button
           key={f}
           className={`text-xs px-2.5 py-1 rounded-full transition-colors cursor-pointer ${

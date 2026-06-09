@@ -1,4 +1,4 @@
-import { type CSSProperties, type ReactNode, useLayoutEffect, useRef } from "react";
+import { type CSSProperties, type ReactNode, lazy, Suspense, useLayoutEffect, useRef } from "react";
 import Markdown, { defaultUrlTransform } from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
@@ -12,7 +12,9 @@ import {
   extractDisplayHints,
 } from "../echoRender";
 import { EchoInlineAsset, EchoRawImage } from "./EchoInlineAsset";
-import { getFileName, slugify } from "../assetUtils";
+import { getFileName, isModelPath, slugify } from "../assetUtils";
+
+const ModelViewer = lazy(() => import("./ModelViewer"));
 
 function extractWikiPage(href: string, subredditName: string): string | null {
   const sub = subredditName.toLowerCase();
@@ -271,6 +273,23 @@ export function WikiMarkdownContent({
             }) => {
               if (src?.startsWith("echo://")) {
                 const rawPath = src.slice("echo://".length).toLowerCase();
+                // 3D models (![name](echo://3d/king.glb)) render in an
+                // interactive, drag-to-rotate viewer. The base extension is
+                // tested separately because the path may carry display params
+                // (?autorotate, ?height=...) after the file name.
+                if (isModelPath(rawPath.split("?")[0] ?? rawPath)) {
+                  return (
+                    <Suspense
+                      fallback={
+                        <span className="my-2 inline-flex h-[340px] w-full items-center justify-center rounded-lg border border-gray-200 bg-[var(--thumb-bg)] align-middle">
+                          <span className="h-7 w-7 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
+                        </span>
+                      }
+                    >
+                      <ModelViewer path={rawPath} alt={alt} />
+                    </Suspense>
+                  );
+                }
                 // Images emitted by :::scene / :::fbf / :::anim blocks are marked
                 // with the `echo-raw` class. They carry their own positioning and
                 // animation styles, so render them bare (no inline-asset wrapper).

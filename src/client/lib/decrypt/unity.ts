@@ -20,6 +20,7 @@ import type { ProcessedAsset } from "./rmmv";
 import { lz4DecompressBlock } from "./lz4";
 import { decodeTexture } from "./unity-texture";
 import { encodePng } from "./png";
+import { CLASS_MESH, extractMeshGlb } from "./unity-mesh";
 
 const CLASS_TEXTURE2D = 28;
 
@@ -39,7 +40,7 @@ type CompanionResolver = (name: string) => Promise<Uint8Array | null>;
 
 // Endian-aware binary reader
 
-class UnityReader {
+export class UnityReader {
   private view: DataView;
   private bytes: Uint8Array;
   pos = 0;
@@ -138,7 +139,7 @@ function parseUnityVersion(s: string): number[] {
   return [nums[0] ?? 0, nums[1] ?? 0, nums[2] ?? 0];
 }
 
-function versionGte(uv: number[], target: number[]): boolean {
+export function versionGte(uv: number[], target: number[]): boolean {
   for (let i = 0; i < target.length; i++) {
     const a = uv[i] ?? 0;
     const b = target[i]!;
@@ -250,11 +251,12 @@ function parseBundle(bytes: Uint8Array): BundleNode[] {
 
 // SerializedFile parsing
 
-type ObjectInfo = { classID: number; byteStart: number; byteSize: number };
+type ObjectInfo = { classID: number; pathID: number; byteStart: number; byteSize: number };
 
 type SerializedFile = {
   little: boolean;
   unityVersion: number[];
+  formatVersion: number;
   objects: ObjectInfo[];
 };
 
@@ -328,13 +330,14 @@ function parseSerializedFile(bytes: Uint8Array): SerializedFile | null {
 
   const objects: ObjectInfo[] = [];
   for (let i = 0; i < objectCount; i++) {
+    let pathID = 0;
     if (bigIDEnabled !== 0) {
-      reader.i64();
+      pathID = reader.i64();
     } else if (version < 14) {
-      reader.i32();
+      pathID = reader.i32();
     } else {
       reader.align(4);
-      reader.i64(); // pathID
+      pathID = reader.i64();
     }
 
     const byteStart = (version >= 22 ? reader.i64() : reader.u32()) + dataOffset;
@@ -351,10 +354,167 @@ function parseSerializedFile(bytes: Uint8Array): SerializedFile | null {
     if (version >= 11 && version < 17) reader.i16(); // scriptTypeIndex
     if (version === 15 || version === 16) reader.u8(); // stripped
 
-    objects.push({ classID, byteStart, byteSize });
+    objects.push({ classID, pathID, byteStart, byteSize });
   }
 
-  return { little: reader.little, unityVersion, objects };
+  return { little: reader.little, unityVersion, formatVersion: version, objects };
+}
+
+// Scene-graph parsing: just enough to link Mesh -> Material -> Texture2D.
+//
+// In a shipped build EditorExtension reads nothing (prefab pointers exist only
+// when the file targets the editor), so Component-derived objects start at
+// m_GameObject and NamedObjects start at m_Name. PPtr is { fileID:i32, pathID }
+// where pathID is i64 for SerializedFile format >= 14 (all modern builds).
+
+const CLASS_MESH_RENDERER = 23;
+const CLASS_MESH_FILTER = 33;
+const CLASS_MATERIAL = 21;
+const CLASS_SKINNED_MESH_RENDERER = 137;
+
+type PPtr = { fileID: number; pathID: number };
+
+function readPPtr(r: UnityReader, formatVersion: number): PPtr {
+  const fileID = r.i32();
+  const pathID = formatVersion >= 14 ? r.i64() : r.i32();
+  return { fileID, pathID };
+}
+
+function skipStringArray(r: UnityReader): void {
+  const n = r.i32();
+  for (let i = 0; i < n; i++) r.alignedString();
+}
+
+// Reads the variable-length Renderer fields up to and including m_Materials,
+// returning the owning GameObject pathID and the material PPtrs. The reader is
+// left positioned right after the materials array (the trailing Renderer fields
+// are only needed when a SkinnedMeshRenderer continues past them).
+function readRendererThroughMaterials(
+  r: UnityReader,
+  uv: number[],
+  fv: number,
+): { gameObject: number; materials: PPtr[] } {
+  const gameObject = readPPtr(r, fv).pathID; // Component.m_GameObject
+
+  // Renderer (5.0+ / 5.4+ layout; older builds are rare for 3D content).
+  if (versionGte(uv, [5, 4])) {
+    r.bool(); // m_Enabled
+    r.u8(); // m_CastShadows
+    r.u8(); // m_ReceiveShadows
+    if (versionGte(uv, [2017, 2])) r.u8(); // m_DynamicOccludee
+    if (versionGte(uv, [2021])) r.u8(); // m_StaticShadowCaster
+    r.u8(); // m_MotionVectors
+    r.u8(); // m_LightProbeUsage
+    r.u8(); // m_ReflectionProbeUsage
+    if (versionGte(uv, [2019, 3])) r.u8(); // m_RayTracingMode
+    if (versionGte(uv, [2020])) r.u8(); // m_RayTraceProcedural
+    r.align(4);
+    if (versionGte(uv, [2018])) r.u32(); // m_RenderingLayerMask
+    if (versionGte(uv, [2018, 3])) r.i32(); // m_RendererPriority
+    r.u16(); // m_LightmapIndex
+    r.u16(); // m_LightmapIndexDynamic
+  } else {
+    r.bool(); // m_Enabled
+    r.align(4);
+    r.u8(); // m_CastShadows
+    r.bool(); // m_ReceiveShadows
+    r.align(4);
+  }
+  if (versionGte(uv, [3, 0])) r.bytesN(16); // m_LightmapTilingOffset (Vector4)
+  if (versionGte(uv, [5, 0])) r.bytesN(16); // m_LightmapTilingOffsetDynamic
+
+  const matCount = r.i32();
+  const materials: PPtr[] = [];
+  if (matCount < 0 || matCount > 100000) return { gameObject, materials };
+  for (let i = 0; i < matCount; i++) materials.push(readPPtr(r, fv));
+  return { gameObject, materials };
+}
+
+// Finish the trailing Renderer fields a SkinnedMeshRenderer reads before its
+// own data. Mirrors AssetStudio's Renderer tail for 5.4+ builds.
+function skipRendererTail(r: UnityReader, uv: number[], fv: number): void {
+  if (versionGte(uv, [5, 5]))
+    r.bytesN(4); // StaticBatchInfo
+  else skipU32ArrayLocal(r); // m_SubsetIndices
+  readPPtr(r, fv); // m_StaticBatchRoot
+  if (versionGte(uv, [5, 4])) {
+    readPPtr(r, fv); // m_ProbeAnchor
+    readPPtr(r, fv); // m_LightProbeVolumeOverride
+  }
+  r.u32(); // m_SortingLayerID (>=5.6 is uint)
+  r.i16(); // m_SortingOrder
+  r.align(4);
+}
+
+function skipU32ArrayLocal(r: UnityReader): void {
+  const n = r.i32();
+  r.bytesN(n * 4);
+}
+
+function readSkinnedMeshRenderer(
+  r: UnityReader,
+  uv: number[],
+  fv: number,
+): { mesh: number; materials: PPtr[] } {
+  const { materials } = readRendererThroughMaterials(r, uv, fv);
+  skipRendererTail(r, uv, fv);
+  r.i32(); // m_Quality
+  r.bool(); // m_UpdateWhenOffscreen
+  r.bool(); // m_SkinNormals
+  r.align(4);
+  const mesh = readPPtr(r, fv).pathID; // m_Mesh
+  return { mesh, materials };
+}
+
+function readMeshFilter(r: UnityReader, fv: number): { gameObject: number; mesh: number } {
+  const gameObject = readPPtr(r, fv).pathID; // Component.m_GameObject
+  const mesh = readPPtr(r, fv).pathID; // m_Mesh
+  return { gameObject, mesh };
+}
+
+// Reads a Material far enough to recover the main texture's pathID (same-file
+// references only; cross-file PPtrs are reported as null).
+function readMaterialMainTexture(r: UnityReader, uv: number[], fv: number): number | null {
+  r.alignedString(); // m_Name
+  readPPtr(r, fv); // m_Shader
+  if (versionGte(uv, [2021, 3])) {
+    skipStringArray(r); // m_ValidKeywords
+    skipStringArray(r); // m_InvalidKeywords
+  } else if (versionGte(uv, [5, 0])) {
+    r.alignedString(); // m_ShaderKeywords
+  }
+  if (versionGte(uv, [5, 0])) r.u32(); // m_LightmapFlags
+  if (versionGte(uv, [5, 6])) {
+    r.bool(); // m_EnableInstancingVariants
+    r.align(4);
+  }
+  if (versionGte(uv, [4, 3])) r.i32(); // m_CustomRenderQueue
+  if (versionGte(uv, [5, 1])) {
+    const tagCount = r.i32();
+    for (let i = 0; i < tagCount; i++) {
+      r.alignedString();
+      r.alignedString();
+    }
+  }
+  if (versionGte(uv, [5, 6])) skipStringArray(r); // disabledShaderPasses
+
+  // UnityPropertySheet.m_TexEnvs
+  const texCount = r.i32();
+  if (texCount < 0 || texCount > 100000) return null;
+  let first: number | null = null;
+  let preferred: number | null = null;
+  for (let i = 0; i < texCount; i++) {
+    const key = r.alignedString();
+    const tex = readPPtr(r, fv); // m_Texture
+    r.bytesN(16); // m_Scale (Vector2) + m_Offset (Vector2)
+    if (tex.fileID !== 0 || tex.pathID === 0) continue; // same-file textures only
+    if (first === null) first = tex.pathID;
+    const k = key.toLowerCase();
+    if (preferred === null && (k === "_maintex" || k === "_basemap" || k === "_basecolormap")) {
+      preferred = tex.pathID;
+    }
+  }
+  return preferred ?? first;
 }
 
 // Texture2D field reading
@@ -433,7 +593,7 @@ function readTexture2D(reader: UnityReader, uv: number[]): TextureDescriptor | n
 
 // Extraction pipeline
 
-async function* extractTextures(
+async function* extractObjects(
   fileBytes: Uint8Array,
   resolve: CompanionResolver,
   usedNames: Set<string>,
@@ -446,56 +606,163 @@ async function* extractTextures(
   }
   if (!sf) return;
 
+  const uv = sf.unityVersion;
+  const fv = sf.formatVersion;
+  const inBounds = (o: ObjectInfo) =>
+    o.byteStart >= 0 && o.byteStart + o.byteSize <= fileBytes.length;
+  const bytesOf = (o: ObjectInfo) => fileBytes.subarray(o.byteStart, o.byteStart + o.byteSize);
+
+  // First pass: index objects and link Mesh -> Material -> Texture2D. The link
+  // runs through (Skinned)MeshRenderer components, so it's built before emitting
+  // anything. Cross-file PPtrs (fileID != 0) are left unresolved (same-file only).
+  const texByPath = new Map<number, ObjectInfo>();
+  const meshObjs: ObjectInfo[] = [];
+  const meshToMats = new Map<number, PPtr[]>();
+  const matToTex = new Map<number, number>();
+  const goToMesh = new Map<number, number>(); // GameObject pathID -> Mesh pathID (MeshFilter)
+  const goToMats = new Map<number, PPtr[]>(); // GameObject pathID -> materials (MeshRenderer)
+
   for (const obj of sf.objects) {
-    if (obj.classID !== CLASS_TEXTURE2D) continue;
-    if (obj.byteStart < 0 || obj.byteStart + obj.byteSize > fileBytes.length) continue;
-
-    let desc: TextureDescriptor | null;
+    if (!inBounds(obj)) continue;
     try {
-      const objBytes = fileBytes.subarray(obj.byteStart, obj.byteStart + obj.byteSize);
-      desc = readTexture2D(new UnityReader(objBytes, sf.little), sf.unityVersion);
+      switch (obj.classID) {
+        case CLASS_TEXTURE2D:
+          texByPath.set(obj.pathID, obj);
+          break;
+        case CLASS_MESH:
+          meshObjs.push(obj);
+          break;
+        case CLASS_MESH_FILTER: {
+          const mf = readMeshFilter(new UnityReader(bytesOf(obj), sf.little), fv);
+          if (mf.mesh) goToMesh.set(mf.gameObject, mf.mesh);
+          break;
+        }
+        case CLASS_MESH_RENDERER: {
+          const mr = readRendererThroughMaterials(new UnityReader(bytesOf(obj), sf.little), uv, fv);
+          if (mr.materials.length > 0) goToMats.set(mr.gameObject, mr.materials);
+          break;
+        }
+        case CLASS_SKINNED_MESH_RENDERER: {
+          const smr = readSkinnedMeshRenderer(new UnityReader(bytesOf(obj), sf.little), uv, fv);
+          if (smr.mesh && smr.materials.length > 0) meshToMats.set(smr.mesh, smr.materials);
+          break;
+        }
+        case CLASS_MATERIAL: {
+          const tex = readMaterialMainTexture(new UnityReader(bytesOf(obj), sf.little), uv, fv);
+          if (tex != null) matToTex.set(obj.pathID, tex);
+          break;
+        }
+        default:
+          break;
+      }
     } catch {
-      continue; // overran the object: skip
+      // Malformed object: ignore for linking purposes.
     }
-    if (!desc) continue;
+  }
 
-    let imageData = desc.inlineData;
-    if ((!imageData || imageData.length === 0) && desc.streamData) {
-      const res = await resolve(desc.streamData.path);
-      if (!res) continue;
-      const { offset, size } = desc.streamData;
-      if (offset < 0 || offset + size > res.length) continue;
-      imageData = res.subarray(offset, offset + size);
+  // Join static meshes (MeshFilter + MeshRenderer share a GameObject).
+  for (const [go, meshPathID] of goToMesh) {
+    if (meshToMats.has(meshPathID)) continue;
+    const mats = goToMats.get(go);
+    if (mats) meshToMats.set(meshPathID, mats);
+  }
+
+  // Decode a Texture2D to PNG once, cached by pathID (shared by texture-asset
+  // emission and mesh texture embedding).
+  const texCache = new Map<number, { png: Uint8Array; name: string } | null>();
+  const decodeTex = async (pathID: number): Promise<{ png: Uint8Array; name: string } | null> => {
+    if (texCache.has(pathID)) return texCache.get(pathID) ?? null;
+    const obj = texByPath.get(pathID);
+    if (!obj) {
+      texCache.set(pathID, null);
+      return null;
     }
-    if (!imageData || imageData.length === 0) continue;
-
-    let rgba: Uint8Array | null;
+    let result: { png: Uint8Array; name: string } | null = null;
     try {
-      rgba = decodeTexture(imageData, desc.width, desc.height, desc.format);
+      const desc = readTexture2D(new UnityReader(bytesOf(obj), sf.little), uv);
+      if (desc) {
+        let imageData = desc.inlineData;
+        if ((!imageData || imageData.length === 0) && desc.streamData) {
+          const res = await resolve(desc.streamData.path);
+          const { offset, size } = desc.streamData;
+          if (res && offset >= 0 && offset + size <= res.length) {
+            imageData = res.subarray(offset, offset + size);
+          }
+        }
+        if (imageData && imageData.length > 0) {
+          const rgba = decodeTexture(imageData, desc.width, desc.height, desc.format);
+          if (rgba) {
+            const png = await encodePng(desc.width, desc.height, rgba);
+            result = { png, name: desc.name };
+          }
+        }
+      }
     } catch {
-      continue;
+      result = null;
     }
-    if (!rgba) continue; // unsupported GPU format
+    texCache.set(pathID, result);
+    return result;
+  };
 
-    let png: Uint8Array;
-    try {
-      png = await encodePng(desc.width, desc.height, rgba);
-    } catch {
-      continue;
+  // Resolve the main texture pathID for a mesh via its first textured material.
+  const meshTexturePath = (meshPathID: number): number | null => {
+    const mats = meshToMats.get(meshPathID);
+    if (!mats) return null;
+    for (const m of mats) {
+      if (m.fileID !== 0) continue; // same-file materials only
+      const tex = matToTex.get(m.pathID);
+      if (tex != null && texByPath.has(tex)) return tex;
     }
+    return null;
+  };
 
-    const stem = sanitizeName(desc.name);
-    let path = `textures/${stem}.png`.toLowerCase();
+  const claimName = (folder: string, stem: string, extn: string): string => {
+    let path = `${folder}/${stem}.${extn}`.toLowerCase();
     let suffix = 1;
-    while (usedNames.has(path)) {
-      path = `textures/${stem}_${suffix++}.png`.toLowerCase();
-    }
+    while (usedNames.has(path)) path = `${folder}/${stem}_${suffix++}.${extn}`.toLowerCase();
     usedNames.add(path);
+    return path;
+  };
+
+  // Emit every Texture2D as a PNG asset and remember the asset path each texture
+  // pathID landed at, so meshes can reference it (instead of re-embedding it).
+  const texPathToAsset = new Map<number, string>();
+  for (const pathID of texByPath.keys()) {
+    const dec = await decodeTex(pathID);
+    if (!dec) continue;
+    const assetPath = claimName("textures", sanitizeName(dec.name), "png");
+    texPathToAsset.set(pathID, assetPath);
+    yield {
+      path: assetPath,
+      blob: new Blob([dec.png], { type: "image/png" }),
+      mimeType: "image/png",
+    };
+  }
+
+  // Emit meshes as GLBs that *reference* their linked texture asset (applied
+  // lazily by ModelViewer), rather than embedding a copy of it.
+  for (const obj of meshObjs) {
+    const texPathID = meshTexturePath(obj.pathID);
+    const textureRef = texPathID != null ? (texPathToAsset.get(texPathID) ?? null) : null;
+
+    let extracted: { name: string; data: Uint8Array } | null;
+    try {
+      extracted = await extractMeshGlb(
+        bytesOf(obj),
+        sf.little,
+        uv,
+        (name) => resolve(name),
+        textureRef,
+      );
+    } catch {
+      continue; // malformed / unsupported mesh: skip
+    }
+    if (!extracted) continue;
 
     yield {
-      path,
-      blob: new Blob([png], { type: "image/png" }),
-      mimeType: "image/png",
+      path: claimName("meshes", sanitizeName(extracted.name), "glb"),
+      blob: new Blob([extracted.data], { type: "model/gltf-binary" }),
+      mimeType: "model/gltf-binary",
     };
   }
 }
@@ -588,10 +855,10 @@ export async function* processUnityFiles(files: File[]): AsyncGenerator<Processe
       for (const node of nodes) nodeMap.set(baseName(node.path).toLowerCase(), node.data);
       const resolver = makeResolver(nodeMap);
       for (const node of nodes) {
-        yield* extractTextures(node.data, resolver, usedNames);
+        yield* extractObjects(node.data, resolver, usedNames);
       }
     } else {
-      yield* extractTextures(bytes, makeResolver(null), usedNames);
+      yield* extractObjects(bytes, makeResolver(null), usedNames);
     }
   }
 }

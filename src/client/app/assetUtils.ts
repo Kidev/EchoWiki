@@ -6,6 +6,14 @@ export function isAudioPath(p: string): boolean {
   return /\.(ogg|mp3|m4a|wav|mid|midi)$/i.test(p);
 }
 
+// Recognized 3D model formats. These map to the lazily-loaded three.js loaders
+// in ModelViewer (glTF/GLB, OBJ, STL, PLY, FBX, Collada, 3MF). GLB is the
+// recommended self-contained format; OBJ/Collada referencing external material
+// or texture files render geometry only (the sibling files aren't bundled).
+export function isModelPath(p: string): boolean {
+  return /\.(glb|gltf|obj|stl|ply|fbx|dae|3mf)$/i.test(p);
+}
+
 export function getFileName(p: string): string {
   const parts = p.split("/");
   return parts[parts.length - 1] ?? p;
@@ -23,9 +31,10 @@ export function getExt(p: string): string {
   return dot > 0 ? fileName.slice(dot) : "";
 }
 
-export function getCategory(p: string): "images" | "audio" | "data" {
+export function getCategory(p: string): "images" | "audio" | "models" | "data" {
   if (isImagePath(p)) return "images";
   if (isAudioPath(p)) return "audio";
+  if (isModelPath(p)) return "models";
   return "data";
 }
 

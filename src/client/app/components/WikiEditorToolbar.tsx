@@ -6,12 +6,13 @@ import {
   type MutableRefObject,
   type ReactNode,
 } from "react";
-import { getFileName, isImagePath, isAudioPath } from "../assetUtils";
+import { getFileName, isImagePath, isAudioPath, isModelPath } from "../assetUtils";
 import { useEchoUrl, preloadPaths } from "../../lib/echo";
 import { listAssetPaths } from "../../lib/idb";
 
 function MiniAssetPickerItem({ path, onClick }: { path: string; onClick: () => void }) {
   const isImg = isImagePath(path);
+  const isModel = isModelPath(path);
   const { url } = useEchoUrl(isImg ? path : null);
   return (
     <div
@@ -27,6 +28,20 @@ function MiniAssetPickerItem({ path, onClick }: { path: string; onClick: () => v
           ) : (
             <div className="w-4 h-4 border border-gray-300 border-t-gray-500 rounded-full animate-spin" />
           )
+        ) : isModel ? (
+          <svg
+            className="w-5 h-5 text-violet-400"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M12 2l9 5v10l-9 5-9-5V7l9-5zM3.5 7L12 12m0 0l8.5-5M12 12v10"
+            />
+          </svg>
         ) : (
           <svg
             className="w-5 h-5 text-blue-400"
@@ -54,7 +69,7 @@ function MiniAssetPicker({
   type = "images",
   onSelect,
 }: {
-  type?: "images" | "audio";
+  type?: "images" | "audio" | "models";
   onSelect: (path: string) => void;
 }) {
   const [allPaths, setAllPaths] = useState<string[]>([]);
@@ -63,7 +78,9 @@ function MiniAssetPicker({
 
   useEffect(() => {
     void listAssetPaths().then(async (all) => {
-      const filtered = type === "images" ? all.filter(isImagePath) : all.filter(isAudioPath);
+      const predicate =
+        type === "images" ? isImagePath : type === "models" ? isModelPath : isAudioPath;
+      const filtered = all.filter(predicate);
       setAllPaths(filtered);
       setLoadingPaths(false);
       if (type === "images") await preloadPaths(filtered.slice(0, 60));
@@ -80,7 +97,7 @@ function MiniAssetPicker({
   if (loadingPaths) {
     return (
       <div className="flex items-center justify-center py-6 text-sm text-[var(--text-muted)]">
-        Loading assets…
+        Loading assets...
       </div>
     );
   }
@@ -98,7 +115,7 @@ function MiniAssetPicker({
         type="text"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        placeholder="Search assets…"
+        placeholder="Search assets..."
         className="w-full text-xs px-2 py-1 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none"
       />
       <div className="flex flex-wrap gap-1 max-h-44 overflow-auto">
@@ -236,6 +253,95 @@ function ImageInsertDialog({
   );
 }
 
+function ModelInsertDialog({
+  onInsert,
+  onDismiss,
+}: {
+  onInsert: (text: string) => void;
+  onDismiss: () => void;
+}) {
+  const [path, setPath] = useState("");
+  const [alt, setAlt] = useState("");
+  const [autorotate, setAutorotate] = useState(true);
+  const [height, setHeight] = useState("");
+
+  const params: string[] = [];
+  if (autorotate) params.push("autorotate");
+  if (height.trim()) params.push(`height=${height.trim()}`);
+  const query = params.length > 0 ? `?${params.join("&")}` : "";
+  const preview = path ? `![${alt || getFileName(path)}](echo://${path}${query})` : "";
+
+  return (
+    <InsertDialogShell title="Insert 3D Model" onDismiss={onDismiss}>
+      <div className="flex flex-col gap-4">
+        <div>
+          <p className="text-xs font-medium text-[var(--text-muted)] mb-1">Select model</p>
+          <MiniAssetPicker
+            type="models"
+            onSelect={(p) => {
+              setPath(p);
+              if (!alt) setAlt(getFileName(p));
+            }}
+          />
+          <p className="text-[10px] text-[var(--text-muted)] mt-1">
+            Supports glTF/GLB, OBJ, STL, PLY, FBX, Collada (.dae) and 3MF. GLB is recommended
+            (self-contained). Drag to orbit.
+          </p>
+        </div>
+        {path && (
+          <div className="flex flex-col gap-2">
+            <div>
+              <label className="text-xs font-medium text-[var(--text-muted)] block mb-1">
+                Caption / alt text
+              </label>
+              <input
+                type="text"
+                value={alt}
+                onChange={(e) => setAlt(e.target.value)}
+                className="w-full text-xs px-2 py-1.5 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none"
+                placeholder="Model name"
+              />
+            </div>
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autorotate}
+                  onChange={(e) => setAutorotate(e.target.checked)}
+                />
+                Auto-rotate
+              </label>
+              <label className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
+                Height
+                <input
+                  type="text"
+                  value={height}
+                  onChange={(e) => setHeight(e.target.value)}
+                  placeholder="340px"
+                  className="w-20 text-xs px-2 py-1 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none"
+                />
+              </label>
+            </div>
+            <div className="bg-[var(--thumb-bg)] rounded p-2">
+              <p className="text-[10px] text-[var(--text-muted)] mb-1">Preview markdown</p>
+              <code className="text-xs break-all text-[var(--text)]">{preview}</code>
+            </div>
+            <button
+              onClick={() => {
+                onInsert(preview);
+                onDismiss();
+              }}
+              className="self-end text-sm px-4 py-1.5 rounded bg-[var(--accent)] text-white hover:opacity-90 cursor-pointer"
+            >
+              Insert
+            </button>
+          </div>
+        )}
+      </div>
+    </InsertDialogShell>
+  );
+}
+
 type InfoboxRow = { key: string; value: string };
 
 function InfoboxInsertDialog({
@@ -316,7 +422,7 @@ function InfoboxInsertDialog({
               onClick={() => setShowPicker((v) => !v)}
               className="text-xs px-3 py-1 rounded border border-gray-300 text-[var(--text-muted)] hover:bg-[var(--control-bg)] cursor-pointer"
             >
-              {showPicker ? "Hide picker" : "Pick image…"}
+              {showPicker ? "Hide picker" : "Pick image..."}
             </button>
           )}
           {showPicker && !imagePath && (
@@ -333,7 +439,7 @@ function InfoboxInsertDialog({
         </div>
         <div>
           <div className="flex items-center justify-between mb-1">
-            <label className="text-xs font-medium text-[var(--text-muted)]">Key — Value rows</label>
+            <label className="text-xs font-medium text-[var(--text-muted)]">Key: Value rows</label>
             <button
               onClick={addRow}
               className="text-xs text-[var(--accent)] cursor-pointer hover:underline"
@@ -469,7 +575,7 @@ function SceneInsertDialog({
                     onClick={() => setPickerFor(pickerFor === i ? null : i)}
                     className="text-[10px] text-[var(--accent)] cursor-pointer hover:underline shrink-0"
                   >
-                    {pickerFor === i ? "Close" : "Pick…"}
+                    {pickerFor === i ? "Close" : "Pick..."}
                   </button>
                   <button
                     onClick={() => removeLayer(i)}
@@ -615,7 +721,7 @@ function FbfInsertDialog({
                   onClick={() => setShowPicker((v) => !v)}
                   className="text-xs text-[var(--accent)] cursor-pointer hover:underline shrink-0"
                 >
-                  Pick…
+                  Pick...
                 </button>
               </div>
               {showPicker && (
@@ -811,7 +917,7 @@ function AnimInsertDialog({
                 onClick={() => setShowFramePicker((v) => !v)}
                 className="text-xs text-[var(--accent)] cursor-pointer hover:underline self-start"
               >
-                {showFramePicker ? "Hide" : "Add frames…"}
+                {showFramePicker ? "Hide" : "Add frames..."}
               </button>
               {showFramePicker && (
                 <MiniAssetPicker
@@ -889,7 +995,7 @@ function AnimInsertDialog({
                 onClick={() => setShowBgPicker((v) => !v)}
                 className="text-[10px] text-[var(--accent)] cursor-pointer hover:underline"
               >
-                Pick…
+                Pick...
               </button>
             )}
           </div>
@@ -987,13 +1093,13 @@ function DefInsertDialog({
                 />
                 <span className="text-xs text-[var(--text-muted)]">=</span>
                 <code className="text-[10px] bg-[var(--thumb-bg)] px-1.5 py-1 rounded flex-1 truncate">
-                  {entry.path || "—"}
+                  {entry.path || ", "}
                 </code>
                 <button
                   onClick={() => setPickerFor(pickerFor === i ? null : i)}
                   className="text-[10px] text-[var(--accent)] cursor-pointer hover:underline shrink-0"
                 >
-                  Pick…
+                  Pick...
                 </button>
                 <button
                   onClick={() => removeEntry(i)}
@@ -1035,7 +1141,7 @@ function DefInsertDialog({
   );
 }
 
-export type ToolbarDialog = "image" | "infobox" | "scene" | "fbf" | "anim" | "def" | null;
+export type ToolbarDialog = "image" | "model" | "infobox" | "scene" | "fbf" | "anim" | "def" | null;
 
 function ToolbarBtn({
   label,
@@ -1127,6 +1233,11 @@ function WikiToolbar({
               onClick={() => setDialog("image")}
             />
             <ToolbarBtn
+              label="3D"
+              title="Insert interactive 3D model"
+              onClick={() => setDialog("model")}
+            />
+            <ToolbarBtn
               label="Infobox"
               title="Insert Wikipedia-style infobox"
               onClick={() => setDialog("infobox")}
@@ -1154,7 +1265,7 @@ function WikiToolbar({
             <div className="w-px h-3 bg-gray-200 mx-0.5 shrink-0" />
             <ToolbarBtn
               label="Center"
-              title="Wrap selection in >>>…<<<"
+              title="Wrap selection in >>>...<<<"
               onClick={() => quickInsert(">>>content<<<")}
             />
             <ToolbarBtn label="Bold" title="Bold" onClick={() => quickInsert("**text**")} />
@@ -1171,6 +1282,9 @@ function WikiToolbar({
 
       {dialog === "image" && (
         <ImageInsertDialog onInsert={insertAtCursor} onDismiss={() => setDialog(null)} />
+      )}
+      {dialog === "model" && (
+        <ModelInsertDialog onInsert={insertAtCursor} onDismiss={() => setDialog(null)} />
       )}
       {dialog === "infobox" && (
         <InfoboxInsertDialog onInsert={insertAtCursor} onDismiss={() => setDialog(null)} />

@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -14,7 +16,9 @@ import {
   type Edition,
 } from "../../lib/editions";
 import { getAsset } from "../../lib/idb";
-import { getCategory, getFileName, isImagePath, toDisplayName } from "../assetUtils";
+import { getCategory, getFileName, isImagePath, isModelPath, toDisplayName } from "../assetUtils";
+
+const ModelViewer = lazy(() => import("./ModelViewer"));
 
 async function resolveOriginalBlob(path: string): Promise<Blob | null> {
   const asset = await getAsset(path.toLowerCase());
@@ -251,11 +255,12 @@ export function AssetPreview({
     return parts.length > 0 ? `${displayName} ${parts.join(", ")}` : displayName;
   }, [displayName, editions]);
 
-  const echoMarkdown = isImagePath(path)
+  const isEmbeddable = isImagePath(path) || isModelPath(path);
+  const echoMarkdown = isEmbeddable
     ? `![${editedDisplayName}](echo://${fullEchoPath})`
     : `[${editedDisplayName}](echo://${fullEchoPath})`;
 
-  const originalMarkdown = isImagePath(path)
+  const originalMarkdown = isEmbeddable
     ? `![${toDisplayName(path)}](echo://${path})`
     : `[${toDisplayName(path)}](echo://${path})`;
 
@@ -449,6 +454,24 @@ export function AssetPreview({
               style={{ backgroundColor: "var(--thumb-bg)" }}
             >
               <AudioPreview url={showUrl} playbackRate={audioEditionParams?.playbackRate} />
+            </div>
+          ) : category === "models" ? (
+            <div
+              className="m-1 mb-0 overflow-hidden rounded"
+              style={{ backgroundColor: "var(--thumb-bg)" }}
+            >
+              <Suspense
+                fallback={
+                  <div
+                    className="flex items-center justify-center"
+                    style={{ width: "70vw", maxWidth: 720, height: "60vh" }}
+                  >
+                    <div className="w-8 h-8 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+                  </div>
+                }
+              >
+                <ModelViewer path={echoPath} alt={displayName} variant="preview" />
+              </Suspense>
             </div>
           ) : (
             <div className="flex items-center justify-center w-32 h-32 m-1 rounded bg-gray-800 text-gray-400 text-sm">

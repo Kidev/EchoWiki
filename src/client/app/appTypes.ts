@@ -6,7 +6,7 @@ export type AppMode = "main" | "voting";
 
 export type ActiveTab = "wiki" | "assets" | "submissions" | "settings";
 
-export type FilterType = "images" | "audio";
+export type FilterType = "images" | "audio" | "models";
 
 export type EchoLinkTarget =
   | { type: "wiki"; page: string; anchor: string | null }

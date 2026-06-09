@@ -32,6 +32,7 @@ async function sniffFormat(file: File): Promise<BinFormat> {
 const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"]);
 const AUDIO_EXTS = new Set([".ogg", ".mp3", ".m4a", ".wav", ".mid", ".midi", ".opus", ".flac"]);
 const VIDEO_EXTS = new Set([".mp4", ".webm", ".ogv"]);
+const MODEL_EXTS = new Set([".glb", ".gltf", ".obj", ".stl", ".ply", ".fbx", ".dae", ".3mf"]);
 
 const MIME_MAP: Record<string, string> = {
   ".png": "image/png",
@@ -51,6 +52,14 @@ const MIME_MAP: Record<string, string> = {
   ".mp4": "video/mp4",
   ".webm": "video/webm",
   ".ogv": "video/ogg",
+  ".glb": "model/gltf-binary",
+  ".gltf": "model/gltf+json",
+  ".obj": "model/obj",
+  ".stl": "model/stl",
+  ".ply": "model/ply",
+  ".fbx": "application/octet-stream",
+  ".dae": "model/vnd.collada+xml",
+  ".3mf": "model/3mf",
 };
 
 function getExtLower(name: string): string {
@@ -64,7 +73,7 @@ function getMimeType(name: string): string {
 
 function isMediaFile(name: string): boolean {
   const ext = getExtLower(name);
-  return IMAGE_EXTS.has(ext) || AUDIO_EXTS.has(ext) || VIDEO_EXTS.has(ext);
+  return IMAGE_EXTS.has(ext) || AUDIO_EXTS.has(ext) || VIDEO_EXTS.has(ext) || MODEL_EXTS.has(ext);
 }
 
 // Derive a stored path using the immediate parent folder as category.
