@@ -71,6 +71,22 @@ export function detectEngine(files: File[]): DetectionResult {
     return { engine: "generic", dataRoot: "", hasEncryption: false };
   }
 
+  // Unreal Engine pak archives (media carved out of uncompressed entries)
+  if (hasExt(idx, ".pak")) {
+    return { engine: "generic", dataRoot: "", hasEncryption: false };
+  }
+
+  // Unity builds: asset bundles or serialized files (Texture2D extraction)
+  if (
+    hasExt(idx, ".assets") ||
+    hasExt(idx, ".bundle") ||
+    hasExt(idx, ".unity3d") ||
+    hasExt(idx, ".assetbundle") ||
+    hasPath(idx, "globalgamemanagers")
+  ) {
+    return { engine: "generic", dataRoot: "", hasEncryption: false };
+  }
+
   if (hasPath(idx, "www/img/system/e5230bf37c4fabb0")) {
     return { engine: "tcoaal", dataRoot: "www/", hasEncryption: true };
   }

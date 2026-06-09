@@ -3,6 +3,8 @@ import { processZipArchive } from "./zip";
 import { processRpaArchive } from "./rpa";
 import { processGodotPck } from "./godotpck";
 import { processGameMakerData } from "./gamemaker";
+import { looksLikeUnity, processUnityFiles } from "./unity";
+import { processUnrealPak } from "./unrealpak";
 
 // Sniff the first bytes of an unknown file (e.g. .bin) to determine its true format,
 // then dispatch to the appropriate parser.
@@ -79,6 +81,15 @@ function deriveStoredPath(relativePath: string): string {
 export async function* processGenericFiles(files: File[]): AsyncGenerator<ProcessedAsset> {
   const yielded = new Set<string>();
 
+  // Unity builds: extract Texture2D objects from bundles / serialized files.
+  if (looksLikeUnity(files)) {
+    for await (const asset of processUnityFiles(files)) {
+      if (yielded.has(asset.path)) continue;
+      yielded.add(asset.path);
+      yield asset;
+    }
+  }
+
   for (const file of files) {
     const rel = file.webkitRelativePath;
     const slashIdx = rel.indexOf("/");
@@ -116,6 +127,21 @@ export async function* processGenericFiles(files: File[]): AsyncGenerator<Proces
         }
       } catch {
         // Corrupted or unsupported archive: skip
+      }
+      continue;
+    }
+
+    // Carve embedded media out of Unreal Engine pak archives (.pak)
+    if (ext === ".pak") {
+      try {
+        for await (const asset of processUnrealPak(file)) {
+          if (!yielded.has(asset.path)) {
+            yielded.add(asset.path);
+            yield asset;
+          }
+        }
+      } catch {
+        // Encrypted / Oodle-compressed / corrupt pak: skip
       }
       continue;
     }

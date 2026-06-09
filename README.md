@@ -6,6 +6,33 @@ Rich wikis for Reddit communities. Live editing, advanced markdown, collaborativ
 
 EchoWiki turns a subreddit wiki into a proper editing and reading environment. Moderators write and update pages inside the app with a live Markdown preview. Readers get richer formatting than Reddit's native wiki. Contributors can propose changes that mods review before merging, and optionally the community votes on whether to accept each suggestion. For a lot of games communities specifically, the app resolves special `echo://` links to in-game assets that each reader loads from their own copy of the game, without any files being uploaded anywhere, making it respect the copyrights.
 
+## Contents
+
+- [Wiki](#wiki)
+  - [Live Editor](#live-editor)
+  - [Section Links](#section-links)
+- [Collaborative Editing](#collaborative-editing)
+  - [Suggestions](#suggestions)
+  - [Voting](#voting)
+  - [Mod Review](#mod-review)
+  - [Flair Rewards](#flair-rewards)
+- [Echo Links](#echo-links)
+  - [Asset Editions](#asset-editions)
+  - [Composition Blocks](#composition-blocks)
+- [Asset Import](#asset-import)
+  - [Supported Engines](#supported-engines)
+- [Asset Browser](#asset-browser)
+- [Mod Settings](#mod-settings)
+  - [General](#general)
+  - [Game](#game)
+  - [Style](#style)
+  - [Theme](#theme)
+  - [Mapping](#mapping)
+  - [Collaborative](#collaborative)
+  - [Voting](#voting-1)
+- [A Note to Game Developers](#a-note-to-game-developers)
+- [Privacy](#privacy)
+
 ## Wiki
 
 Wiki pages are fetched from the subreddit's wiki via the Reddit API and rendered inside the app with a full Markdown engine.
@@ -26,7 +53,7 @@ Navigation uses a breadcrumb bar that slides down from the top when hovering the
 
 ### Live Editor
 
-![img](docs/editor.png)  
+![img](docs/editor.png)
 
 Moderators can edit wiki pages directly inside the app. An edit button appears in the top-right corner of the wiki view when in expanded mode. Clicking it opens the editor, where the Markdown source sits next to a live preview that updates as you type.
 
@@ -46,7 +73,7 @@ When collaborative mode is enabled, users who meet the subreddit's eligibility t
 
 ### Suggestions
 
-![Suggestions](docs/suggestions.png)  
+![Suggestions](docs/suggestions.png)
 
 Suggesting a change opens the same editor as the mod editor, with three ways to preview your work:
 
@@ -60,7 +87,7 @@ A user can update their pending suggestion from the Submissions tab. Each update
 
 ### Voting
 
-![Vote](docs/vote.png) 
+![Vote](docs/vote.png)
 
 When voting is enabled, submitting a suggestion creates a separate Reddit post where community members cast votes. The voting post embeds the same side-by-side comparison as the editor (Normal / Source / Diff modes) so voters can review exactly what is changing, then vote **✓ FOR** or **✗ AGAINST**; clicking the chosen side again retracts the vote. Running tallies, the thresholds, and the time remaining are shown along the top.
 
@@ -76,7 +103,7 @@ The voting post includes a pinned bot comment that records vote events: when the
 
 ### Mod Review
 
-![Suggestions moderator](docs/suggestions-mod.png)  
+![Suggestions moderator](docs/suggestions-mod.png)
 
 Moderators with "wiki" or "config" permissions see a Submissions tab listing all pending suggestions, each with the contributor, target page, description, and vote status if voting is enabled. Clicking Review opens a full-screen modal comparing the current page (left) and the suggestion (right), with the same Normal / Source / Diff modes as the editor; either column can be collapsed by clicking its label.
 
@@ -103,7 +130,7 @@ Users who have imported their copy of the game see assets resolved inline. Every
 
 ### Asset Editions
 
-![Asset edit](docs/asset-edit.png)  
+![Asset edit](docs/asset-edit.png)
 
 Echo links support edition parameters that transform how assets are displayed, using URL query-parameter syntax appended to the path. Editions are applied client-side in real-time.
 
@@ -123,9 +150,9 @@ Editions combine with `&`:
 
 The asset preview lightbox includes interactive controls for applying editions. The generated echo link (copied via the copy button) includes the active edition suffixes.
 
-![Audio](docs/audio.png)  
+![Audio](docs/audio.png)
 
-![Sprites](docs/sprites.png)  
+![Sprites](docs/sprites.png)
 
 ### Composition Blocks
 
@@ -133,7 +160,7 @@ Wiki pages support a set of fenced block directives for building richer layouts 
 
 **`:::infobox`** renders a classic stat-table infobox: an optional title header and image on top of a list of `Label | value` rows, floated to one side of the page.
 
-![Infobox](docs/card.png)  
+![Infobox](docs/card.png)
 
 ```
 :::infobox title="Character Name" image=echo://img/faces/hero.png align=right
@@ -153,7 +180,7 @@ Weapon | Echo Blade
 
 **`:::anim`** moves a sprite across a background scene. Reference an `:::fbf` block via `ref=alias`, or supply frames inline. Define the movement path as one or more keyframe lines (`N% key=value ...`).
 
-![Scene](docs/animate.gif)  
+![Scene](docs/animate.gif)
 
 | Param              | Default | Description                                                                                                                                                                                                               |
 | ------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -183,7 +210,7 @@ echo://img/characters/actor.png?sprite=12,8,1
 
 **Multi-phase animations** swap the sprite mid-loop: add `---` separators inside `:::anim`, each with its own frames and movement keyframes (and optional `fps`, `spritesize`, `loops`, `duration`, `hold`). They composite into one seamless loop: e.g. a right-facing walk left-to-right, then a left-facing walk back: so the character always faces the way it is walking.
 
-![Scene](docs/animate-blocs.gif)  
+![Scene](docs/animate-blocs.gif)
 
 ```
 :::anim width=75% height=50% bg=echo://img/parallaxes/bg.png?crop bgopacity=1
@@ -217,7 +244,7 @@ theme = echo://audio/bgm/battle.ogg
 
 Content can also be centered with `>>>content<<<`, which wraps anything between the markers in a centered div.
 
-![Images](docs/center-img.png)  
+![Images](docs/center-img.png)
 
 Inline echo images accept two display hints appended like editions: `?emoji` shrinks the image to the height of the surrounding text so it reads as an inline icon, and `?outline` draws a dashed accent-colored outline around it. They combine with editions and with each other.
 
@@ -229,7 +256,25 @@ If enabled, the users select their game folder. The app auto-detects the engine,
 
 ### Supported Engines
 
-Engine detection is automatic. RPG Maker games are decrypted natively, including their archive formats:
+Engine detection is automatic. EchoWiki reads the two biggest modern engines, Unity and Unreal, directly from their packaged data.
+
+**Unity.** EchoWiki reads Unity's serialized files (`resources.assets`, `sharedassets*.assets`, `globalgamemanagers`, `levelN`) and UnityFS asset bundles (`.bundle` / `.unity3d`), including LZ4/LZ4HC-compressed bundles. It extracts `Texture2D` objects: resolving streamed `.resS`/`.resource` pixel data: and decodes the common GPU formats (uncompressed RGBA/RGB/etc. and the DXT/BC1-BC5 block family) into PNGs entirely in the browser. Formats that need heavyweight decoders (BC7, ETC/EAC, ASTC, crunched) and LZMA-compressed bundles are skipped.
+
+**Unreal.** A full cooked-asset reader isn't feasible in the browser: shipping titles Oodle-compress their pak index and store textures in proprietary GPU formats, often encrypted. EchoWiki instead carves out any self-contained media (OGG, WAV, PNG, JPEG) stored uncompressed inside a `.pak`, reconstructing each file from its own length fields. Compressed/encrypted/cooked data is never matched, so it never produces garbage: it simply extracts what it safely can.
+
+Most other games work too. When no known engine is matched, EchoWiki falls back to a generic scan that picks up image and audio files from anywhere in the folder, using each file's parent folder as its category. Along the way it automatically unpacks common archives so these engines are supported out of the box:
+
+| Engine        | Format                     | What's extracted                               |
+| ------------- | -------------------------- | ---------------------------------------------- |
+| **Unity**     | `.assets`, UnityFS bundles | `Texture2D` images decoded to PNG              |
+| **Unreal**    | `.pak` archive             | Embedded uncompressed media (OGG/WAV/PNG/JPEG) |
+| **Godot**     | `.pck` pack                | Image/audio files                              |
+| **GameMaker** | `data.win` / `FORM`        | Texture pages + audio blobs                    |
+| **RenPy**     | `.rpa` archive             | Image/audio files                              |
+
+It also unpacks plain `.zip` and `.nw` (NW.js) packages.
+
+RPG Maker games are decrypted natively, including their archive formats:
 
 | Engine               | Format            |
 | -------------------- | ----------------- |
@@ -241,13 +286,11 @@ Engine detection is automatic. RPG Maker games are decrypted natively, including
 | **RPG Maker MZ**     | Individual files  |
 | **TCOAAL 3.0+**      | Individual files  |
 
-Beyond RPG Maker, most other games work too. When no known engine is matched, EchoWiki falls back to a generic scan that picks up image and audio files from anywhere in the folder, using each file's parent folder as its category. Along the way it automatically unpacks common archives: RenPy `.rpa`, `.zip`, and `.nw` packages, so Godot, GameMaker, and RenPy titles are supported out of the box.
-
 For anything unusual, mods can supply a custom transform: a short snippet of JavaScript that receives each file and returns the decoded asset. This lets a community add support for an engine EchoWiki doesn't recognize on its own.
 
 ## Asset Browser
 
-![img](docs/assets.png)  
+![img](docs/assets.png)
 
 A gallery view with filter tabs (Images, Audio) and subfolder navigation. Each card has a copy button that copies its echo Markdown to the clipboard (Ctrl/Cmd+click copies the link with the original, unmapped filename instead). When a filename mapping is configured, cards display their mapped names. A "Load more" button pages in additional assets on demand.
 
@@ -259,14 +302,14 @@ The Settings tab is visible only to moderators with the "config" permission (or 
 
 ### General
 
-![img](docs/general.png)  
+![img](docs/general.png)
 
 - **Wiki Title**: Displayed on the home screen below the logo. Leave empty for default.
 - **Wiki Description**: Short text shown below the title.
 
 ### Game
 
-![img](docs/game.png)  
+![img](docs/game.png)
 
 - **Game Title**: Displayed to users during import. A warning appears if the detected title does not match.
 - **Engine**: Leave on Auto-detect, or force a specific engine (the RPG Maker family, Generic, TCOAAL, or Custom transform).
@@ -275,7 +318,7 @@ The Settings tab is visible only to moderators with the "config" permission (or 
 
 ### Style
 
-![img](docs/style.png)  
+![img](docs/style.png)
 
 - **Card Size**: Compact, Normal, or Large thumbnails in the asset browser.
 - **Wiki Font Size**: Small, Normal, or Large.
@@ -285,13 +328,13 @@ The Settings tab is visible only to moderators with the "config" permission (or 
 
 ### Theme
 
-![img](docs/theme.png)  
+![img](docs/theme.png)
 
 Separate light and dark mode configuration. Each color has a reset button to restore the default derived from the subreddit's appearance settings. The app follows the user's system light/dark preference.
 
 ### Mapping
 
-![img](docs/mapping.png)  
+![img](docs/mapping.png)
 
 Mods define `"original": "mapped"` pairs (one per line, comments supported), with a live preview table showing how each pair is parsed (Original / Mapped To). Mapped names replace raw filenames in the asset browser and in echo links.
 
@@ -310,7 +353,7 @@ Example:
 
 ### Collaborative
 
-![img](docs/collaborative.png)  
+![img](docs/collaborative.png)
 
 - **Collaborative mode**: Toggle to enable or disable community suggestions.
 - **Eligibility thresholds**: Minimum karma and account age required to submit suggestions.
@@ -321,7 +364,7 @@ Example:
 
 ### Voting
 
-![img](docs/voting.png)  
+![img](docs/voting.png)
 
 - **Voting**: Toggle to enable or disable community voting on suggestions (requires collaborative mode).
 - **Accept threshold**: Number of accept votes that approve a suggestion immediately. 0 disables the instant accept.
