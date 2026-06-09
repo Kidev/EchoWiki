@@ -3,6 +3,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   useState,
   useEffect,
+  useLayoutEffect,
   useRef,
   useCallback,
 } from "react";
@@ -243,6 +244,12 @@ export function SubFilterTabs({
   onGroupChange: (group: string | null) => void;
 }) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [overflowing, setOverflowing] = useState(false);
+  const [scrollNeeded, setScrollNeeded] = useState(false);
+  const [rowHeight, setRowHeight] = useState(0);
+  const [activeOffset, setActiveOffset] = useState(0);
+  const tabsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setDropdownOpen(false);
@@ -255,9 +262,72 @@ export function SubFilterTabs({
     return () => document.removeEventListener("click", handler);
   }, [dropdownOpen]);
 
+  // Detect whether the tabs wrap onto more than one line (so we can collapse
+  // them to a single row) and locate the row holding the active subcategory.
+  const remeasure = useCallback(() => {
+    const el = tabsRef.current;
+    if (!el) return;
+    const first = el.firstElementChild as HTMLElement | null;
+    const rh = first ? first.offsetHeight : 0;
+    setRowHeight(rh);
+    setOverflowing(rh > 0 && el.scrollHeight > rh + 4);
+    setScrollNeeded(el.scrollHeight > window.innerHeight * 0.6);
+    const activeEl = el.querySelector<HTMLElement>('[data-sub-active="true"]');
+    setActiveOffset(activeEl ? activeEl.offsetTop : 0);
+  }, []);
+
+  useLayoutEffect(() => {
+    remeasure();
+    const el = tabsRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(remeasure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [subcategories, remeasure]);
+
+  // Recompute the active row's offset when the selection changes.
+  useLayoutEffect(() => {
+    remeasure();
+  }, [active, remeasure]);
+
   if (subcategories.length <= 1) return null;
+
+  const collapsed = overflowing && !hovered;
+
   return (
-    <div className="flex flex-wrap gap-1">
+    <div
+      className="relative"
+      style={overflowing ? { height: rowHeight } : undefined}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {/* Clipping viewport: fixes the visible height; the inner content layer
+          slides via translateY so the active row stays visible when collapsed. */}
+      <div
+        className={`transition-[max-height] ${
+          overflowing ? "absolute left-0 right-0 top-0 z-40" : ""
+        }`}
+        style={
+          overflowing
+            ? collapsed
+              ? { maxHeight: rowHeight, overflow: "hidden" }
+              : {
+                  maxHeight: "60vh",
+                  overflowY: scrollNeeded ? "auto" : "hidden",
+                  backgroundColor: "var(--bg)",
+                  boxShadow: "0 6px 16px rgba(0,0,0,0.35)",
+                  borderRadius: "0.5rem",
+                  padding: "0.25rem",
+                  margin: "-0.25rem",
+                }
+            : undefined
+        }
+      >
+      <div
+        ref={tabsRef}
+        className="relative flex flex-wrap gap-1 transition-transform"
+        style={{ transform: collapsed ? `translateY(-${activeOffset}px)` : "translateY(0)" }}
+      >
       {subcategories.map((s) => {
         const isActive = active === s.name;
 
@@ -265,7 +335,7 @@ export function SubFilterTabs({
 
         const dropdownEnabled = isActive && groups.length > 0;
         return (
-          <div key={s.name} className="relative">
+          <div key={s.name} className="relative" data-sub-active={isActive}>
             <button
               className={`text-[10px] px-2 py-0.5 rounded-full transition-colors cursor-pointer inline-flex items-center gap-0.5 ${
                 isActive ? "bg-[var(--accent)] text-white" : "text-[var(--text-muted)]"
@@ -343,6 +413,27 @@ export function SubFilterTabs({
           </div>
         );
       })}
+      </div>
+      </div>
+      {overflowing && (
+        <div
+          className="pointer-events-none absolute top-0 right-0 z-50 flex h-full items-center pl-8 pr-0.5"
+          style={{
+            opacity: collapsed ? 1 : 0,
+            transition: "opacity 120ms ease",
+            background:
+              "linear-gradient(to right, transparent, var(--bg) 55%, var(--bg) 100%)",
+          }}
+        >
+          <span
+            className="flex h-4 w-4 items-center justify-center rounded-full text-[9px] leading-none text-[var(--text-muted)]"
+            style={{ backgroundColor: "var(--thumb-bg)" }}
+            title="Hover to expand"
+          >
+            &#9662;
+          </span>
+        </div>
+      )}
     </div>
   );
 }
