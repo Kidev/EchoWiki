@@ -1,10 +1,8 @@
-# EchoWiki
+![EchoWiki](https://raw.githubusercontent.com/Kidev/EchoWiki/main/assets/title.png)
 
 [Watch all the features in the demo video](https://youtu.be/OOgn59yKN_I "EchoWiki features demo video")
 
 EchoWiki turns a subreddit wiki into a proper editing and reading environment. Moderators write and update pages inside the app with a live Markdown preview. Readers get richer formatting than Reddit's native wiki. Contributors can propose changes that moderators review before merging, and optionally the community votes on whether to accept each suggestion. For game communities specifically, the app resolves special `echo://` links to in-game assets that each reader loads from their own copy of the game. No files are uploaded anywhere, so the original work's copyright is respected.
-
-> _An echo is never a copy, it is a sound that returns to those who were there to make it. An `echo://` link stores no game file anywhere; it is a call that resolves inside the reader's own browser. Players who own the game hear the echo and see the art; everyone else sees only its name. The wiki speaks, and each player's own copy answers._
 
 ## Contents
 
@@ -512,3 +510,6 @@ EchoWiki takes a different approach. No asset is ever uploaded, hosted, or distr
 All game files are processed locally in the browser using IndexedDB. No assets are uploaded anywhere. Server-side storage (Redis) holds only moderator configuration (game title, style settings, filename mappings, collaborative and voting settings) plus the text of pending suggestions and vote records. See [PRIVACY_POLICY.md](https://raw.githubusercontent.com/Kidev/EchoWiki/refs/heads/main/PRIVACY_POLICY.md) and [TERMS_AND_CONDITIONS.md](https://raw.githubusercontent.com/Kidev/EchoWiki/refs/heads/main/TERMS_AND_CONDITIONS.md).
 
 [EchoWiki is available on GitHub](https://github.com/Kidev/EchoWiki)
+
+> _An echo is never a copy, it is a sound that returns to those who were there to make it. An `echo://` link stores no game file anywhere; it is a call that resolves inside the reader's own browser. Players who own the game hear the echo and see the art; everyone else sees only its name. The wiki speaks, and each player's own copy answers._
+
