@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="256"
+     viewBox="0 0 800 256" role="img" aria-label="EchoWiki">
+  <defs>
+    <clipPath id="frame"><rect width="800" height="256"/></clipPath>
+  </defs>
+
+  <g clip-path="url(#frame)">
+    <circle cx="-130" cy="128" r="70" fill="none"
+            stroke="#2c4f96" stroke-width="7" opacity="0">
+      <animate attributeName="r" begin="0s" dur="3.2s" repeatCount="indefinite"
+               values="70;360" calcMode="spline" keySplines="0.2 0.6 0.3 1" keyTimes="0;1"/>
+      <animate attributeName="opacity" begin="0s" dur="3.2s" repeatCount="indefinite"
+               values="0;0.55;0.275;0" keyTimes="0;0.12;0.6;1"/>
+      <animate attributeName="stroke-width" begin="0s" dur="3.2s" repeatCount="indefinite"
+               values="7;1" keyTimes="0;1"/>
+    </circle>
+    <circle cx="930" cy="128" r="70" fill="none"
+            stroke="#2c4f96" stroke-width="7" opacity="0">
+      <animate attributeName="r" begin="0s" dur="3.2s" repeatCount="indefinite"
+               values="70;360" calcMode="spline" keySplines="0.2 0.6 0.3 1" keyTimes="0;1"/>
+      <animate attributeName="opacity" begin="0s" dur="3.2s" repeatCount="indefinite"
+               values="0;0.55;0.275;0" keyTimes="0;0.12;0.6;1"/>
+      <animate attributeName="stroke-width" begin="0s" dur="3.2s" repeatCount="indefinite"
+               values="7;1" keyTimes="0;1"/>
+    </circle>
+    <circle cx="-130" cy="128" r="70" fill="none"
+            stroke="#2c4f96" stroke-width="7" opacity="0">
+      <animate attributeName="r" begin="0.8s" dur="3.2s" repeatCount="indefinite"
+               values="70;360" calcMode="spline" keySplines="0.2 0.6 0.3 1" keyTimes="0;1"/>
+      <animate attributeName="opacity" begin="0.8s" dur="3.2s" repeatCount="indefinite"
+               values="0;0.55;0.275;0" keyTimes="0;0.12;0.6;1"/>
+      <animate attributeName="stroke-width" begin="0.8s" dur="3.2s" repeatCount="indefinite"
+               values="7;1" keyTimes="0;1"/>
+    </circle>
+    <circle cx="930" cy="128" r="70" fill="none"
+            stroke="#2c4f96" stroke-width="7" opacity="0">
+      <animate attributeName="r" begin="0.8s" dur="3.2s" repeatCount="indefinite"
+               values="70;360" calcMode="spline" keySplines="0.2 0.6 0.3 1" keyTimes="0;1"/>
+      <animate attributeName="opacity" begin="0.8s" dur="3.2s" repeatCount="indefinite"
+               values="0;0.55;0.275;0" keyTimes="0;0.12;0.6;1"/>
+      <animate attributeName="stroke-width" begin="0.8s" dur="3.2s" repeatCount="indefinite"
+               values="7;1" keyTimes="0;1"/>
+    </circle>
+    <circle cx="-130" cy="128" r="70" fill="none"
+            stroke="#2c4f96" stroke-width="7" opacity="0">
+      <animate attributeName="r" begin="1.6s" dur="3.2s" repeatCount="indefinite"
+               values="70;360" calcMode="spline" keySplines="0.2 0.6 0.3 1" keyTimes="0;1"/>
+      <animate attributeName="opacity" begin="1.6s" dur="3.2s" repeatCount="indefinite"
+               values="0;0.55;0.275;0" keyTimes="0;0.12;0.6;1"/>
+      <animate attributeName="stroke-width" begin="1.6s" dur="3.2s" repeatCount="indefinite"
+               values="7;1" keyTimes="0;1"/>
+    </circle>
+    <circle cx="930" cy="128" r="70" fill="none"
+            stroke="#2c4f96" stroke-width="7" opacity="0">
+      <animate attributeName="r" begin="1.6s" dur="3.2s" repeatCount="indefinite"
+               values="70;360" calcMode="spline" keySplines="0.2 0.6 0.3 1" keyTimes="0;1"/>
+      <animate attributeName="opacity" begin="1.6s" dur="3.2s" repeatCount="indefinite"
+               values="0;0.55;0.275;0" keyTimes="0;0.12;0.6;1"/>
+      <animate attributeName="stroke-width" begin="1.6s" dur="3.2s" repeatCount="indefinite"
+               values="7;1" keyTimes="0;1"/>
+    </circle>
+    <circle cx="-130" cy="128" r="70" fill="none"
+            stroke="#2c4f96" stroke-width="7" opacity="0">
+      <animate attributeName="r" begin="2.4s" dur="3.2s" repeatCount="indefinite"
+               values="70;360" calcMode="spline" keySplines="0.2 0.6 0.3 1" keyTimes="0;1"/>
+      <animate attributeName="opacity" begin="2.4s" dur="3.2s" repeatCount="indefinite"
+               values="0;0.55;0.275;0" keyTimes="0;0.12;0.6;1"/>
+      <animate attributeName="stroke-width" begin="2.4s" dur="3.2s" repeatCount="indefinite"
+               values="7;1" keyTimes="0;1"/>
+    </circle>
+    <circle cx="930" cy="128" r="70" fill="none"
+            stroke="#2c4f96" stroke-width="7" opacity="0">
+      <animate attributeName="r" begin="2.4s" dur="3.2s" repeatCount="indefinite"
+               values="70;360" calcMode="spline" keySplines="0.2 0.6 0.3 1" keyTimes="0;1"/>
+      <animate attributeName="opacity" begin="2.4s" dur="3.2s" repeatCount="indefinite"
+               values="0;0.55;0.275;0" keyTimes="0;0.12;0.6;1"/>
+      <animate attributeName="stroke-width" begin="2.4s" dur="3.2s" repeatCount="indefinite"
+               values="7;1" keyTimes="0;1"/>
+    </circle>
+  </g>
+
+  <g aria-label="ECHO">
+    <text x="400" y="60" text-anchor="middle" dominant-baseline="central" font-family="'Archivo Black','Arial Narrow Bold','Oswald','Helvetica Neue',Arial,sans-serif" font-size="66" font-weight="900" letter-spacing="6" fill="#ffffff" stroke="#2c4f96" stroke-width="13"
+          stroke-linejoin="round" paint-order="stroke">ECHO</text>
+    <text x="400" y="60" text-anchor="middle" dominant-baseline="central" font-family="'Archivo Black','Arial Narrow Bold','Oswald','Helvetica Neue',Arial,sans-serif" font-size="66" font-weight="900" letter-spacing="6" fill="#ffffff" stroke="#9cb4fc" stroke-width="7"
+          stroke-linejoin="round" paint-order="stroke">ECHO</text>
+  </g>
+
+  <text x="398" y="162" text-anchor="middle" dominant-baseline="central"
+        font-family="'Baloo 2','Fredoka','Nunito','Quicksand',Arial,sans-serif" font-size="178" font-weight="800"
+        letter-spacing="2" fill="#9cb4fc" aria-label="wiki">wiki</text>
+</svg>

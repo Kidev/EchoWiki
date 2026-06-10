@@ -1,4 +1,4 @@
-![EchoWiki](https://raw.githubusercontent.com/Kidev/EchoWiki/main/assets/title.png)
+![EchoWiki](https://raw.githubusercontent.com/Kidev/EchoWiki/refs/heads/main/assets/echo-wiki.svg)
 
 [Watch all the features in the demo video](https://youtu.be/OOgn59yKN_I "EchoWiki features demo video")
 
