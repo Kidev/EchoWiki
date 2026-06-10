@@ -1035,6 +1035,15 @@ router.post<Record<string, never>, MappingResponse | ErrorResponse, MappingUpdat
   "/api/mapping",
   async (req, res): Promise<void> => {
     try {
+      const username = await reddit.getCurrentUsername();
+      if (!username) {
+        res.status(401).json({ status: "error", message: "Not logged in" });
+        return;
+      }
+      if (!(await checkIsAllMod(username))) {
+        res.status(403).json({ status: "error", message: "Not authorized" });
+        return;
+      }
       const body = req.body as MappingUpdateRequest;
       const text = body.text ?? DEFAULT_MAPPING_TEXT;
       const mapping = body.entries ? entriesFromPairs(body.entries) : null;
@@ -1203,6 +1212,15 @@ router.post<Record<string, never>, StyleResponse | ErrorResponse, StyleUpdateReq
   "/api/style",
   async (req, res): Promise<void> => {
     try {
+      const username = await reddit.getCurrentUsername();
+      if (!username) {
+        res.status(401).json({ status: "error", message: "Not logged in" });
+        return;
+      }
+      if (!(await checkIsAllMod(username))) {
+        res.status(403).json({ status: "error", message: "Not authorized" });
+        return;
+      }
       const body = req.body as StyleUpdateRequest;
       const appearance = await getSubredditAppearance();
 
@@ -2564,6 +2582,14 @@ router.post(
   "/internal/menu/post-create",
   async (_req, res: Response<UiResponse>): Promise<void> => {
     try {
+      const actingUsername = await reddit.getCurrentUsername();
+      if (!actingUsername || !(await checkIsAllMod(actingUsername))) {
+        res.json({
+          showToast:
+            "Only moderators with the Manage Settings permission can create EchoWiki posts.",
+        });
+        return;
+      }
       const config = await getConfig();
       const sub = context.subredditName ?? "unknown";
       const defaultTitle = config.wikiTitle || `EchoWiki - r/${sub}`;
@@ -2658,6 +2684,14 @@ router.post(
   "/internal/form/post-title-submit",
   async (req, res: Response<UiResponse>): Promise<void> => {
     try {
+      const actingUsername = await reddit.getCurrentUsername();
+      if (!actingUsername || !(await checkIsAllMod(actingUsername))) {
+        res.json({
+          showToast:
+            "Only moderators with the Manage Settings permission can create EchoWiki posts.",
+        });
+        return;
+      }
       const body = req.body as PostCreateFormData;
 
       if (body.deleteExisting) {

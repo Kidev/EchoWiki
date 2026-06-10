@@ -766,7 +766,8 @@ export async function* processUnityFiles(files: File[]): AsyncGenerator<Processe
     const fv = sf.formatVersion;
     const uv = sf.unityVersion;
     const externals = sf.externals.map((p) => baseName(p).toLowerCase());
-    const inBounds = (o: ObjectInfo) => o.byteStart >= 0 && o.byteStart + o.byteSize <= bytes.length;
+    const inBounds = (o: ObjectInfo) =>
+      o.byteStart >= 0 && o.byteStart + o.byteSize <= bytes.length;
     const bytesOf = (o: ObjectInfo) => bytes.subarray(o.byteStart, o.byteStart + o.byteSize);
 
     const byPath = new Map<number, ObjectInfo>();
@@ -804,7 +805,11 @@ export async function* processUnityFiles(files: File[]): AsyncGenerator<Processe
             break;
           }
           case CLASS_MESH_RENDERER: {
-            const mr = readRendererThroughMaterials(new UnityReader(bytesOf(obj), sf.little), uv, fv);
+            const mr = readRendererThroughMaterials(
+              new UnityReader(bytesOf(obj), sf.little),
+              uv,
+              fv,
+            );
             if (mr.materials.length > 0) goToMats.set(mr.gameObject, mr.materials);
             break;
           }
@@ -812,7 +817,10 @@ export async function* processUnityFiles(files: File[]): AsyncGenerator<Processe
             const smr = readSkinnedMeshRenderer(new UnityReader(bytesOf(obj), sf.little), uv, fv);
             const ref = derefLocal(smr.mesh);
             if (ref && smr.materials.length > 0) {
-              meshToMats.set(objKey(ref.fileKey, ref.pathID), { srcKey: key, materials: smr.materials });
+              meshToMats.set(objKey(ref.fileKey, ref.pathID), {
+                srcKey: key,
+                materials: smr.materials,
+              });
             }
             break;
           }
@@ -906,7 +914,8 @@ export async function* processUnityFiles(files: File[]): AsyncGenerator<Processe
     if ((!imageData || imageData.length === 0) && desc.streamData) {
       const res = await entry.resolve(desc.streamData.path);
       const { offset, size } = desc.streamData;
-      if (res && offset >= 0 && offset + size <= res.length) imageData = res.subarray(offset, offset + size);
+      if (res && offset >= 0 && offset + size <= res.length)
+        imageData = res.subarray(offset, offset + size);
     }
     if (!imageData || imageData.length === 0) return null;
     const rgba = decodeTexture(imageData, desc.width, desc.height, desc.format);
@@ -947,7 +956,10 @@ export async function* processUnityFiles(files: File[]): AsyncGenerator<Processe
       if (bytes && info.byteStart >= 0 && info.byteStart + info.byteSize <= bytes.length) {
         try {
           result = readMaterialMainTexture(
-            new UnityReader(bytes.subarray(info.byteStart, info.byteStart + info.byteSize), entry.little),
+            new UnityReader(
+              bytes.subarray(info.byteStart, info.byteStart + info.byteSize),
+              entry.little,
+            ),
             entry.unityVersion,
             entry.formatVersion,
           );

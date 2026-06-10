@@ -35,6 +35,35 @@ import { SegmentedControl } from "./AssetBrowser";
 
 type SettingsTab = "general" | "game" | "style" | "theme" | "mapping" | "collaborative" | "voting";
 
+// Small "?" badge that reveals a help bubble on hover. Lets settings rows stay
+// terse while keeping a full explanation one hover away. The bubble opens
+// downward so it is not clipped by the scroll container's top edge.
+function HelpTip({ text }: { text: string }) {
+  return (
+    <span className="relative inline-flex group align-middle shrink-0">
+      <span
+        tabIndex={0}
+        role="img"
+        aria-label={text}
+        className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full text-[9px] font-bold leading-none cursor-help select-none focus:outline-none"
+        style={{ backgroundColor: "var(--thumb-bg)", color: "var(--text-muted)" }}
+      >
+        ?
+      </span>
+      <span
+        className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-1.5 z-50 w-56 px-2.5 py-1.5 rounded-md text-[10px] font-normal normal-case leading-snug tracking-normal text-left opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-100 shadow-lg"
+        style={{
+          backgroundColor: "#1a1a1b",
+          color: "#f3f3f3",
+          border: "1px solid rgba(255,255,255,0.12)",
+        }}
+      >
+        {text}
+      </span>
+    </span>
+  );
+}
+
 function CollaborativePanel({
   config,
   onConfigChanged,
@@ -230,7 +259,7 @@ function CollaborativePanel({
         <div className="flex flex-col min-w-0">
           <span className="text-xs font-medium">Collaborative editing</span>
           <span className="text-[10px] text-[var(--text-muted)]">
-            Community members suggest changes; mods approve before they go live
+            Community members suggest changes; moderators approve before they go live.
           </span>
         </div>
         <button
@@ -254,8 +283,9 @@ function CollaborativePanel({
 
           {}
           <div className="flex flex-col gap-1.5">
-            <span className="text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wide">
+            <span className="flex items-center gap-1 text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wide">
               Eligibility
+              <HelpTip text="Who is allowed to submit suggestions. A member must meet both the minimum karma and the minimum account age to suggest changes. Set a value to 0 to drop that requirement. These checks fail open: if Reddit can't return a user's stats, the suggestion is allowed." />
             </span>
             <div className="flex items-center gap-2">
               <label className="text-xs text-[var(--text-muted)] w-20 shrink-0">Min. karma</label>
@@ -294,7 +324,10 @@ function CollaborativePanel({
                 className={`${inputCls} w-20`}
                 style={inputStyle}
               />
-              <span className="text-xs text-[var(--text-muted)] shrink-0">min between edits</span>
+              <span className="flex items-center gap-1 text-xs text-[var(--text-muted)] shrink-0">
+                min. between edits
+                <HelpTip text="After a contributor submits a suggestion, this is how long they must wait before they can update it again. It throttles rapid re-edits of the same pending suggestion. Set to 0 to allow updates with no waiting." />
+              </span>
               <button
                 onClick={() => void handleSaveThresholds()}
                 disabled={!thresholdsDirty || isSavingThresholds}
@@ -586,13 +619,14 @@ function VotingSettingsPanel({
     <div className="text-xs" style={{ maxWidth: 680 }}>
       {}
       <div className="flex items-center justify-between gap-3 px-3 py-2 border-b" style={divSt}>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <span className="font-semibold">Public Voting</span>
+          <HelpTip text="When enabled, every new suggestion automatically creates its own vote post where the whole community decides whether to accept it, instead of a moderator deciding alone. Requires collaborative editing to be turned on." />
           <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-            each suggestion spawns a vote post
+            Each suggestion spawns a vote post.
           </span>
           {!config.collaborativeMode && (
-            <span className="text-amber-600 text-[10px]">: requires collaborative mode</span>
+            <span className="text-amber-600 text-[10px]">Requires collaborative mode.</span>
           )}
         </div>
         <Toggle val={votingEnabled} set={setVotingEnabled} />
@@ -602,12 +636,13 @@ function VotingSettingsPanel({
       <div className="flex border-b" style={divSt}>
         {}
         <div className="flex-1 px-3 py-2 border-r" style={divSt}>
-          <p className={secHdr} style={secHdrSt}>
+          <p className={`${secHdr} flex items-center gap-1`} style={secHdrSt}>
             Voter Eligibility
+            <HelpTip text="Sets the minimum Reddit reputation a member needs in order to cast a vote on suggestions. The suggestion's own author can never vote on it. Moderators are always allowed to vote. Set a field to 0 to remove that requirement." />
           </p>
           <div className="flex flex-col gap-1.5">
             <label className="flex items-center gap-1.5">
-              <span className="w-10 shrink-0">Karma</span>
+              <span className="w-16 shrink-0">Min. karma</span>
               <input
                 type="number"
                 min="0"
@@ -617,10 +652,10 @@ function VotingSettingsPanel({
                 className={numInp}
                 style={inpSt}
               />
-              <span style={{ color: "var(--text-muted)" }}>0=none</span>
+              <span style={{ color: "var(--text-muted)" }}>0 = no limit</span>
             </label>
             <label className="flex items-center gap-1.5">
-              <span className="w-10 shrink-0">Age</span>
+              <span className="w-16 shrink-0">Min. age</span>
               <input
                 type="number"
                 min="0"
@@ -630,15 +665,17 @@ function VotingSettingsPanel({
                 className={numInp}
                 style={inpSt}
               />
-              <span style={{ color: "var(--text-muted)" }}>days, 0=none</span>
+              <span style={{ color: "var(--text-muted)" }}>days, 0 = none</span>
             </label>
           </div>
         </div>
 
         {}
         <div className="flex-1 px-3 py-2 border-r" style={divSt}>
-          <p className={secHdr} style={secHdrSt}>
-            Instant Thresholds <span className="font-normal normal-case">0=off</span>
+          <p className={`${secHdr} flex items-center gap-1`} style={secHdrSt}>
+            Instant Thresholds
+            <span className="font-normal normal-case">(0 = off)</span>
+            <HelpTip text="Decide a suggestion the moment it reaches a fixed number of votes, without waiting for the timer. As soon as it gathers this many FOR votes it is accepted; as many AGAINST votes and it is rejected. Whichever count is hit first wins. Set a field to 0 to disable that instant outcome." />
           </p>
           <div className="flex flex-col gap-1.5">
             <label className="flex items-center gap-1.5">
@@ -670,8 +707,10 @@ function VotingSettingsPanel({
 
         {}
         <div className="flex-1 px-3 py-2">
-          <p className={secHdr} style={secHdrSt}>
-            Timed Voting <span className="font-normal normal-case">0=off</span>
+          <p className={`${secHdr} flex items-center gap-1`} style={secHdrSt}>
+            Timed Voting
+            <span className="font-normal normal-case">(0 = off)</span>
+            <HelpTip text="Run each vote for a fixed number of days, then tally the result automatically. When the timer ends: if fewer than the minimum voters took part the suggestion is rejected; otherwise it passes if FOR votes reach the chosen percentage (or, when that percentage is 0, if FOR simply outnumbers AGAINST). Set the duration to 0 to leave votes open until a moderator or an instant threshold decides them." />
           </p>
           <div className="flex flex-col gap-1.5">
             <label className="flex items-center gap-1.5">
@@ -683,7 +722,7 @@ function VotingSettingsPanel({
                 className={numInp}
                 style={inpSt}
               />
-              <span style={{ color: "var(--text-muted)" }}>days duration</span>
+              <span style={{ color: "var(--text-muted)" }}>days to run</span>
             </label>
             <label className="flex items-center gap-1.5">
               <input
@@ -694,7 +733,7 @@ function VotingSettingsPanel({
                 className={numInp}
                 style={inpSt}
               />
-              <span style={{ color: "var(--text-muted)" }}>min voters</span>
+              <span style={{ color: "var(--text-muted)" }}>min. voters</span>
             </label>
             <label className="flex items-center gap-1.5">
               <span>≥</span>
@@ -707,7 +746,7 @@ function VotingSettingsPanel({
                 className={numInp}
                 style={inpSt}
               />
-              <span style={{ color: "var(--text-muted)" }}>% to accept · 0=majority</span>
+              <span style={{ color: "var(--text-muted)" }}>% to pass · 0 = majority</span>
             </label>
           </div>
         </div>
@@ -717,8 +756,9 @@ function VotingSettingsPanel({
       <div className="flex border-b" style={divSt}>
         {}
         <div className="flex-1 px-3 py-2 border-r" style={divSt}>
-          <p className={secHdr} style={secHdrSt}>
+          <p className={`${secHdr} flex items-center gap-1`} style={secHdrSt}>
             Vote Changes
+            <HelpTip text="Controls whether a member can change their mind after voting. When allowed, voters can switch their vote (FOR <-> AGAINST) or retract it. The cooldown is the minimum number of minutes they must wait between one vote change and the next, which curbs last-second flip-flopping. A cooldown of 0 lets them change instantly." />
           </p>
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between gap-2">
@@ -736,7 +776,7 @@ function VotingSettingsPanel({
                   className={numInp}
                   style={inpSt}
                 />
-                <span style={{ color: "var(--text-muted)" }}>min · 0=immed.</span>
+                <span style={{ color: "var(--text-muted)" }}>min. · 0 = instant</span>
               </label>
             )}
           </div>
@@ -744,8 +784,9 @@ function VotingSettingsPanel({
 
         {}
         <div className="flex-1 px-3 py-2 border-r" style={divSt}>
-          <p className={secHdr} style={secHdrSt}>
+          <p className={`${secHdr} flex items-center gap-1`} style={secHdrSt}>
             Display
+            <HelpTip text="When on, the vote post shows who voted and how. When off, only the running FOR / AGAINST tallies are visible, keeping individual votes anonymous." />
           </p>
           <div className="flex items-center justify-between gap-2">
             <span>Show voter names</span>
@@ -755,11 +796,12 @@ function VotingSettingsPanel({
 
         {}
         <div className="flex-1 px-3 py-2">
-          <p className={secHdr} style={secHdrSt}>
+          <p className={`${secHdr} flex items-center gap-1`} style={secHdrSt}>
             Suggestion Limits
+            <HelpTip text="How many times the author may update a suggestion after first submitting it. Each update edits the same pending suggestion in place; under public voting it also resets all votes and restarts the timer, so people re-vote on the latest version. Set to 0 for unlimited updates." />
           </p>
           <label className="flex items-center gap-1.5">
-            <span className="shrink-0">Max updates</span>
+            <span className="shrink-0">Max. updates</span>
             <input
               type="number"
               min="0"
@@ -768,7 +810,7 @@ function VotingSettingsPanel({
               className={numInp}
               style={inpSt}
             />
-            <span style={{ color: "var(--text-muted)" }}>0=∞</span>
+            <span style={{ color: "var(--text-muted)" }}>0 = ∞</span>
           </label>
         </div>
       </div>
@@ -776,8 +818,9 @@ function VotingSettingsPanel({
       {}
       <div className="flex gap-3 px-3 py-2 border-b" style={divSt}>
         <div className="shrink-0" style={{ width: 160 }}>
-          <label className="block mb-1" style={{ color: "var(--text-muted)" }}>
+          <label className="flex items-center gap-1 mb-1" style={{ color: "var(--text-muted)" }}>
             Vote Post Flair
+            <HelpTip text="Link flair automatically applied to every vote post when it is created, so members can spot and filter wiki votes in the subreddit feed. Choose "No flair" to leave them unflaired." />
           </label>
           <select
             value={flairTemplateId ?? ""}
@@ -794,9 +837,10 @@ function VotingSettingsPanel({
           </select>
         </div>
         <div className="flex-1 min-w-0">
-          <label className="block mb-1" style={{ color: "var(--text-muted)" }}>
-            Vote Post Title{" "}
-            <span className="text-[10px]">
+          <label className="flex items-center gap-1 mb-1" style={{ color: "var(--text-muted)" }}>
+            Vote Post Title
+            <HelpTip text="Template for the title of each vote post. Placeholders are filled in automatically: %user% the author, %page% the page name, %pathPage% the full page path, and %shortPathPage% an abbreviated path. Leave empty to use the default title." />
+            <span className="text-[10px] truncate">
               · <code>%user%</code> <code>%page%</code> <code>%pathPage%</code>{" "}
               <code>%shortPathPage%</code>
             </span>

@@ -6,6 +6,8 @@ Rich wikis for Reddit communities. Live editing, advanced markdown, collaborativ
 
 EchoWiki turns a subreddit wiki into a proper editing and reading environment. Moderators write and update pages inside the app with a live Markdown preview. Readers get richer formatting than Reddit's native wiki. Contributors can propose changes that moderators review before merging, and optionally the community votes on whether to accept each suggestion. For game communities specifically, the app resolves special `echo://` links to in-game assets that each reader loads from their own copy of the game. No files are uploaded anywhere, so the original work's copyright is respected.
 
+> _An echo is never a copy, it is a sound that returns to those who were there to make it. An `echo://` link stores no game file anywhere; it is a call that resolves inside the reader's own browser. Players who own the game hear the echo and see the art; everyone else sees only its name. The wiki speaks, and each player's own copy answers._
+
 ## Contents
 
 - [Wiki](#wiki)
@@ -23,6 +25,7 @@ EchoWiki turns a subreddit wiki into a proper editing and reading environment. M
 - [Asset Import](#asset-import)
   - [Supported Engines](#supported-engines)
 - [Asset Browser](#asset-browser)
+- [Moderator Permissions](#moderator-permissions)
 - [Moderator Settings](#moderator-settings)
   - [General](#general)
   - [Game](#game)
@@ -36,7 +39,9 @@ EchoWiki turns a subreddit wiki into a proper editing and reading environment. M
 
 ## Wiki
 
-Wiki pages are fetched from the subreddit's wiki via the Reddit API and rendered inside the app with a full Markdown engine.
+EchoWiki is a renderer on top of your subreddit's **own** native Reddit wiki, not a separate store. Every page is fetched live from the subreddit wiki (`reddit.com/r/<subreddit>/wiki`) via the Reddit API and rendered inside the app with a full Markdown engine. Saving a page from the app writes straight back to that same wiki, so the two stay in sync.
+
+Because the data lives in the real wiki, you keep everything Reddit already gives you for it: the **full revision history** of every page (with author and reason for each edit) is visible at `reddit.com/r/<subreddit>/wiki/revisions`, and **new pages are created the normal Reddit way**: visit the page's wiki URL on Reddit and create it (or link to it from an existing EchoWiki page), and it shows up in the app. EchoWiki never hides or replaces the underlying wiki; it just gives it a richer reading and editing surface.
 
 Easy and powerful custom formatting based on Markdown:
 
@@ -57,7 +62,6 @@ Navigation uses a breadcrumb bar that slides down from the top when hovering the
 ![integration](docs/modmenu.png)
 
 Create and set up the wiki for your subreddit from the moderator menu: it creates the wiki post, can remove previous ones, adds a sidebar widget linking to it, and sets the basic configuration (title, subtitle, game name) in one form.
-
 
 ### Live Editor
 
@@ -311,13 +315,16 @@ If enabled, users select their game folder. The app auto-detects the engine, ext
 
 Engine detection is automatic. EchoWiki reads the biggest modern general-purpose engines, Unity, Unreal, and Godot, directly from their packaged data.
 
-#### **Unity**  
+#### **Unity**
+
 EchoWiki reads Unity's serialized data files (`resources.assets`, `sharedassets*.assets`, `globalgamemanagers`, `levelN`) and asset bundles (`.bundle` / `.unity3d`). It extracts textures as PNGs and, because Unity ships meshes as raw geometry rather than model files, rebuilds each mesh into a self-contained [GLB model](#3d-models) linked to its base-color texture all decoded in the browser. Textures in GPU formats that need heavyweight decoders, and skinned or compressed meshes, are skipped.
 
-#### **Unreal**  
+#### **Unreal**
+
 A full cooked-asset reader isn't feasible in the browser, since shipping titles compress and often encrypt their `.pak` archives. EchoWiki instead carves out any self-contained media (OGG, WAV, PNG, JPEG) stored uncompressed inside a `.pak`. Compressed, encrypted, or cooked data is never matched, so it extracts only what it safely can rather than producing garbage.
 
-#### **Godot**  
+#### **Godot**
+
 EchoWiki reads Godot's `.pck` pack files (used by both Godot 3 and 4), pulling out the bundled images and audio.
 
 Most other games work too. When no known engine is matched, EchoWiki falls back to a generic scan that picks up image and audio files from anywhere in the folder, using each file's parent folder as its category. Along the way it automatically unpacks common archives so these engines are supported out of the box:
@@ -354,9 +361,32 @@ A gallery view with filter tabs (Images, Audio, and a Models tab that appears on
 
 Clicking any asset opens a full preview: an image lightbox, an audio player with a waveform you can click to seek, or the interactive 3D model viewer (with a **Texture** field for retexturing models). The lightbox carries interactive [edition](#asset-editions) controls (crop, sprite-cell picker, audio speed and pitch); the copy button there bakes the active editions into the link, and right-clicking the preview copies it directly.
 
+## Moderator Permissions
+
+EchoWiki maps its capabilities onto Reddit's native moderator permissions, so you decide who can do what from the subreddit's mod-team settings rather than from any in-app role list. Two levels matter:
+
+- **Wiki**: moderators who hold Reddit's _Manage Wiki Pages_ permission (`wiki`).
+- **Config**: moderators who hold _Manage Settings_ (`config`), or full moderators with no permission restrictions (`all`).
+
+Config is a superset of Wiki: a config moderator can do everything a wiki moderator can, plus everything in the Settings tab. A user with neither permission is treated as a regular reader.
+
+| Capability                                               | Required level    |
+| -------------------------------------------------------- | ----------------- |
+| Read the wiki and resolve echo links                     | Anyone            |
+| Suggest changes and vote (when collaborative mode is on) | Any eligible user |
+| Edit wiki pages directly in the live editor              | Wiki              |
+| Save directly to the wiki / bypass the public vote       | Wiki              |
+| Review, accept, or deny suggestions (Submissions tab)    | Wiki              |
+| Create or delete EchoWiki posts (mod menu)               | Config            |
+| Open the Settings tab                                    | Config            |
+| Game, engine, and asset-import configuration             | Config            |
+| Style, theme, and filename mapping                       | Config            |
+| Collaborative settings (eligibility, flairs, bans)       | Config            |
+| Voting settings                                          | Config            |
+
 ## Moderator Settings
 
-The Settings tab is visible only to moderators with the "config" permission (or full moderators with no permission restrictions). Moderators with only "wiki" permission can access the Submissions tab and edit wiki pages directly, but not the Settings tab.
+The Settings tab is visible only to **config**-level moderators (see [Moderator Permissions](#moderator-permissions)). **Wiki**-level moderators can edit wiki pages directly and use the Submissions tab, but not the Settings tab.
 
 ### General
 
