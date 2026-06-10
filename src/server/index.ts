@@ -106,7 +106,7 @@ async function getConfig(): Promise<GameConfig> {
     // Redis access is intermittently unreliable in some platform contexts
     // (notably /internal/menu/* form-building), failing with an empty gRPC
     // error (`undefined undefined: undefined`). Config is non-critical display
-    // data with safe defaults — fail open so a Redis hiccup never blocks
+    // data with safe defaults: fail open so a Redis hiccup never blocks
     // moderators (e.g. from creating a post) or breaks read routes.
     console.error("getConfig: redis.hGetAll failed, falling back to defaults", err);
     return { ...DEFAULT_CONFIG };
@@ -170,13 +170,13 @@ async function getConfig(): Promise<GameConfig> {
 
 /**
  * Resolve the current user's username without the brittle `UserAbout` lookup
- * that `reddit.getCurrentUsername()` performs internally (getCurrentUser →
- * User.getById → User.getByUsername → UserAbout). In menu/trigger contexts that
+ * that `reddit.getCurrentUsername()` performs internally (getCurrentUser ->
+ * User.getById -> User.getByUsername -> UserAbout). In menu/trigger contexts that
  * gRPC call can fail with an empty error ("undefined undefined: undefined"),
  * which crashed those handlers (e.g. the "Create EchoWiki" menu showing
  * "Failed to load form"). The platform already exposes the handle directly on
- * the request context, so prefer that and only fall back to the API call —
- * guarded — when the context handle is absent.
+ * the request context, so prefer that and only fall back to the API call:
+ * guarded: when the context handle is absent.
  */
 async function getCurrentUsername(): Promise<string | undefined> {
   if (context.username) return context.username;
@@ -212,7 +212,7 @@ async function getModLevel(username: string): Promise<"config" | "wiki" | null> 
     // recognizable config/wiki permission. This happens for "everything" mods
     // whose perms come back empty, and for INACTIVE mods whose effective perms
     // Reddit reduces ("Inactive mods have limited permissions"). Rather than lock
-    // a real moderator out entirely, fail open to full access — matching the
+    // a real moderator out entirely, fail open to full access: matching the
     // app's pre-granular-permissions behavior where any mod could do anything.
     console.warn(
       `getModLevel: moderator "${username}" reported perms [${perms.join(", ")}] for r/${context.subredditName}; defaulting to "config"`,
@@ -2590,7 +2590,7 @@ async function getPostIds(): Promise<string[]> {
   } catch (err) {
     // See getConfig: Redis can fail with an empty gRPC error in menu/trigger
     // contexts. Tracked post ids only gate the optional "delete existing
-    // posts" form option — fail open with none rather than block the form.
+    // posts" form option: fail open with none rather than block the form.
     console.error("getPostIds: redis read failed, returning none", err);
     return [];
   }
@@ -2609,7 +2609,7 @@ async function getPostIds(): Promise<string[]> {
 
 async function trackPost(postId: string): Promise<boolean> {
   // Best-effort: Redis can fail with an empty gRPC error in menu/trigger
-  // contexts (see getConfig). The post is already created at this point —
+  // contexts (see getConfig). The post is already created at this point:
   // a tracking failure must not fail the whole operation. Returns whether
   // tracking persisted, so callers can surface a warning.
   try {
@@ -2652,12 +2652,12 @@ router.post(
   async (_req, res: Response<UiResponse>): Promise<void> => {
     try {
       // The "Create EchoWiki" menu is gated to moderators by `forUserType: "moderator"`
-      // in devvit.json, and /internal/* endpoints are platform-only — so the caller is
+      // in devvit.json, and /internal/* endpoints are platform-only: so the caller is
       // already guaranteed to be a moderator. We intentionally do NOT re-resolve and
       // re-check the user here: in menu/trigger contexts the acting user often cannot be
       // resolved (context.username is unset and getCurrentUsername's UserAbout fallback
-      // fails with an empty gRPC error), which blocked legitimate moderators — including
-      // inactive "everything" mods — from creating posts.
+      // fails with an empty gRPC error), which blocked legitimate moderators: including
+      // inactive "everything" mods: from creating posts.
       const config = await getConfig();
       const sub = context.subredditName ?? "unknown";
       const defaultTitle = config.wikiTitle || `EchoWiki - r/${sub}`;
@@ -2754,12 +2754,12 @@ router.post(
   async (req, res: Response<UiResponse>): Promise<void> => {
     try {
       // The "Create EchoWiki" menu is gated to moderators by `forUserType: "moderator"`
-      // in devvit.json, and /internal/* endpoints are platform-only — so the caller is
+      // in devvit.json, and /internal/* endpoints are platform-only: so the caller is
       // already guaranteed to be a moderator. We intentionally do NOT re-resolve and
       // re-check the user here: in menu/trigger contexts the acting user often cannot be
       // resolved (context.username is unset and getCurrentUsername's UserAbout fallback
-      // fails with an empty gRPC error), which blocked legitimate moderators — including
-      // inactive "everything" mods — from creating posts.
+      // fails with an empty gRPC error), which blocked legitimate moderators, including
+      // inactive "everything" mods from creating posts.
       const body = req.body as PostCreateFormData;
 
       const warnings: string[] = [];
@@ -2786,7 +2786,7 @@ router.post(
         }
       }
 
-      // The essential action — everything below is best-effort and must not
+      // The essential action: everything below is best-effort and must not
       // fail post creation if Redis (tracking, config) is unavailable.
       const post = await createPost(body.postTitle);
       const tracked = await trackPost(post.id);
