@@ -1,7 +1,5 @@
 # EchoWiki
 
-Rich wikis for Reddit communities. Live editing, advanced markdown, collaborative contributions with optional community voting, and for many games, in-game assets pulled from each player's own copy. No uploads.
-
 [Watch all the features in the demo video](https://youtu.be/OOgn59yKN_I "EchoWiki features demo video")
 
 EchoWiki turns a subreddit wiki into a proper editing and reading environment. Moderators write and update pages inside the app with a live Markdown preview. Readers get richer formatting than Reddit's native wiki. Contributors can propose changes that moderators review before merging, and optionally the community votes on whether to accept each suggestion. For game communities specifically, the app resolves special `echo://` links to in-game assets that each reader loads from their own copy of the game. No files are uploaded anywhere, so the original work's copyright is respected.
@@ -59,13 +57,13 @@ Navigation uses a breadcrumb bar that slides down from the top when hovering the
 
 ### Easy integration
 
-![integration](docs/modmenu.png)
+![integration](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/modmenu.png)
 
 Create and set up the wiki for your subreddit from the moderator menu: it creates the wiki post, can remove previous ones, adds a sidebar widget linking to it, and sets the basic configuration (title, subtitle, game name) in one form.
 
 ### Live Editor
 
-![editor](docs/editor.png)
+![editor](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/editor.png)
 
 Moderators can edit wiki pages directly inside the app. An edit button appears in the top-right corner of the wiki view when in expanded mode. Clicking it opens the editor, where the Markdown source sits next to a live preview that updates as you type.
 
@@ -85,7 +83,7 @@ When collaborative mode is enabled, users who meet the subreddit's eligibility t
 
 ### Suggestions
 
-![Suggestions](docs/suggestions.png)
+![Suggestions](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/suggestions.png)
 
 Suggesting a change opens the same editor as the moderator editor, with three ways to preview your work:
 
@@ -99,7 +97,7 @@ A user can update their pending suggestion from the Submissions tab. Each update
 
 ### Voting
 
-![Vote](docs/vote.png)
+![Vote](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/vote.png)
 
 When voting is enabled, submitting a suggestion creates a separate Reddit post where community members cast votes. The voting post embeds the same side-by-side comparison as the editor (Normal / Source / Diff modes) so voters can review exactly what is changing, then vote **✓ FOR** or **✗ AGAINST**; clicking the chosen side again retracts the vote. Running tallies, the thresholds, and the time remaining are shown along the top.
 
@@ -115,7 +113,7 @@ The voting post includes a pinned bot comment that records vote events: when the
 
 ### Moderator Review
 
-![Suggestions moderator](docs/suggestions-mod.png)
+![Suggestions moderator](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/suggestions-mod.png)
 
 Moderators with "wiki" or "config" permissions see a Submissions tab listing all pending suggestions, each with the contributor, target page, description, and vote status if voting is enabled. Clicking Review opens a full-screen modal comparing the current page (left) and the suggestion (right), with the same Normal / Source / Diff modes as the editor; either column can be collapsed by clicking its label.
 
@@ -143,7 +141,7 @@ Images render inline, audio files become a native player, and 3D models open an 
 
 ### Asset Editions
 
-![Asset edit](docs/asset-edit.png)
+![Asset edit](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/asset-edit.png)
 
 Echo links support edition parameters that transform how assets are displayed, using URL query-parameter syntax appended to the path. Editions are applied client-side in real-time.
 
@@ -163,13 +161,13 @@ Editions combine with `&`:
 
 The asset preview lightbox includes interactive controls for applying editions. The generated echo link (copied via the copy button) includes the active edition suffixes.
 
-![Audio](docs/audio.png)
+![Audio](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/audio.png)
 
-![Sprites](docs/sprites.png)
+![Sprites](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/sprites.png)
 
 ### 3D Models
 
-![Models](docs/models.gif)
+![Models](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/models.gif)
 
 Interactive 3D models are a first-class echo asset, embedded with the same Markdown image syntax as a picture:
 
@@ -217,7 +215,7 @@ A short character blurb beside the portrait.
 
 **`:::infobox`** renders a classic stat-table infobox: an optional title header and image on top of a list of `Label | value` rows, floated to one side of the page. Values support inline Markdown links and `<br>` for multi-line cells.
 
-![Infobox](docs/card.png)
+![Infobox](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/card.png)
 
 ```
 :::infobox title="Character Name" image=echo://img/faces/hero.png align=right
@@ -229,15 +227,15 @@ Weapon | Echo Blade
 
 **`:::scene`** stacks images at absolute positions inside a fixed-size container. `bg:` is the background layer, `layer:` places a sprite at custom CSS coordinates (append `bottom=`, `left=`, `height=`, etc.), and `fg:` is a foreground overlay with `pointer-events: none`.
 
-![Scene](docs/scene.png)
+![Scene](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/scene.png)
 
 **`:::fbf`** (frame by frame) cycles through sprite frames using CSS opacity animation. List one `echo://` path per line. Use `fps` to set playback speed, `size` for the box pixel dimensions, and `alias=name` to name the block for use in `:::anim`.
 
-![Scene](docs/animations.gif)
+![Scene](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/animations.gif)
 
 **`:::anim`** moves a sprite across a background scene. Reference an `:::fbf` block via `ref=alias`, or supply frames inline. Define the movement path as one or more keyframe lines (`N% key=value ...`).
 
-![Scene](docs/animate.gif)
+![Scene](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/animate.gif)
 
 | Param              | Default | Description                                                                                                                                                                                                               |
 | ------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -267,7 +265,7 @@ echo://img/characters/actor.png?sprite=12,8,1
 
 **Multi-phase animations** swap the sprite mid-loop: add `---` separators inside `:::anim`, each with its own frames and movement keyframes (and optional `fps`, `spritesize`, `loops`, `duration`, `hold`). They composite into one seamless loop: e.g. a right-facing walk left-to-right, then a left-facing walk back: so the character always faces the way it is walking.
 
-![Scene](docs/animate-blocs.gif)
+![Scene](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/animate-blocs.gif)
 
 ```
 :::anim width=75% height=50% bg=echo://img/parallaxes/bg.png?crop bgopacity=1
@@ -301,7 +299,7 @@ theme = echo://audio/bgm/battle.ogg
 
 Content can also be centered with `>>>content<<<`, which wraps anything between the markers in a centered div.
 
-![Images](docs/center-img.png)
+![Images](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/center-img.png)
 
 Inline echo images accept two display hints appended like editions: `?emoji` shrinks the image to the height of the surrounding text so it reads as an inline icon, and `?outline` draws a dashed accent-colored outline around it. They combine with editions and with each other.
 
@@ -355,7 +353,7 @@ When forcing the engine in the [Game settings](#game), the choices are: **Auto-d
 
 ## Asset Browser
 
-![browser](docs/assets.png)
+![browser](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/assets.png)
 
 A gallery view with filter tabs (Images, Audio, and a Models tab that appears once the game ships 3D assets) and subfolder navigation. Each card has a copy button that copies its echo Markdown to the clipboard (Ctrl/Cmd+click copies the link with the original, unmapped filename instead). When a filename mapping is configured, cards display their mapped names. A "Load more" button pages in additional assets on demand.
 
@@ -390,14 +388,14 @@ The Settings tab is visible only to **config**-level moderators (see [Moderator 
 
 ### General
 
-![general](docs/general.png)
+![general](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/general.png)
 
 - **Wiki Title**: Displayed on the home screen below the logo. Leave empty for default.
 - **Wiki Description**: Short text shown below the title.
 
 ### Game
 
-![game](docs/game.png)
+![game](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/game.png)
 
 - **Game Title**: Displayed to users during import. A warning appears if the detected title does not match.
 - **Engine**: Leave on Auto-detect, or force a specific engine. The dropdown lists Unity, Unreal, and Godot first, then groups the rest for clarity: **RPG Maker** (MV, MZ, VX Ace, VX, XP, 2003: with encrypted variants for MV/MZ), **Other** (Generic scan covering RenPy, GameMaker, and any other game; plus TCOAAL), and **Advanced** (Custom transform).
@@ -438,7 +436,7 @@ return { path: parent + "/" + name.toLowerCase(), data: await file.arrayBuffer()
 
 ### Style
 
-![style](docs/style.png)
+![style](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/style.png)
 
 - **Card Size**: Compact, Normal, or Large thumbnails in the asset browser.
 - **Wiki Font Size**: Small, Normal, or Large.
@@ -448,13 +446,13 @@ return { path: parent + "/" + name.toLowerCase(), data: await file.arrayBuffer()
 
 ### Theme
 
-![theme](docs/theme.png)
+![theme](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/theme.png)
 
 Separate light and dark mode configuration. Each color has a reset button to restore the default derived from the subreddit's appearance settings. The app follows the user's system light/dark preference.
 
 ### Mapping
 
-![mapping](docs/mapping.png)
+![mapping](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/mapping.png)
 
 Moderators define `"original": "mapped"` pairs (one per line, comments supported), with a live preview table showing how each pair is parsed (Original / Mapped To). Mapped names replace raw filenames in the asset browser and in echo links.
 
@@ -473,7 +471,7 @@ Example:
 
 ### Collaborative
 
-![collaborative](docs/collaborative.png)
+![collaborative](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/collaborative.png)
 
 The collaborative feature lets users suggest changes to the wiki.
 
@@ -486,7 +484,7 @@ The collaborative feature lets users suggest changes to the wiki.
 
 ### Voting
 
-![voting](docs/voting.png)
+![voting](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/voting.png)
 
 Voting builds on collaborative mode, which it requires, engaging your community with a vote on each suggested change.
 

@@ -820,7 +820,7 @@ function VotingSettingsPanel({
         <div className="shrink-0" style={{ width: 160 }}>
           <label className="flex items-center gap-1 mb-1" style={{ color: "var(--text-muted)" }}>
             Vote Post Flair
-            <HelpTip text="Link flair automatically applied to every vote post when it is created, so members can spot and filter wiki votes in the subreddit feed. Choose "No flair" to leave them unflaired." />
+            <HelpTip text="Link flair automatically applied to every vote post when it is created, so members can spot and filter wiki votes in the subreddit feed. Choose 'No flair' to leave them unflaired." />
           </label>
           <select
             value={flairTemplateId ?? ""}

@@ -99,7 +99,18 @@ const VALID_HOME_LOGOS = new Set<string>(["echowiki", "subreddit"]);
 const DEFAULT_MAPPING_TEXT = '"original_filename": "mapped_filename"';
 
 async function getConfig(): Promise<GameConfig> {
-  const raw = await redis.hGetAll("config");
+  let raw: Record<string, string> | undefined;
+  try {
+    raw = await redis.hGetAll("config");
+  } catch (err) {
+    // Redis access is intermittently unreliable in some platform contexts
+    // (notably /internal/menu/* form-building), failing with an empty gRPC
+    // error (`undefined undefined: undefined`). Config is non-critical display
+    // data with safe defaults — fail open so a Redis hiccup never blocks
+    // moderators (e.g. from creating a post) or breaks read routes.
+    console.error("getConfig: redis.hGetAll failed, falling back to defaults", err);
+    return { ...DEFAULT_CONFIG };
+  }
   if (!raw || Object.keys(raw).length === 0) {
     return { ...DEFAULT_CONFIG };
   }
@@ -157,17 +168,56 @@ async function getConfig(): Promise<GameConfig> {
   };
 }
 
+/**
+ * Resolve the current user's username without the brittle `UserAbout` lookup
+ * that `reddit.getCurrentUsername()` performs internally (getCurrentUser →
+ * User.getById → User.getByUsername → UserAbout). In menu/trigger contexts that
+ * gRPC call can fail with an empty error ("undefined undefined: undefined"),
+ * which crashed those handlers (e.g. the "Create EchoWiki" menu showing
+ * "Failed to load form"). The platform already exposes the handle directly on
+ * the request context, so prefer that and only fall back to the API call —
+ * guarded — when the context handle is absent.
+ */
+async function getCurrentUsername(): Promise<string | undefined> {
+  if (context.username) return context.username;
+  if (!context.userId) return undefined;
+  try {
+    return await reddit.getCurrentUsername();
+  } catch (err) {
+    console.warn("getCurrentUsername: context handle missing and fallback lookup failed", err);
+    return undefined;
+  }
+}
+
 async function getModLevel(username: string): Promise<"config" | "wiki" | null> {
   if (!context.subredditName) return null;
   try {
     const mods = reddit.getModerators({ subredditName: context.subredditName, username });
     const modList = await mods.all();
-    if (modList.length === 0) return null;
+    if (modList.length === 0) return null; // genuinely not a moderator
     const mod = modList[0]!;
-    const perms = await mod.getModPermissionsForSubreddit(context.subredditName);
+
+    // Permission lookup is best-effort: isolate it so a failure here can never
+    // demote a confirmed moderator to "not a mod".
+    let perms: string[] = [];
+    try {
+      perms = await mod.getModPermissionsForSubreddit(context.subredditName);
+    } catch (err) {
+      console.warn(`getModLevel: permission lookup failed for "${username}"`, err);
+    }
     if (perms.includes("all") || perms.includes("config")) return "config";
     if (perms.includes("wiki")) return "wiki";
-    return null;
+
+    // The user IS a confirmed moderator, but the platform did not report a
+    // recognizable config/wiki permission. This happens for "everything" mods
+    // whose perms come back empty, and for INACTIVE mods whose effective perms
+    // Reddit reduces ("Inactive mods have limited permissions"). Rather than lock
+    // a real moderator out entirely, fail open to full access — matching the
+    // app's pre-granular-permissions behavior where any mod could do anything.
+    console.warn(
+      `getModLevel: moderator "${username}" reported perms [${perms.join(", ")}] for r/${context.subredditName}; defaulting to "config"`,
+    );
+    return "config";
   } catch {
     return null;
   }
@@ -623,7 +673,7 @@ router.get<Record<string, never>, InitResponse | VotingInitResponse | ErrorRespo
     try {
       const [config, username, appearance] = await Promise.all([
         getConfig(),
-        reddit.getCurrentUsername(),
+        getCurrentUsername(),
         getSubredditAppearance(),
       ]);
 
@@ -876,7 +926,7 @@ router.post<Record<string, never>, ConfigUpdateResponse | ErrorResponse, ConfigU
   "/api/config",
   async (req, res): Promise<void> => {
     try {
-      const configUsername = await reddit.getCurrentUsername();
+      const configUsername = await getCurrentUsername();
       if (!configUsername) {
         res.status(401).json({ status: "error", message: "Not logged in" });
         return;
@@ -1035,7 +1085,7 @@ router.post<Record<string, never>, MappingResponse | ErrorResponse, MappingUpdat
   "/api/mapping",
   async (req, res): Promise<void> => {
     try {
-      const username = await reddit.getCurrentUsername();
+      const username = await getCurrentUsername();
       if (!username) {
         res.status(401).json({ status: "error", message: "Not logged in" });
         return;
@@ -1212,7 +1262,7 @@ router.post<Record<string, never>, StyleResponse | ErrorResponse, StyleUpdateReq
   "/api/style",
   async (req, res): Promise<void> => {
     try {
-      const username = await reddit.getCurrentUsername();
+      const username = await getCurrentUsername();
       if (!username) {
         res.status(401).json({ status: "error", message: "Not logged in" });
         return;
@@ -1342,7 +1392,7 @@ router.post<Record<string, never>, WikiUpdateResponse | ErrorResponse, WikiUpdat
   "/api/wiki/update",
   async (req, res): Promise<void> => {
     try {
-      const updatingUsername = await reddit.getCurrentUsername();
+      const updatingUsername = await getCurrentUsername();
       if (!updatingUsername) {
         res.status(401).json({ status: "error", message: "Not logged in" });
         return;
@@ -1380,7 +1430,7 @@ router.get<Record<string, never>, WikiSuggestionResponse | ErrorResponse>(
   "/api/wiki/suggestion",
   async (_req, res): Promise<void> => {
     try {
-      const username = await reddit.getCurrentUsername();
+      const username = await getCurrentUsername();
       if (!username) {
         res.json({ type: "wiki-suggestion", suggestion: null });
         return;
@@ -1398,7 +1448,7 @@ router.post<Record<string, never>, WikiSuggestionResponse | ErrorResponse, WikiS
   "/api/wiki/suggestion",
   async (req, res): Promise<void> => {
     try {
-      const username = await reddit.getCurrentUsername();
+      const username = await getCurrentUsername();
       if (!username) {
         res.status(401).json({ status: "error", message: "Not logged in" });
         return;
@@ -1635,7 +1685,7 @@ router.delete<Record<string, never>, WikiSuggestionActionResponse | ErrorRespons
   "/api/wiki/suggestion",
   async (_req, res): Promise<void> => {
     try {
-      const username = await reddit.getCurrentUsername();
+      const username = await getCurrentUsername();
       if (!username) {
         res.status(401).json({ status: "error", message: "Not logged in" });
         return;
@@ -1735,7 +1785,7 @@ router.get<Record<string, never>, WikiSuggestionsResponse | ErrorResponse>(
   "/api/wiki/suggestions",
   async (_req, res): Promise<void> => {
     try {
-      const username = await reddit.getCurrentUsername();
+      const username = await getCurrentUsername();
       if (!username) {
         res.status(401).json({ status: "error", message: "Not logged in" });
         return;
@@ -1795,7 +1845,7 @@ router.post<
   WikiSuggestionActionRequest
 >("/api/wiki/suggestion/accept", async (req, res): Promise<void> => {
   try {
-    const modUsername = await reddit.getCurrentUsername();
+    const modUsername = await getCurrentUsername();
     if (!modUsername) {
       res.status(401).json({ status: "error", message: "Not logged in" });
       return;
@@ -1893,7 +1943,7 @@ router.post<
   WikiSuggestionActionRequest
 >("/api/wiki/suggestion/deny", async (req, res): Promise<void> => {
   try {
-    const modUsername = await reddit.getCurrentUsername();
+    const modUsername = await getCurrentUsername();
     if (!modUsername) {
       res.status(401).json({ status: "error", message: "Not logged in" });
       return;
@@ -1953,7 +2003,7 @@ router.get<Record<string, never>, CollabInfoResponse | ErrorResponse>(
   "/api/wiki/collab-info",
   async (_req, res): Promise<void> => {
     try {
-      const modUsername = await reddit.getCurrentUsername();
+      const modUsername = await getCurrentUsername();
       if (!modUsername) {
         res.status(401).json({ status: "error", message: "Not logged in" });
         return;
@@ -2027,7 +2077,7 @@ router.post<Record<string, never>, SuggestionFlairResponse | ErrorResponse, Sugg
   "/api/wiki/suggestion-flair",
   async (req, res): Promise<void> => {
     try {
-      const modUsername = await reddit.getCurrentUsername();
+      const modUsername = await getCurrentUsername();
       if (!modUsername) {
         res.status(401).json({ status: "error", message: "Not logged in" });
         return;
@@ -2058,7 +2108,7 @@ router.post<
   AdvancedContributorRequest
 >("/api/wiki/advanced-contributor", async (req, res): Promise<void> => {
   try {
-    const modUsername = await reddit.getCurrentUsername();
+    const modUsername = await getCurrentUsername();
     if (!modUsername) {
       res.status(401).json({ status: "error", message: "Not logged in" });
       return;
@@ -2094,7 +2144,7 @@ router.get<Record<string, never>, MyFlairsResponse | ErrorResponse>(
   "/api/wiki/my-flairs",
   async (_req, res): Promise<void> => {
     try {
-      const username = await reddit.getCurrentUsername();
+      const username = await getCurrentUsername();
       if (!username || username === "anonymous") {
         res.json({ type: "my-flairs", earned: [], equipped: null });
         return;
@@ -2127,7 +2177,7 @@ router.post<Record<string, never>, EquipFlairResponse | ErrorResponse, EquipFlai
   "/api/wiki/equip-flair",
   async (req, res): Promise<void> => {
     try {
-      const username = await reddit.getCurrentUsername();
+      const username = await getCurrentUsername();
       if (!username || username === "anonymous") {
         res.status(401).json({ status: "error", message: "Not logged in" });
         return;
@@ -2168,7 +2218,7 @@ router.post<Record<string, never>, WikiBanResponse | ErrorResponse, WikiBanReque
   "/api/wiki/ban",
   async (req, res): Promise<void> => {
     try {
-      const modUsername = await reddit.getCurrentUsername();
+      const modUsername = await getCurrentUsername();
       if (!modUsername) {
         res.status(401).json({ status: "error", message: "Not logged in" });
         return;
@@ -2208,7 +2258,7 @@ router.delete<Record<string, never>, WikiBanResponse | ErrorResponse>(
   "/api/wiki/ban",
   async (req, res): Promise<void> => {
     try {
-      const modUsername = await reddit.getCurrentUsername();
+      const modUsername = await getCurrentUsername();
       if (!modUsername) {
         res.status(401).json({ status: "error", message: "Not logged in" });
         return;
@@ -2243,7 +2293,7 @@ router.get<Record<string, never>, WikiBansResponse | ErrorResponse>(
   "/api/wiki/bans",
   async (_req, res): Promise<void> => {
     try {
-      const modUsername = await reddit.getCurrentUsername();
+      const modUsername = await getCurrentUsername();
       if (!modUsername) {
         res.status(401).json({ status: "error", message: "Not logged in" });
         return;
@@ -2290,7 +2340,7 @@ router.get<Record<string, never>, CastVoteResponse | ErrorResponse>(
         username: string;
         subredditName: string;
       };
-      const voterUsername = await reddit.getCurrentUsername();
+      const voterUsername = await getCurrentUsername();
       const config = await getConfig();
       const isMod = voterUsername ? await checkIsMod(voterUsername) : false;
       const voteStatus = await getVoteStatus(
@@ -2337,7 +2387,7 @@ router.post<Record<string, never>, CastVoteResponse | ErrorResponse, CastVoteReq
         subredditName: string;
       };
 
-      const voterUsername = await reddit.getCurrentUsername();
+      const voterUsername = await getCurrentUsername();
       if (!voterUsername || voterUsername === "anonymous") {
         res.status(401).json({ status: "error", message: "Not logged in" });
         return;
@@ -2468,7 +2518,7 @@ router.delete<Record<string, never>, CastVoteResponse | ErrorResponse>(
         username: string;
         subredditName: string;
       };
-      const voterUsername = await reddit.getCurrentUsername();
+      const voterUsername = await getCurrentUsername();
       if (!voterUsername || voterUsername === "anonymous") {
         res.status(401).json({ status: "error", message: "Not logged in" });
         return;
@@ -2528,13 +2578,22 @@ function normalizePostId(id: string): string {
 }
 
 async function getPostIds(): Promise<string[]> {
-  const legacy = await redis.get("postId");
-  if (legacy) {
-    const normalized = normalizePostId(legacy);
-    await redis.zAdd("postIds", { member: normalized, score: Date.now() });
-    await redis.del("postId");
+  let entries: { member: string }[];
+  try {
+    const legacy = await redis.get("postId");
+    if (legacy) {
+      const normalized = normalizePostId(legacy);
+      await redis.zAdd("postIds", { member: normalized, score: Date.now() });
+      await redis.del("postId");
+    }
+    entries = await redis.zRange("postIds", 0, -1);
+  } catch (err) {
+    // See getConfig: Redis can fail with an empty gRPC error in menu/trigger
+    // contexts. Tracked post ids only gate the optional "delete existing
+    // posts" form option — fail open with none rather than block the form.
+    console.error("getPostIds: redis read failed, returning none", err);
+    return [];
   }
-  const entries = await redis.zRange("postIds", 0, -1);
 
   const seen = new Set<string>();
   const result: string[] = [];
@@ -2548,8 +2607,18 @@ async function getPostIds(): Promise<string[]> {
   return result;
 }
 
-async function trackPost(postId: string): Promise<void> {
-  await redis.zAdd("postIds", { member: normalizePostId(postId), score: Date.now() });
+async function trackPost(postId: string): Promise<boolean> {
+  // Best-effort: Redis can fail with an empty gRPC error in menu/trigger
+  // contexts (see getConfig). The post is already created at this point —
+  // a tracking failure must not fail the whole operation. Returns whether
+  // tracking persisted, so callers can surface a warning.
+  try {
+    await redis.zAdd("postIds", { member: normalizePostId(postId), score: Date.now() });
+    return true;
+  } catch (err) {
+    console.error("trackPost: redis.zAdd failed, post not tracked", err);
+    return false;
+  }
 }
 
 router.post("/internal/on-app-install", async (_req, res): Promise<void> => {
@@ -2582,14 +2651,13 @@ router.post(
   "/internal/menu/post-create",
   async (_req, res: Response<UiResponse>): Promise<void> => {
     try {
-      const actingUsername = await reddit.getCurrentUsername();
-      if (!actingUsername || !(await checkIsAllMod(actingUsername))) {
-        res.json({
-          showToast:
-            "Only moderators with the Manage Settings permission can create EchoWiki posts.",
-        });
-        return;
-      }
+      // The "Create EchoWiki" menu is gated to moderators by `forUserType: "moderator"`
+      // in devvit.json, and /internal/* endpoints are platform-only — so the caller is
+      // already guaranteed to be a moderator. We intentionally do NOT re-resolve and
+      // re-check the user here: in menu/trigger contexts the acting user often cannot be
+      // resolved (context.username is unset and getCurrentUsername's UserAbout fallback
+      // fails with an empty gRPC error), which blocked legitimate moderators — including
+      // inactive "everything" mods — from creating posts.
       const config = await getConfig();
       const sub = context.subredditName ?? "unknown";
       const defaultTitle = config.wikiTitle || `EchoWiki - r/${sub}`;
@@ -2665,7 +2733,8 @@ router.post(
           },
         },
       });
-    } catch {
+    } catch (err) {
+      console.error("post-create menu: failed to build form", err);
       res.json({ showToast: "Failed to load form" });
     }
   },
@@ -2684,15 +2753,16 @@ router.post(
   "/internal/form/post-title-submit",
   async (req, res: Response<UiResponse>): Promise<void> => {
     try {
-      const actingUsername = await reddit.getCurrentUsername();
-      if (!actingUsername || !(await checkIsAllMod(actingUsername))) {
-        res.json({
-          showToast:
-            "Only moderators with the Manage Settings permission can create EchoWiki posts.",
-        });
-        return;
-      }
+      // The "Create EchoWiki" menu is gated to moderators by `forUserType: "moderator"`
+      // in devvit.json, and /internal/* endpoints are platform-only — so the caller is
+      // already guaranteed to be a moderator. We intentionally do NOT re-resolve and
+      // re-check the user here: in menu/trigger contexts the acting user often cannot be
+      // resolved (context.username is unset and getCurrentUsername's UserAbout fallback
+      // fails with an empty gRPC error), which blocked legitimate moderators — including
+      // inactive "everything" mods — from creating posts.
       const body = req.body as PostCreateFormData;
+
+      const warnings: string[] = [];
 
       if (body.deleteExisting) {
         const existingIds = await getPostIds();
@@ -2709,13 +2779,18 @@ router.post(
             } catch {}
           }
         }
-        await redis.del("postIds");
+        try {
+          await redis.del("postIds");
+        } catch (err) {
+          console.error("post-title-submit: redis.del(postIds) failed", err);
+        }
       }
 
+      // The essential action — everything below is best-effort and must not
+      // fail post creation if Redis (tracking, config) is unavailable.
       const post = await createPost(body.postTitle);
-      await trackPost(post.id);
-
-      const warnings: string[] = [];
+      const tracked = await trackPost(post.id);
+      if (!tracked) warnings.push("Post not tracked (storage unavailable)");
 
       if (body.lockComments) {
         try {
@@ -2752,9 +2827,14 @@ router.post(
       const configFields: Record<string, string> = { wikiTitle: body.postTitle };
       if (body.subtitle !== undefined) configFields["wikiDescription"] = body.subtitle;
       if (body.gameName !== undefined) configFields["gameName"] = body.gameName;
-      await Promise.all(
-        Object.entries(configFields).map(([k, v]) => redis.hSet("config", { [k]: v })),
-      );
+      try {
+        await Promise.all(
+          Object.entries(configFields).map(([k, v]) => redis.hSet("config", { [k]: v })),
+        );
+      } catch (err) {
+        console.error("post-title-submit: redis.hSet(config) failed", err);
+        warnings.push("Settings not saved (storage unavailable)");
+      }
 
       const parts = [body.deleteExisting ? "Old posts deleted." : "", "EchoWiki post created!"];
       if (warnings.length > 0) parts.push(`(${warnings.join(", ")})`);
