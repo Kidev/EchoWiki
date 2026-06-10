@@ -307,6 +307,8 @@ The file [docs/showcase.md](https://github.com/Kidev/EchoWiki/blob/main/docs/sho
 
 If enabled, users select their game folder. The app auto-detects the engine, extracts assets entirely in the browser, and stores them in IndexedDB. Nothing is uploaded.
 
+If no game is configured, EchoWiki runs as a plain wiki: there is no "Import game" prompt, no asset browser, and no echo links. The app works entirely as a collaborative Markdown wiki without any of the asset machinery.
+
 ### Supported Engines
 
 Engine detection is automatic. EchoWiki reads the biggest modern general-purpose engines, Unity, Unreal, and Godot, directly from their packaged data.
