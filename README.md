@@ -189,8 +189,6 @@ The model loads in an inline WebGL viewer (powered by three.js): drag to orbit, 
 
 Supported formats are `glb`, `gltf`, `obj`, `stl`, `ply`, `fbx`, `dae` (Collada), and `3mf`. GLB is recommended because it packs geometry and textures into a single self-contained file; OBJ/Collada that rely on sibling `.mtl` or texture files render geometry only. When a model loads without a texture, point `?texture=` at an imported image asset to apply one. The asset browser's model preview has a matching **Texture** field that bakes the same parameter into the copied link: type or paste an image path there and the viewer retextures live. The field also accepts a link copied straight from another asset's copy button: paste something like `![diffuse](echo://img/diffuse.png)` and the field strips the Markdown wrapper down to `echo://img/diffuse.png` and applies it immediately, so you can grab a texture from the browser and drop it onto a model without hand-editing the path. Models appear in the asset browser under their own **Models** category (a Models filter tab that surfaces only when the game actually ships 3D assets); those that carry an attached texture are flagged with a small badge on their card. Like every other asset they are resolved from each reader's own copy of the game, never uploaded.
 
-![Models in the asset browser](docs/assets-models.png)
-
 The viewer and its format loaders are lazy-loaded: the three.js runtime is only fetched the first time a reader opens a model, so pages without 3D content carry no extra weight.
 
 ### Composition Blocks
