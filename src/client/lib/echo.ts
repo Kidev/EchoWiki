@@ -105,6 +105,42 @@ export function getAudioEditionParamsForPath(echoPath: string): AudioEditionPara
   return audioEditionParamsCache.get(echoPath.toLowerCase()) ?? null;
 }
 
+// Whether a model carries an attached texture. Only GLBs can: the Unity import
+// writes a `materials[].extras.echoTex` pointer into the glTF JSON chunk. We read
+// just that first chunk (not the whole model) and look for the key. Cached per
+// asset so the asset grid can flag textured models without reloading them.
+const modelTextureCache = new Map<string, boolean>();
+
+async function glbHasEchoTexture(blob: Blob): Promise<boolean> {
+  try {
+    const head = new DataView(await blob.slice(0, 20).arrayBuffer());
+    if (head.byteLength < 20) return false;
+    if (head.getUint32(0, true) !== 0x46546c67) return false; // 'glTF' magic
+    if (head.getUint32(16, true) !== 0x4e4f534a) return false; // first chunk is 'JSON'
+    const jsonLen = head.getUint32(12, true);
+    const json = await blob.slice(20, 20 + jsonLen).text();
+    // `echoTex` only ever appears as the extras key, so a substring test is safe
+    // and avoids parsing the whole material graph.
+    return json.includes('"echoTex"');
+  } catch {
+    return false;
+  }
+}
+
+export async function modelHasEchoTexture(path: string): Promise<boolean> {
+  const { basePath } = parseEditions(path.toLowerCase());
+  const cached = modelTextureCache.get(basePath);
+  if (cached !== undefined) return cached;
+
+  let result = false;
+  if (/\.glb$/.test(basePath)) {
+    const blob = await resolveBaseAsset(basePath);
+    if (blob) result = await glbHasEchoTexture(blob);
+  }
+  modelTextureCache.set(basePath, result);
+  return result;
+}
+
 export function revokeAllBlobUrls(): void {
   for (const url of blobUrlCache.values()) {
     URL.revokeObjectURL(url);
@@ -112,6 +148,7 @@ export function revokeAllBlobUrls(): void {
   blobUrlCache.clear();
   revokeAllEditionBlobUrls();
   audioEditionParamsCache.clear();
+  modelTextureCache.clear();
 }
 
 const PRELOAD_CONCURRENCY = 6;

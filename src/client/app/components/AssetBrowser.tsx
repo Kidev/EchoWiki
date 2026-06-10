@@ -7,7 +7,7 @@ import {
   useRef,
   useCallback,
 } from "react";
-import { useEchoUrl } from "../../lib/echo";
+import { useEchoUrl, modelHasEchoTexture } from "../../lib/echo";
 import {
   getFileName,
   isImagePath,
@@ -73,6 +73,24 @@ export function AssetCard({
 }) {
   const category = getCategory(path);
   const { url, loading } = useEchoUrl(category === "images" ? path : null);
+
+  // Flag models that ship with an attached texture (a GLB `extras.echoTex`
+  // pointer). Read lazily so the grid stays responsive on large imports.
+  const [hasTexture, setHasTexture] = useState(false);
+  useEffect(() => {
+    if (category !== "models") {
+      setHasTexture(false);
+      return;
+    }
+    let cancelled = false;
+    void modelHasEchoTexture(path).then((v) => {
+      if (!cancelled) setHasTexture(v);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [category, path]);
+
   const displayName = toDisplayName(mappedPath ?? path);
   const echoPath = mappedPath ?? path;
   const name = getFileName(path);
@@ -107,6 +125,8 @@ export function AssetCard({
     cardSize === "compact" ? "text-[9px]" : cardSize === "large" ? "text-[11px]" : "text-[10px]";
   const copyIconClass =
     cardSize === "compact" ? "w-2.5 h-2.5" : cardSize === "large" ? "w-3.5 h-3.5" : "w-3 h-3";
+  const badgeClass =
+    cardSize === "compact" ? "w-3 h-3" : cardSize === "large" ? "w-[18px] h-[18px]" : "w-4 h-4";
 
   return (
     <div
@@ -122,7 +142,7 @@ export function AssetCard({
       onClick={handleClick}
     >
       <div
-        className={`${thumbClass} rounded border border-gray-200 flex items-center justify-center overflow-hidden flex-shrink-0`}
+        className={`${thumbClass} relative rounded border border-gray-200 flex items-center justify-center overflow-hidden flex-shrink-0`}
         style={{
           backgroundColor: category === "data" ? "#f9fafb" : "var(--thumb-bg)",
         }}
@@ -189,6 +209,27 @@ export function AssetCard({
               d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
             />
           </svg>
+        )}
+        {category === "models" && hasTexture && (
+          <span
+            className={`${badgeClass} absolute bottom-0.5 right-0.5 flex items-center justify-center rounded-full bg-violet-500 text-white ring-1 ring-white/70 shadow-sm`}
+            title="Texture attached"
+          >
+            <svg
+              className="w-2/3 h-2/3"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2.5}
+                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-9-6h.01M4 6a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6z"
+              />
+            </svg>
+          </span>
         )}
       </div>
       <div className={`${labelClass} flex items-center gap-0.5 w-full min-w-0`}>

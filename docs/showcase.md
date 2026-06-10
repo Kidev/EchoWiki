@@ -263,7 +263,7 @@ Use `:::scene` to stack images at absolute positions in a fixed-size container.
 - `fg:` covers everything on top with `pointer-events: none` (foreground overlay)
 
 ```
-:::scene width=75% height=51%
+:::scene width=50% height=75%
 bg: echo://img/parallaxes/backgrounds_156.png?crop
 layer: echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,0 bottom=5% left=48% height=25%
 layer: echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,3 bottom=5% left=40% height=25%
@@ -346,7 +346,7 @@ echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,26
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,25
 :::
 
-:::anim ref=ashley-right duration=2.5s width=75% height=51% bg=echo://img/parallaxes/backgrounds_66.png?crop bgopacity=1
+:::anim ref=ashley-right duration=2.5s width=50% height=75% bg=echo://img/parallaxes/backgrounds_66.png?crop bgopacity=1
 0% left=10% bottom=5%
 100% left=60% bottom=5%
 :::
@@ -361,7 +361,7 @@ echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,25
 
 *Walking across a background:*
 
-:::anim ref=ashley-right duration=2.5s width=75% height=51% bg=echo://img/parallaxes/backgrounds_66.png?crop bgopacity=1
+:::anim ref=ashley-right duration=2.5s width=50% height=75% bg=echo://img/parallaxes/backgrounds_66.png?crop bgopacity=1
 0% left=10% bottom=5%
 100% left=60% bottom=5%
 :::
@@ -371,7 +371,7 @@ echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,25
 Lines starting with `echo://` are treated as frames; lines starting with a number are movement keyframes. Everything goes inside a single `:::anim` block.
 
 ```
-:::anim fps=6 spritesize=100% duration=2.5s width=75% height=51% bg=echo://img/parallaxes/backgrounds_66.png?crop bgopacity=1
+:::anim fps=6 spritesize=100% duration=2.5s width=50% height=75% bg=echo://img/parallaxes/backgrounds_66.png?crop bgopacity=1
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,24
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,25
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,26
@@ -381,7 +381,7 @@ echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,25
 :::
 ```
 
-:::anim fps=6 spritesize=100% duration=2.5s width=75% height=51% bg=echo://img/parallaxes/backgrounds_66.png?crop bgopacity=1
+:::anim fps=6 spritesize=100% duration=2.5s width=50% height=75% bg=echo://img/parallaxes/backgrounds_66.png?crop bgopacity=1
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,24
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,25
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,26
@@ -397,7 +397,7 @@ Use `---` separators inside `:::anim` to switch sprites mid-cycle. Each phase ha
 Phase 1 uses the right-facing walk cycle (indices 24-25-26-25) moving left to right. Phase 2 uses the left-facing walk cycle (indices 12-13-14-13) moving right to left. The result is a seamless loop where the character always faces the direction she is walking.
 
 ```
-:::anim width=75% height=51% bg=echo://img/parallaxes/backgrounds_66.png?crop bgopacity=1
+:::anim width=50% height=75% bg=echo://img/parallaxes/backgrounds_66.png?crop bgopacity=1
 --- duration=2s fps=6 spritesize=100%
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,24
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,25
@@ -415,7 +415,7 @@ echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,13
 :::
 ```
 
-:::anim width=75% height=51% bg=echo://img/parallaxes/backgrounds_66.png?crop bgopacity=1
+:::anim width=50% height=75% bg=echo://img/parallaxes/backgrounds_66.png?crop bgopacity=1
 --- duration=2s fps=6 spritesize=100%
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,24
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,25
@@ -584,7 +584,7 @@ echo://path/frame2.png?sprite=...
 | Param | Default | Description |
 |---|---|---|
 | `fps` | `2.5` | Frames per second |
-| `size` | `64` | Pixel dimensions of the animation box |
+| `size` | natural | Box size: a pixel value (e.g. `64`) fixes it; omit it (or use a `%`) to render at the sprite's natural size |
 | `alias` | | Name this block so `:::anim` can reference it |
 
 #### `:::anim` Moving animation
@@ -607,7 +607,7 @@ M% key=value [key=value ...]
 |---|---|---|
 | `ref` | | Alias of an `:::fbf` block to use as the sprite |
 | `fps` | `2.5` | Frames per second. Treated as a target: see `hold`. Ignored when `ref` is set |
-| `spritesize` | `48` | Sprite pixel size (ignored when `ref` is set) |
+| `spritesize` | natural | Sprite size: a pixel value (e.g. `48`) fixes it; omit it (or use a `%`) to render at the sprite's natural size. Ignored when `ref` is set |
 | `loops` | `1` | Number of whole walk cycles per movement. Movement time is derived as `loops × frames ÷ fps`. Ignored when `duration` is set |
 | `duration` | `3s` | Explicit time for one full movement. Overrides `loops` |
 | `hold` | `true` | Lock the walk to the movement: the cycle is snapped so a whole number of cycles exactly fills the movement, so the sprite never switches direction mid-stride. Set `hold=false` to keep the raw `fps` and let the cycle drift against the movement |

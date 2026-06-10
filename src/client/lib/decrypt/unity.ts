@@ -258,6 +258,9 @@ type SerializedFile = {
   unityVersion: number[];
   formatVersion: number;
   objects: ObjectInfo[];
+  // External file dependencies (raw pathNames). PPtr.fileID indexes this list
+  // 1-based; fileID 0 means the current file. Used for cross-file PPtr resolution.
+  externals: string[];
 };
 
 function parseSerializedFile(bytes: Uint8Array): SerializedFile | null {
@@ -357,7 +360,41 @@ function parseSerializedFile(bytes: Uint8Array): SerializedFile | null {
     objects.push({ classID, pathID, byteStart, byteSize });
   }
 
-  return { little: reader.little, unityVersion, formatVersion: version, objects };
+  // Script types table (version >= 11) then the external dependency list. PPtr
+  // cross-file references index `externals` 1-based. Best-effort: a truncated or
+  // unexpected tail just yields fewer externals, degrading linking to same-file.
+  const externals: string[] = [];
+  try {
+    if (version >= 11) {
+      const scriptCount = reader.i32();
+      if (scriptCount >= 0 && scriptCount < 1_000_000) {
+        for (let i = 0; i < scriptCount; i++) {
+          reader.i32(); // localSerializedFileIndex
+          if (version < 14) {
+            reader.i32(); // localIdentifierInFile
+          } else {
+            reader.align(4);
+            reader.i64(); // localIdentifierInFile
+          }
+        }
+      }
+    }
+    const externalCount = reader.i32();
+    if (externalCount >= 0 && externalCount < 1_000_000) {
+      for (let i = 0; i < externalCount; i++) {
+        if (version >= 6) reader.stringToNull(); // tempEmpty
+        if (version >= 5) {
+          reader.bytesN(16); // guid
+          reader.i32(); // type
+        }
+        externals.push(reader.stringToNull()); // pathName
+      }
+    }
+  } catch {
+    // Leave externals as parsed so far.
+  }
+
+  return { little: reader.little, unityVersion, formatVersion: version, objects, externals };
 }
 
 // Scene-graph parsing: just enough to link Mesh -> Material -> Texture2D.
@@ -455,26 +492,27 @@ function readSkinnedMeshRenderer(
   r: UnityReader,
   uv: number[],
   fv: number,
-): { mesh: number; materials: PPtr[] } {
+): { mesh: PPtr; materials: PPtr[] } {
   const { materials } = readRendererThroughMaterials(r, uv, fv);
   skipRendererTail(r, uv, fv);
   r.i32(); // m_Quality
   r.bool(); // m_UpdateWhenOffscreen
   r.bool(); // m_SkinNormals
   r.align(4);
-  const mesh = readPPtr(r, fv).pathID; // m_Mesh
+  const mesh = readPPtr(r, fv); // m_Mesh (may be cross-file)
   return { mesh, materials };
 }
 
-function readMeshFilter(r: UnityReader, fv: number): { gameObject: number; mesh: number } {
+function readMeshFilter(r: UnityReader, fv: number): { gameObject: number; mesh: PPtr } {
   const gameObject = readPPtr(r, fv).pathID; // Component.m_GameObject
-  const mesh = readPPtr(r, fv).pathID; // m_Mesh
+  const mesh = readPPtr(r, fv); // m_Mesh (may be cross-file)
   return { gameObject, mesh };
 }
 
-// Reads a Material far enough to recover the main texture's pathID (same-file
-// references only; cross-file PPtrs are reported as null).
-function readMaterialMainTexture(r: UnityReader, uv: number[], fv: number): number | null {
+// Reads a Material far enough to recover its main texture PPtr. The PPtr may be
+// cross-file (fileID != 0); the caller resolves it via the owning file's
+// external dependency list. Null when the material binds no usable texture.
+function readMaterialMainTexture(r: UnityReader, uv: number[], fv: number): PPtr | null {
   r.alignedString(); // m_Name
   readPPtr(r, fv); // m_Shader
   if (versionGte(uv, [2021, 3])) {
@@ -501,17 +539,17 @@ function readMaterialMainTexture(r: UnityReader, uv: number[], fv: number): numb
   // UnityPropertySheet.m_TexEnvs
   const texCount = r.i32();
   if (texCount < 0 || texCount > 100000) return null;
-  let first: number | null = null;
-  let preferred: number | null = null;
+  let first: PPtr | null = null;
+  let preferred: PPtr | null = null;
   for (let i = 0; i < texCount; i++) {
     const key = r.alignedString();
     const tex = readPPtr(r, fv); // m_Texture
     r.bytesN(16); // m_Scale (Vector2) + m_Offset (Vector2)
-    if (tex.fileID !== 0 || tex.pathID === 0) continue; // same-file textures only
-    if (first === null) first = tex.pathID;
+    if (tex.pathID === 0) continue; // unbound texture slot
+    if (first === null) first = tex;
     const k = key.toLowerCase();
     if (preferred === null && (k === "_maintex" || k === "_basemap" || k === "_basecolormap")) {
-      preferred = tex.pathID;
+      preferred = tex;
     }
   }
   return preferred ?? first;
@@ -592,180 +630,38 @@ function readTexture2D(reader: UnityReader, uv: number[]): TextureDescriptor | n
 }
 
 // Extraction pipeline
+//
+// Unity spreads a single renderable across several serialized files: the Mesh
+// lives in one file (e.g. resources.assets) while its Material + Texture2D
+// usually live in another (sharedassetsN.assets). PPtr.fileID indexes the owning
+// file's external dependency list, so linking Mesh -> Material -> Texture2D has
+// to resolve across files. The pipeline therefore runs in three passes:
+//   1. parse + index every serialized file (objects, externals, scene-graph
+//      joins) into a shared registry;
+//   2. emit every Texture2D as a PNG asset, recording where each one landed;
+//   3. emit every Mesh as a GLB, resolving its texture across files and
+//      referencing the already-emitted texture asset by path.
 
-async function* extractObjects(
-  fileBytes: Uint8Array,
-  resolve: CompanionResolver,
-  usedNames: Set<string>,
-): AsyncGenerator<ProcessedAsset> {
-  let sf: SerializedFile | null;
-  try {
-    sf = parseSerializedFile(fileBytes);
-  } catch {
-    return;
-  }
-  if (!sf) return;
+// A parsed serialized file plus a lazy loader for its full bytes (needed again
+// in passes 2 and 3 to read texture/mesh/material records on demand).
+type FileEntry = {
+  key: string; // lowercased basename, the registry key
+  little: boolean;
+  unityVersion: number[];
+  formatVersion: number;
+  byPath: Map<number, ObjectInfo>;
+  externals: string[]; // dependency basenames (lowercased); PPtr.fileID is 1-based into this
+  texObjs: ObjectInfo[];
+  meshObjs: ObjectInfo[];
+  getBytes: () => Promise<Uint8Array | null>;
+  resolve: CompanionResolver; // resolves this file's streamed .resS / .resource siblings
+};
 
-  const uv = sf.unityVersion;
-  const fv = sf.formatVersion;
-  const inBounds = (o: ObjectInfo) =>
-    o.byteStart >= 0 && o.byteStart + o.byteSize <= fileBytes.length;
-  const bytesOf = (o: ObjectInfo) => fileBytes.subarray(o.byteStart, o.byteStart + o.byteSize);
+type ObjRef = { fileKey: string; pathID: number };
 
-  // First pass: index objects and link Mesh -> Material -> Texture2D. The link
-  // runs through (Skinned)MeshRenderer components, so it's built before emitting
-  // anything. Cross-file PPtrs (fileID != 0) are left unresolved (same-file only).
-  const texByPath = new Map<number, ObjectInfo>();
-  const meshObjs: ObjectInfo[] = [];
-  const meshToMats = new Map<number, PPtr[]>();
-  const matToTex = new Map<number, number>();
-  const goToMesh = new Map<number, number>(); // GameObject pathID -> Mesh pathID (MeshFilter)
-  const goToMats = new Map<number, PPtr[]>(); // GameObject pathID -> materials (MeshRenderer)
-
-  for (const obj of sf.objects) {
-    if (!inBounds(obj)) continue;
-    try {
-      switch (obj.classID) {
-        case CLASS_TEXTURE2D:
-          texByPath.set(obj.pathID, obj);
-          break;
-        case CLASS_MESH:
-          meshObjs.push(obj);
-          break;
-        case CLASS_MESH_FILTER: {
-          const mf = readMeshFilter(new UnityReader(bytesOf(obj), sf.little), fv);
-          if (mf.mesh) goToMesh.set(mf.gameObject, mf.mesh);
-          break;
-        }
-        case CLASS_MESH_RENDERER: {
-          const mr = readRendererThroughMaterials(new UnityReader(bytesOf(obj), sf.little), uv, fv);
-          if (mr.materials.length > 0) goToMats.set(mr.gameObject, mr.materials);
-          break;
-        }
-        case CLASS_SKINNED_MESH_RENDERER: {
-          const smr = readSkinnedMeshRenderer(new UnityReader(bytesOf(obj), sf.little), uv, fv);
-          if (smr.mesh && smr.materials.length > 0) meshToMats.set(smr.mesh, smr.materials);
-          break;
-        }
-        case CLASS_MATERIAL: {
-          const tex = readMaterialMainTexture(new UnityReader(bytesOf(obj), sf.little), uv, fv);
-          if (tex != null) matToTex.set(obj.pathID, tex);
-          break;
-        }
-        default:
-          break;
-      }
-    } catch {
-      // Malformed object: ignore for linking purposes.
-    }
-  }
-
-  // Join static meshes (MeshFilter + MeshRenderer share a GameObject).
-  for (const [go, meshPathID] of goToMesh) {
-    if (meshToMats.has(meshPathID)) continue;
-    const mats = goToMats.get(go);
-    if (mats) meshToMats.set(meshPathID, mats);
-  }
-
-  // Decode a Texture2D to PNG once, cached by pathID (shared by texture-asset
-  // emission and mesh texture embedding).
-  const texCache = new Map<number, { png: Uint8Array; name: string } | null>();
-  const decodeTex = async (pathID: number): Promise<{ png: Uint8Array; name: string } | null> => {
-    if (texCache.has(pathID)) return texCache.get(pathID) ?? null;
-    const obj = texByPath.get(pathID);
-    if (!obj) {
-      texCache.set(pathID, null);
-      return null;
-    }
-    let result: { png: Uint8Array; name: string } | null = null;
-    try {
-      const desc = readTexture2D(new UnityReader(bytesOf(obj), sf.little), uv);
-      if (desc) {
-        let imageData = desc.inlineData;
-        if ((!imageData || imageData.length === 0) && desc.streamData) {
-          const res = await resolve(desc.streamData.path);
-          const { offset, size } = desc.streamData;
-          if (res && offset >= 0 && offset + size <= res.length) {
-            imageData = res.subarray(offset, offset + size);
-          }
-        }
-        if (imageData && imageData.length > 0) {
-          const rgba = decodeTexture(imageData, desc.width, desc.height, desc.format);
-          if (rgba) {
-            const png = await encodePng(desc.width, desc.height, rgba);
-            result = { png, name: desc.name };
-          }
-        }
-      }
-    } catch {
-      result = null;
-    }
-    texCache.set(pathID, result);
-    return result;
-  };
-
-  // Resolve the main texture pathID for a mesh via its first textured material.
-  const meshTexturePath = (meshPathID: number): number | null => {
-    const mats = meshToMats.get(meshPathID);
-    if (!mats) return null;
-    for (const m of mats) {
-      if (m.fileID !== 0) continue; // same-file materials only
-      const tex = matToTex.get(m.pathID);
-      if (tex != null && texByPath.has(tex)) return tex;
-    }
-    return null;
-  };
-
-  const claimName = (folder: string, stem: string, extn: string): string => {
-    let path = `${folder}/${stem}.${extn}`.toLowerCase();
-    let suffix = 1;
-    while (usedNames.has(path)) path = `${folder}/${stem}_${suffix++}.${extn}`.toLowerCase();
-    usedNames.add(path);
-    return path;
-  };
-
-  // Emit every Texture2D as a PNG asset and remember the asset path each texture
-  // pathID landed at, so meshes can reference it (instead of re-embedding it).
-  const texPathToAsset = new Map<number, string>();
-  for (const pathID of texByPath.keys()) {
-    const dec = await decodeTex(pathID);
-    if (!dec) continue;
-    const assetPath = claimName("textures", sanitizeName(dec.name), "png");
-    texPathToAsset.set(pathID, assetPath);
-    yield {
-      path: assetPath,
-      blob: new Blob([dec.png], { type: "image/png" }),
-      mimeType: "image/png",
-    };
-  }
-
-  // Emit meshes as GLBs that *reference* their linked texture asset (applied
-  // lazily by ModelViewer), rather than embedding a copy of it.
-  for (const obj of meshObjs) {
-    const texPathID = meshTexturePath(obj.pathID);
-    const textureRef = texPathID != null ? (texPathToAsset.get(texPathID) ?? null) : null;
-
-    let extracted: { name: string; data: Uint8Array } | null;
-    try {
-      extracted = await extractMeshGlb(
-        bytesOf(obj),
-        sf.little,
-        uv,
-        (name) => resolve(name),
-        textureRef,
-      );
-    } catch {
-      continue; // malformed / unsupported mesh: skip
-    }
-    if (!extracted) continue;
-
-    yield {
-      path: claimName("meshes", sanitizeName(extracted.name), "glb"),
-      blob: new Blob([extracted.data], { type: "model/gltf-binary" }),
-      mimeType: "model/gltf-binary",
-    };
-  }
-}
+// Composite key for the global object maps. pathID is i64 but, like the rest of
+// this reader, is carried as a number: consistent with the existing same-file code.
+const objKey = (fileKey: string, pathID: number): string => `${fileKey} ${pathID}`;
 
 // Entry points
 
@@ -821,6 +717,134 @@ export async function* processUnityFiles(files: File[]): AsyncGenerator<Processe
         return null;
       }
     };
+  const diskResolver = makeResolver(null);
+
+  // Shared cross-file state.
+  const registry = new Map<string, FileEntry>();
+  // Mesh (globally keyed) -> the materials bound to it, plus the file those
+  // material PPtrs are expressed relative to.
+  const meshToMats = new Map<string, { srcKey: string; materials: PPtr[] }>();
+  // Texture2D (globally keyed) -> the asset path it was emitted at.
+  const texAsset = new Map<string, string>();
+  // Material (globally keyed) -> its main texture PPtr, memoised (shared
+  // materials are referenced by many meshes).
+  const materialTex = new Map<string, PPtr | null>();
+
+  // Resolve a PPtr expressed in `srcKey`'s space to a concrete (file, pathID).
+  const deref = (srcKey: string, ptr: PPtr): ObjRef | null => {
+    if (ptr.pathID === 0) return null;
+    if (ptr.fileID === 0) return { fileKey: srcKey, pathID: ptr.pathID };
+    const dep = registry.get(srcKey)?.externals[ptr.fileID - 1];
+    if (!dep) return null;
+    return { fileKey: dep, pathID: ptr.pathID };
+  };
+
+  const claimName = (folder: string, stem: string, extn: string): string => {
+    let path = `${folder}/${stem}.${extn}`.toLowerCase();
+    let suffix = 1;
+    while (usedNames.has(path)) path = `${folder}/${stem}_${suffix++}.${extn}`.toLowerCase();
+    usedNames.add(path);
+    return path;
+  };
+
+  // Pass 1 helper: parse one serialized unit, index its objects + scene-graph
+  // joins, and register it. `bytes` is in hand here; `getBytes` reloads later.
+  const indexUnit = (
+    key: string,
+    bytes: Uint8Array,
+    resolver: CompanionResolver,
+    getBytes: () => Promise<Uint8Array | null>,
+  ): void => {
+    let sf: SerializedFile | null;
+    try {
+      sf = parseSerializedFile(bytes);
+    } catch {
+      return;
+    }
+    if (!sf || registry.has(key)) return;
+
+    const fv = sf.formatVersion;
+    const uv = sf.unityVersion;
+    const externals = sf.externals.map((p) => baseName(p).toLowerCase());
+    const inBounds = (o: ObjectInfo) => o.byteStart >= 0 && o.byteStart + o.byteSize <= bytes.length;
+    const bytesOf = (o: ObjectInfo) => bytes.subarray(o.byteStart, o.byteStart + o.byteSize);
+
+    const byPath = new Map<number, ObjectInfo>();
+    const texObjs: ObjectInfo[] = [];
+    const meshObjs: ObjectInfo[] = [];
+
+    // PPtr resolution local to this file (registry doesn't have `key` yet).
+    const derefLocal = (ptr: PPtr): ObjRef | null => {
+      if (ptr.pathID === 0) return null;
+      if (ptr.fileID === 0) return { fileKey: key, pathID: ptr.pathID };
+      const dep = externals[ptr.fileID - 1];
+      return dep ? { fileKey: dep, pathID: ptr.pathID } : null;
+    };
+
+    // GameObject pathID -> mesh / materials (components share a GameObject and
+    // are always co-located, so these joins are keyed by local pathID).
+    const goToMesh = new Map<number, ObjRef>();
+    const goToMats = new Map<number, PPtr[]>();
+
+    for (const obj of sf.objects) {
+      if (!inBounds(obj)) continue;
+      byPath.set(obj.pathID, obj);
+      try {
+        switch (obj.classID) {
+          case CLASS_TEXTURE2D:
+            texObjs.push(obj);
+            break;
+          case CLASS_MESH:
+            meshObjs.push(obj);
+            break;
+          case CLASS_MESH_FILTER: {
+            const mf = readMeshFilter(new UnityReader(bytesOf(obj), sf.little), fv);
+            const ref = derefLocal(mf.mesh);
+            if (ref) goToMesh.set(mf.gameObject, ref);
+            break;
+          }
+          case CLASS_MESH_RENDERER: {
+            const mr = readRendererThroughMaterials(new UnityReader(bytesOf(obj), sf.little), uv, fv);
+            if (mr.materials.length > 0) goToMats.set(mr.gameObject, mr.materials);
+            break;
+          }
+          case CLASS_SKINNED_MESH_RENDERER: {
+            const smr = readSkinnedMeshRenderer(new UnityReader(bytesOf(obj), sf.little), uv, fv);
+            const ref = derefLocal(smr.mesh);
+            if (ref && smr.materials.length > 0) {
+              meshToMats.set(objKey(ref.fileKey, ref.pathID), { srcKey: key, materials: smr.materials });
+            }
+            break;
+          }
+          default:
+            break;
+        }
+      } catch {
+        // Malformed object: ignore for linking purposes.
+      }
+    }
+
+    // Join static meshes (MeshFilter + MeshRenderer share a GameObject).
+    for (const [go, ref] of goToMesh) {
+      const mk = objKey(ref.fileKey, ref.pathID);
+      if (meshToMats.has(mk)) continue; // a SkinnedMeshRenderer already bound it
+      const mats = goToMats.get(go);
+      if (mats) meshToMats.set(mk, { srcKey: key, materials: mats });
+    }
+
+    registry.set(key, {
+      key,
+      little: sf.little,
+      unityVersion: uv,
+      formatVersion: fv,
+      byPath,
+      externals,
+      texObjs,
+      meshObjs,
+      getBytes,
+      resolve: resolver,
+    });
+  };
 
   for (const file of files) {
     const name = baseName(file.webkitRelativePath || file.name);
@@ -855,10 +879,132 @@ export async function* processUnityFiles(files: File[]): AsyncGenerator<Processe
       for (const node of nodes) nodeMap.set(baseName(node.path).toLowerCase(), node.data);
       const resolver = makeResolver(nodeMap);
       for (const node of nodes) {
-        yield* extractObjects(node.data, resolver, usedNames);
+        const nkey = baseName(node.path).toLowerCase();
+        const data = node.data; // resident in the decompressed bundle
+        indexUnit(nkey, data, resolver, async () => data);
       }
     } else {
-      yield* extractObjects(bytes, makeResolver(null), usedNames);
+      const key = name.toLowerCase();
+      cache.set(key, bytes); // keep resident so passes 2/3 reuse it without re-reading
+      indexUnit(key, bytes, diskResolver, () => diskResolver(key));
+    }
+  }
+
+  // Decode one Texture2D object to a PNG (inline or streamed pixel data).
+  const decodeTexObj = async (
+    entry: FileEntry,
+    info: ObjectInfo,
+  ): Promise<{ png: Uint8Array; name: string } | null> => {
+    const bytes = await entry.getBytes();
+    if (!bytes || info.byteStart < 0 || info.byteStart + info.byteSize > bytes.length) return null;
+    const desc = readTexture2D(
+      new UnityReader(bytes.subarray(info.byteStart, info.byteStart + info.byteSize), entry.little),
+      entry.unityVersion,
+    );
+    if (!desc) return null;
+    let imageData = desc.inlineData;
+    if ((!imageData || imageData.length === 0) && desc.streamData) {
+      const res = await entry.resolve(desc.streamData.path);
+      const { offset, size } = desc.streamData;
+      if (res && offset >= 0 && offset + size <= res.length) imageData = res.subarray(offset, offset + size);
+    }
+    if (!imageData || imageData.length === 0) return null;
+    const rgba = decodeTexture(imageData, desc.width, desc.height, desc.format);
+    if (!rgba) return null;
+    const png = await encodePng(desc.width, desc.height, rgba);
+    return { png, name: desc.name };
+  };
+
+  for (const entry of registry.values()) {
+    for (const info of entry.texObjs) {
+      let dec: { png: Uint8Array; name: string } | null;
+      try {
+        dec = await decodeTexObj(entry, info);
+      } catch {
+        dec = null;
+      }
+      if (!dec) continue;
+      const assetPath = claimName("textures", sanitizeName(dec.name), "png");
+      texAsset.set(objKey(entry.key, info.pathID), assetPath);
+      yield {
+        path: assetPath,
+        blob: new Blob([dec.png], { type: "image/png" }),
+        mimeType: "image/png",
+      };
+    }
+  }
+
+  // Read (and memoise) a material's main texture PPtr, resolving cross-file.
+  const materialTexture = async (ref: ObjRef): Promise<PPtr | null> => {
+    const mk = objKey(ref.fileKey, ref.pathID);
+    const cached = materialTex.get(mk);
+    if (cached !== undefined) return cached;
+    let result: PPtr | null = null;
+    const entry = registry.get(ref.fileKey);
+    const info = entry?.byPath.get(ref.pathID);
+    if (entry && info && info.classID === CLASS_MATERIAL) {
+      const bytes = await entry.getBytes();
+      if (bytes && info.byteStart >= 0 && info.byteStart + info.byteSize <= bytes.length) {
+        try {
+          result = readMaterialMainTexture(
+            new UnityReader(bytes.subarray(info.byteStart, info.byteStart + info.byteSize), entry.little),
+            entry.unityVersion,
+            entry.formatVersion,
+          );
+        } catch {
+          result = null;
+        }
+      }
+    }
+    materialTex.set(mk, result);
+    return result;
+  };
+
+  // Resolve a mesh's texture asset path through Mesh -> Material -> Texture2D,
+  // following PPtrs across files. Returns null when nothing links cleanly.
+  const meshTextureRef = async (meshKey: string): Promise<string | null> => {
+    const link = meshToMats.get(meshKey);
+    if (!link) return null;
+    for (const matPtr of link.materials) {
+      const matRef = deref(link.srcKey, matPtr);
+      if (!matRef) continue;
+      const texPtr = await materialTexture(matRef);
+      if (!texPtr) continue;
+      const texRef = deref(matRef.fileKey, texPtr);
+      if (!texRef) continue;
+      const assetPath = texAsset.get(objKey(texRef.fileKey, texRef.pathID));
+      if (assetPath) return assetPath;
+    }
+    return null;
+  };
+
+  for (const entry of registry.values()) {
+    if (entry.meshObjs.length === 0) continue;
+    const bytes = await entry.getBytes();
+    if (!bytes) continue;
+    for (const info of entry.meshObjs) {
+      if (info.byteStart < 0 || info.byteStart + info.byteSize > bytes.length) continue;
+      const textureRef = await meshTextureRef(objKey(entry.key, info.pathID));
+
+      let extracted: { name: string; data: Uint8Array } | null;
+      try {
+        extracted = await extractMeshGlb(
+          bytes.subarray(info.byteStart, info.byteStart + info.byteSize),
+          entry.little,
+          entry.unityVersion,
+          (name) => entry.resolve(name),
+          textureRef,
+        );
+      } catch {
+        continue; // malformed / unsupported mesh: skip
+      }
+      if (!extracted) continue;
+
+      yield {
+        path: claimName("meshes", sanitizeName(extracted.name), "glb"),
+        blob: new Blob([extracted.data], { type: "model/gltf-binary" }),
+        mimeType: "model/gltf-binary",
+      };
     }
   }
 }

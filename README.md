@@ -2,9 +2,9 @@
 
 Rich wikis for Reddit communities. Live editing, advanced markdown, collaborative contributions with optional community voting, and for a lot of games: in-game assets from each player's own copy. No uploads.
 
-[Watch all the features in the demo video](https://youtu.be/8LDJ3MG-C0I "EchoWiki features demo video")
+[Watch all the features in the demo video](https://youtu.be/OOgn59yKN_I "EchoWiki features demo video")
 
-EchoWiki turns a subreddit wiki into a proper editing and reading environment. Moderators write and update pages inside the app with a live Markdown preview. Readers get richer formatting than Reddit's native wiki. Contributors can propose changes that mods review before merging, and optionally the community votes on whether to accept each suggestion. For a lot of games communities specifically, the app resolves special `echo://` links to in-game assets that each reader loads from their own copy of the game, without any files being uploaded anywhere, making it respect the copyrights.
+EchoWiki turns a subreddit wiki into a proper editing and reading environment. Moderators write and update pages inside the app with a live Markdown preview. Readers get richer formatting than Reddit's native wiki. Contributors can propose changes that moderators review before merging, and optionally the community votes on whether to accept each suggestion. For a lot of games communities specifically, the app resolves special `echo://` links to in-game assets that each reader loads from their own copy of the game, without any files being uploaded anywhere, making it respect the copyrights.
 
 ## Contents
 
@@ -14,7 +14,7 @@ EchoWiki turns a subreddit wiki into a proper editing and reading environment. M
 - [Collaborative Editing](#collaborative-editing)
   - [Suggestions](#suggestions)
   - [Voting](#voting)
-  - [Mod Review](#mod-review)
+  - [Moderator Review](#moderator-review)
   - [Flair Rewards](#flair-rewards)
 - [Echo Links](#echo-links)
   - [Asset Editions](#asset-editions)
@@ -23,7 +23,7 @@ EchoWiki turns a subreddit wiki into a proper editing and reading environment. M
 - [Asset Import](#asset-import)
   - [Supported Engines](#supported-engines)
 - [Asset Browser](#asset-browser)
-- [Mod Settings](#mod-settings)
+- [Moderator Settings](#moderator-settings)
   - [General](#general)
   - [Game](#game)
   - [Style](#style)
@@ -42,7 +42,7 @@ Easy and powerful custom formatting based on Markdown:
 
 - [Tables, code blocks, lists, blockquotes, horizontal rules...](https://github.github.com/gfm)
 - GitHub-style alerts (`> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]`, `> [!CAUTION]`) with colored borders and icons
-- Echo links resolved as inline images and audio players
+- Echo links resolved as inline images, audio players, and interactive 3D models
 - [Composition blocks](#composition-blocks): cards, stat-table infoboxes, layered scenes, and frame-by-frame or moving-sprite animations built from game assets
 - Anchor links scrolling to the target heading within the page
 - External links opening in the browser
@@ -50,15 +50,22 @@ Easy and powerful custom formatting based on Markdown:
 
 Navigation uses a breadcrumb bar that slides down from the top when hovering the Wiki tab. Each segment in the breadcrumb has a dropdown showing sibling pages at that level.
 
-**For more details, [watch the demo video](https://youtu.be/8LDJ3MG-C0I "EchoWiki features demo video")**
+**For more details, [watch the demo video](https://youtu.be/OOgn59yKN_I "EchoWiki features demo video")**
+
+### Easy integration
+
+![integration](docs/modmenu.png)
+
+You can easily create and setup the Wiki for your subreddit using the Mod menu: create the Wiki post, remove the previous ones, automatically create a widget in the side bar, basic configuration...
+
 
 ### Live Editor
 
-![img](docs/editor.png)
+![editor](docs/editor.png)
 
 Moderators can edit wiki pages directly inside the app. An edit button appears in the top-right corner of the wiki view when in expanded mode. Clicking it opens the editor, where the Markdown source sits next to a live preview that updates as you type.
 
-An **Insert** toolbar above the editor builds the trickier syntax for you: dialogs for inserting an asset image (with an asset picker), an infobox, a layered scene, a frame-by-frame or moving animation, and `:::def` path aliases, plus quick buttons for centered text, bold, italic, inline code, and a table template.
+An **Insert** toolbar above the editor builds the trickier syntax for you: dialogs for inserting an image (with an asset picker and an inline emoji-size mode), an interactive 3D model, an infobox, a layered scene, a frame-by-frame or moving animation, and `:::def` path aliases, plus quick buttons for centered text, bold, italic, inline code, and a table template.
 
 Saving requires a short description of the change (at least 10 characters). When collaborative mode and voting are both enabled, the save dialog shows a "Bypass public vote" checkbox, unchecked by default: leaving it unchecked sends the edit through the suggestion and voting flow, while checking it writes straight to the wiki without a vote post.
 
@@ -76,15 +83,15 @@ When collaborative mode is enabled, users who meet the subreddit's eligibility t
 
 ![Suggestions](docs/suggestions.png)
 
-Suggesting a change opens the same editor as the mod editor, with three ways to preview your work:
+Suggesting a change opens the same editor as the moderator editor, with three ways to preview your work:
 
 - **Normal**: live rendered Markdown of the suggested content
 - **Source**: the raw Markdown of the suggestion
 - **Diff**: a side-by-side comparison of the current page and the suggestion, with changed text highlighted character by character (removed in red, added in green) and unchanged stretches collapsed
 
-Submitting requires a description of what changed (at least 10 characters). The suggestion is then queued for mod review or community voting, depending on configuration.
+Submitting requires a description of what changed (at least 10 characters). The suggestion is then queued for moderator review or community voting, depending on configuration.
 
-A user can update their pending suggestion from the Submissions tab. Each update resets any votes already cast on the suggestion. The maximum number of updates and the minimum time between updates are both configurable in mod settings.
+A user can update their pending suggestion from the Submissions tab. Each update resets any votes already cast on the suggestion. The maximum number of updates and the minimum time between updates are both configurable in moderator settings.
 
 ### Voting
 
@@ -102,19 +109,19 @@ A minimum number of voters can be required before the time-based threshold appli
 
 The voting post includes a pinned bot comment that records vote events: when the vote opened, when the suggestion was updated, and when the vote concluded with the outcome and reason. The comment is updated as events occur, and the post is locked once the vote concludes.
 
-### Mod Review
+### Moderator Review
 
 ![Suggestions moderator](docs/suggestions-mod.png)
 
 Moderators with "wiki" or "config" permissions see a Submissions tab listing all pending suggestions, each with the contributor, target page, description, and vote status if voting is enabled. Clicking Review opens a full-screen modal comparing the current page (left) and the suggestion (right), with the same Normal / Source / Diff modes as the editor; either column can be collapsed by clicking its label.
 
-Mods can Accept or Deny from the review modal, or Deny a suggestion straight from the list, at any time and regardless of the vote result. When a voting post exists, a link to it is shown. Accepting writes the suggested content to the Reddit wiki with the contributor's username in the revision reason.
+Moderators can Accept or Deny from the review modal, or Deny a suggestion straight from the list, at any time and regardless of the vote result. When a voting post exists, a link to it is shown. Accepting writes the suggested content to the Reddit wiki with the contributor's username in the revision reason.
 
 Contributors also see the Submissions tab, where they can edit their own pending suggestion's content and description. A suggestion can be withdrawn entirely from the suggest dialog (which offers to delete the current one when you start another).
 
 ### Flair Rewards
 
-Mods can configure two flair templates in the Collaborative settings: one for contributors and one for advanced contributors (awarded after a configurable number of accepted suggestions). When a suggestion is accepted, the contributor earns the appropriate flair based on their acceptance count.
+Moderators can configure two flair templates in the Collaborative settings: one for contributors and one for advanced contributors (awarded after a configurable number of accepted suggestions). When a suggestion is accepted, the contributor earns the appropriate flair based on their acceptance count.
 
 Flairs are not assigned automatically. Users choose when to equip them using a dropdown in the top bar, to the left of the EchoLink button. The dropdown lists all earned flairs with their styled previews. Users can switch between earned flairs at any time or remove their flair.
 
@@ -125,9 +132,10 @@ Echo links are standard Markdown image or link syntax using the `echo://` scheme
 ```markdown
 ![Character portrait](echo://img/characters/hero.png)
 ![Battle theme](echo://audio/bgm/battle.ogg)
+![King statue](echo://meshes/king.glb)
 ```
 
-Users who have imported their copy of the game see assets resolved inline. Everyone else, including those reading the raw wiki on Reddit, sees only the alt text. Nothing is uploaded to any server.
+Images render inline, audio files become a native player, and 3D models open an interactive WebGL viewer. Users who have imported their copy of the game see assets resolved inline. Everyone else, including those reading the raw wiki on Reddit, sees only the alt text. Nothing is uploaded to any server.
 
 ### Asset Editions
 
@@ -179,7 +187,7 @@ The model loads in an inline WebGL viewer (powered by three.js): drag to orbit, 
 ![King statue](echo://meshes/king.glb?spin&height=420px&bg=151515)
 ```
 
-Supported formats are `glb`, `gltf`, `obj`, `stl`, `ply`, `fbx`, `dae` (Collada), and `3mf`. GLB is recommended because it packs geometry and textures into a single self-contained file; OBJ/Collada that rely on sibling `.mtl` or texture files render geometry only. When a model loads without a texture, point `?texture=` at an imported image asset to apply one. The asset browser's model preview has a matching **Texture** field that bakes the same parameter into the copied link: type or paste an image path there and the viewer retextures live. The field also accepts a link copied straight from another asset's copy button: paste something like `![diffuse](echo://img/diffuse.png)` and the field strips the Markdown wrapper down to `echo://img/diffuse.png` and applies it immediately, so you can grab a texture from the browser and drop it onto a model without hand-editing the path. Models appear in the asset browser under their own **Models** category, and like every other asset they are resolved from each reader's own copy of the game, never uploaded.
+Supported formats are `glb`, `gltf`, `obj`, `stl`, `ply`, `fbx`, `dae` (Collada), and `3mf`. GLB is recommended because it packs geometry and textures into a single self-contained file; OBJ/Collada that rely on sibling `.mtl` or texture files render geometry only. When a model loads without a texture, point `?texture=` at an imported image asset to apply one. The asset browser's model preview has a matching **Texture** field that bakes the same parameter into the copied link: type or paste an image path there and the viewer retextures live. The field also accepts a link copied straight from another asset's copy button: paste something like `![diffuse](echo://img/diffuse.png)` and the field strips the Markdown wrapper down to `echo://img/diffuse.png` and applies it immediately, so you can grab a texture from the browser and drop it onto a model without hand-editing the path. Models appear in the asset browser under their own **Models** category (a Models filter tab that surfaces only when the game actually ships 3D assets); those that carry an attached texture are flagged with a small badge on their card. Like every other asset they are resolved from each reader's own copy of the game, never uploaded.
 
 ![Models in the asset browser](docs/assets-models.png)
 
@@ -189,7 +197,21 @@ The viewer and its format loaders are lazy-loaded: the three.js runtime is only 
 
 Wiki pages support a set of fenced block directives for building richer layouts and animations without writing raw HTML. Each block opens with `:::type [params]` and closes with `:::`. Parameter values containing spaces must be quoted: `key="some value"`.
 
-**`:::infobox`** renders a classic stat-table infobox: an optional title header and image on top of a list of `Label | value` rows, floated to one side of the page.
+**`:::card`** floats an image beside free-form Markdown content (headings, tables, prose). `image=` is the echo path, `size=` sets the image width (default `120px`), and `align=` floats it `right` (default) or `left`.
+
+```
+:::card image=echo://img/faces/hero.png size=96px align=right
+## Hero
+
+A short character blurb beside the portrait.
+
+| Attribute | Value |
+|---|---|
+| Role | Protagonist |
+:::
+```
+
+**`:::infobox`** renders a classic stat-table infobox: an optional title header and image on top of a list of `Label | value` rows, floated to one side of the page. Values support inline Markdown links and `<br>` for multi-line cells.
 
 ![Infobox](docs/card.png)
 
@@ -289,11 +311,14 @@ If enabled, the users select their game folder. The app auto-detects the engine,
 
 Engine detection is automatic. EchoWiki reads the biggest modern general-purpose engines, Unity, Unreal, and Godot, directly from their packaged data.
 
-**Unity.** EchoWiki reads Unity's serialized files (`resources.assets`, `sharedassets*.assets`, `globalgamemanagers`, `levelN`) and UnityFS asset bundles (`.bundle` / `.unity3d`), including LZ4/LZ4HC-compressed bundles. It extracts `Texture2D` objects: resolving streamed `.resS`/`.resource` pixel data: and decodes the common GPU formats (uncompressed RGBA/RGB/etc. and the DXT/BC1-BC5 block family) into PNGs entirely in the browser. Formats that need heavyweight decoders (BC7, ETC/EAC, ASTC, crunched) and LZMA-compressed bundles are skipped. It also extracts `Mesh` objects: Unity bakes geometry into raw vertex/index buffers rather than shipping model files, so EchoWiki decodes those buffers, converts them from Unity's coordinate system to glTF, and emits a self-contained [GLB model](#3d-models) for each mesh, linked to its base-color texture. Skinned, blend-shape, and compressed meshes are skipped.
+#### **Unity**  
+EchoWiki reads Unity's serialized files (`resources.assets`, `sharedassets*.assets`, `globalgamemanagers`, `levelN`) and UnityFS asset bundles (`.bundle` / `.unity3d`), including LZ4/LZ4HC-compressed bundles. It extracts `Texture2D` objects: resolving streamed `.resS`/`.resource` pixel data: and decodes the common GPU formats (uncompressed RGBA/RGB/etc. and the DXT/BC1-BC5 block family) into PNGs entirely in the browser. Formats that need heavyweight decoders (BC7, ETC/EAC, ASTC, crunched) and LZMA-compressed bundles are skipped. It also extracts `Mesh` objects: Unity bakes geometry into raw vertex/index buffers rather than shipping model files, so EchoWiki decodes those buffers, converts them from Unity's coordinate system to glTF, and emits a self-contained [GLB model](#3d-models) for each mesh, linked to its base-color texture. Skinned, blend-shape, and compressed meshes are skipped.
 
-**Unreal.** A full cooked-asset reader isn't feasible in the browser: shipping titles Oodle-compress their pak index and store textures in proprietary GPU formats, often encrypted. EchoWiki instead carves out any self-contained media (OGG, WAV, PNG, JPEG) stored uncompressed inside a `.pak`, reconstructing each file from its own length fields. Compressed/encrypted/cooked data is never matched, so it never produces garbage: it simply extracts what it safely can.
+#### **Unreal**  
+A full cooked-asset reader isn't feasible in the browser: shipping titles Oodle-compress their pak index and store textures in proprietary GPU formats, often encrypted. EchoWiki instead carves out any self-contained media (OGG, WAV, PNG, JPEG) stored uncompressed inside a `.pak`, reconstructing each file from its own length fields. Compressed/encrypted/cooked data is never matched, so it never produces garbage: it simply extracts what it safely can.
 
-**Godot.** EchoWiki reads Godot's `.pck` pack files (the `GDPC` container used by both Godot 3 and 4), walking the file index to pull out the bundled images and audio.
+#### **Godot**  
+EchoWiki reads Godot's `.pck` pack files (the `GDPC` container used by both Godot 3 and 4), walking the file index to pull out the bundled images and audio.
 
 Most other games work too. When no known engine is matched, EchoWiki falls back to a generic scan that picks up image and audio files from anywhere in the folder, using each file's parent folder as its category. Along the way it automatically unpacks common archives so these engines are supported out of the box:
 
@@ -317,32 +342,32 @@ RPG Maker games are decrypted natively, including their archive formats:
 
 And a few title-specific readers, such as **TCOAAL** (_The Coffin of Andy and Leyley_) 3.0+, are handled natively as well.
 
-For anything unusual, mods can supply a [custom transform](#custom-transform): a short snippet of JavaScript that receives each file and returns the decoded asset. This lets a community add support for an engine EchoWiki doesn't recognize on its own.
+For anything unusual, moderators can supply a [custom transform](#custom-transform): a short snippet of JavaScript that receives each file and returns the decoded asset. This lets a community add support for an engine EchoWiki doesn't recognize on its own.
 
 When forcing the engine in the [Game settings](#game), the choices are: **Auto-detect** (recommended), then Unity, Unreal, and Godot, followed by the **RPG Maker** group (the full family above), **Other** (Generic scan, TCOAAL), and **Advanced** (Custom transform).
 
 ## Asset Browser
 
-![img](docs/assets.png)
+![browser](docs/assets.png)
 
-A gallery view with filter tabs (Images, Audio) and subfolder navigation. Each card has a copy button that copies its echo Markdown to the clipboard (Ctrl/Cmd+click copies the link with the original, unmapped filename instead). When a filename mapping is configured, cards display their mapped names. A "Load more" button pages in additional assets on demand.
+A gallery view with filter tabs (Images, Audio, and a Models tab that appears once the game ships 3D assets) and subfolder navigation. Each card has a copy button that copies its echo Markdown to the clipboard (Ctrl/Cmd+click copies the link with the original, unmapped filename instead). When a filename mapping is configured, cards display their mapped names. A "Load more" button pages in additional assets on demand.
 
-Clicking any asset opens a full preview: an image lightbox, or an audio player with a waveform you can click to seek. The lightbox carries interactive [edition](#asset-editions) controls (crop, sprite-cell picker, audio speed and pitch); the copy button there bakes the active editions into the link, and right-clicking the preview copies it directly.
+Clicking any asset opens a full preview: an image lightbox, an audio player with a waveform you can click to seek, or the interactive 3D model viewer (with a **Texture** field for retexturing models). The lightbox carries interactive [edition](#asset-editions) controls (crop, sprite-cell picker, audio speed and pitch); the copy button there bakes the active editions into the link, and right-clicking the preview copies it directly.
 
-## Mod Settings
+## Moderator Settings
 
 The Settings tab is visible only to moderators with the "config" permission (or full moderators with no permission restrictions). Moderators with only "wiki" permission can access the Submissions tab and edit wiki pages directly, but not the Settings tab.
 
 ### General
 
-![img](docs/general.png)
+![general](docs/general.png)
 
 - **Wiki Title**: Displayed on the home screen below the logo. Leave empty for default.
 - **Wiki Description**: Short text shown below the title.
 
 ### Game
 
-![img](docs/game.png)
+![game](docs/game.png)
 
 - **Game Title**: Displayed to users during import. A warning appears if the detected title does not match.
 - **Engine**: Leave on Auto-detect, or force a specific engine. The dropdown lists Unity, Unreal, and Godot first, then groups the rest for clarity: **RPG Maker** (MV, MZ, VX Ace, VX, XP, 2003: with encrypted variants for MV/MZ), **Other** (Generic scan covering RenPy, GameMaker, and any other game; plus TCOAAL), and **Advanced** (Custom transform).
@@ -383,7 +408,7 @@ return { path: parent + "/" + name.toLowerCase(), data: await file.arrayBuffer()
 
 ### Style
 
-![img](docs/style.png)
+![style](docs/style.png)
 
 - **Card Size**: Compact, Normal, or Large thumbnails in the asset browser.
 - **Wiki Font Size**: Small, Normal, or Large.
@@ -393,15 +418,15 @@ return { path: parent + "/" + name.toLowerCase(), data: await file.arrayBuffer()
 
 ### Theme
 
-![img](docs/theme.png)
+![theme](docs/theme.png)
 
 Separate light and dark mode configuration. Each color has a reset button to restore the default derived from the subreddit's appearance settings. The app follows the user's system light/dark preference.
 
 ### Mapping
 
-![img](docs/mapping.png)
+![mapping](docs/mapping.png)
 
-Mods define `"original": "mapped"` pairs (one per line, comments supported), with a live preview table showing how each pair is parsed (Original / Mapped To). Mapped names replace raw filenames in the asset browser and in echo links.
+Moderators define `"original": "mapped"` pairs (one per line, comments supported), with a live preview table showing how each pair is parsed (Original / Mapped To). Mapped names replace raw filenames in the asset browser and in echo links.
 
 When a mapping is changed or removed, any wiki echo links referencing the old mapped name are automatically replaced with the original filename. A notification shows how many replacements were made and which pages were updated.
 
@@ -418,7 +443,9 @@ Example:
 
 ### Collaborative
 
-![img](docs/collaborative.png)
+![collaborative](docs/collaborative.png)
+
+The collaborative feature allows users to suggest changes to the wiki.  
 
 - **Collaborative mode**: Toggle to enable or disable community suggestions.
 - **Eligibility thresholds**: Minimum karma and account age required to submit suggestions.
@@ -429,7 +456,9 @@ Example:
 
 ### Voting
 
-![img](docs/voting.png)
+![voting](docs/voting.png)
+
+The voting feature requires collaborative and improves it by engaging your community with votes at each change suggestion.  
 
 - **Voting**: Toggle to enable or disable community voting on suggestions (requires collaborative mode).
 - **Accept threshold**: Number of accept votes that approve a suggestion immediately. 0 disables the instant accept.
@@ -438,7 +467,7 @@ Example:
 - **Minimum voters for timing**: Number of voters required before the time-based threshold applies.
 - **Time-based threshold**: Percentage of accept votes required to pass when the deadline is reached. 0 means a simple majority wins.
 - **Allow vote changes**: Whether voters can change their vote after casting, with an optional cooldown between changes.
-- **Show voter names**: Whether voter names are visible to other users. Mods and the suggestion author always see names.
+- **Show voter names**: Whether voter names are visible to other users. Moderators and the suggestion author always see names.
 - **Max suggestion updates**: Maximum number of times a pending suggestion can be updated (0 for unlimited).
 - **Voter eligibility**: Minimum karma and account age required to vote (separate from contributor eligibility).
 - **Voting post flair**: Flair template applied to voting posts on creation.
@@ -452,6 +481,6 @@ EchoWiki takes a different approach. No asset is ever uploaded, hosted, or distr
 
 ## Privacy
 
-All game files are processed locally in the browser using IndexedDB. No assets are uploaded anywhere. Server-side storage (Redis) holds only mod configuration (game title, style settings, filename mappings, collaborative and voting settings) plus the text of pending suggestions and vote records. See [PRIVACY_POLICY.md](https://raw.githubusercontent.com/Kidev/EchoWiki/refs/heads/main/PRIVACY_POLICY.md) and [TERMS_AND_CONDITIONS.md](https://raw.githubusercontent.com/Kidev/EchoWiki/refs/heads/main/TERMS_AND_CONDITIONS.md).
+All game files are processed locally in the browser using IndexedDB. No assets are uploaded anywhere. Server-side storage (Redis) holds only moderator configuration (game title, style settings, filename mappings, collaborative and voting settings) plus the text of pending suggestions and vote records. See [PRIVACY_POLICY.md](https://raw.githubusercontent.com/Kidev/EchoWiki/refs/heads/main/PRIVACY_POLICY.md) and [TERMS_AND_CONDITIONS.md](https://raw.githubusercontent.com/Kidev/EchoWiki/refs/heads/main/TERMS_AND_CONDITIONS.md).
 
 [EchoWiki is available on GitHub](https://github.com/Kidev/EchoWiki)
