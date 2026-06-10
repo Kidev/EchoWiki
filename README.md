@@ -1,10 +1,10 @@
 # EchoWiki
 
-Rich wikis for Reddit communities. Live editing, advanced markdown, collaborative contributions with optional community voting, and for a lot of games: in-game assets from each player's own copy. No uploads.
+Rich wikis for Reddit communities. Live editing, advanced markdown, collaborative contributions with optional community voting, and for many games, in-game assets pulled from each player's own copy. No uploads.
 
 [Watch all the features in the demo video](https://youtu.be/OOgn59yKN_I "EchoWiki features demo video")
 
-EchoWiki turns a subreddit wiki into a proper editing and reading environment. Moderators write and update pages inside the app with a live Markdown preview. Readers get richer formatting than Reddit's native wiki. Contributors can propose changes that moderators review before merging, and optionally the community votes on whether to accept each suggestion. For a lot of games communities specifically, the app resolves special `echo://` links to in-game assets that each reader loads from their own copy of the game, without any files being uploaded anywhere, making it respect the copyrights.
+EchoWiki turns a subreddit wiki into a proper editing and reading environment. Moderators write and update pages inside the app with a live Markdown preview. Readers get richer formatting than Reddit's native wiki. Contributors can propose changes that moderators review before merging, and optionally the community votes on whether to accept each suggestion. For game communities specifically, the app resolves special `echo://` links to in-game assets that each reader loads from their own copy of the game. No files are uploaded anywhere, so the original work's copyright is respected.
 
 ## Contents
 
@@ -56,7 +56,7 @@ Navigation uses a breadcrumb bar that slides down from the top when hovering the
 
 ![integration](docs/modmenu.png)
 
-You can easily create and setup the Wiki for your subreddit using the Mod menu: create the Wiki post, remove the previous ones, automatically create a widget in the side bar, basic configuration...
+Create and set up the wiki for your subreddit from the moderator menu: it creates the wiki post, can remove previous ones, adds a sidebar widget linking to it, and sets the basic configuration (title, subtitle, game name) in one form.
 
 
 ### Live Editor
@@ -187,7 +187,9 @@ The model loads in an inline WebGL viewer (powered by three.js): drag to orbit, 
 ![King statue](echo://meshes/king.glb?spin&height=420px&bg=151515)
 ```
 
-Supported formats are `glb`, `gltf`, `obj`, `stl`, `ply`, `fbx`, `dae` (Collada), and `3mf`. GLB is recommended because it packs geometry and textures into a single self-contained file; OBJ/Collada that rely on sibling `.mtl` or texture files render geometry only. When a model loads without a texture, point `?texture=` at an imported image asset to apply one. The asset browser's model preview has a matching **Texture** field that bakes the same parameter into the copied link: type or paste an image path there and the viewer retextures live. The field also accepts a link copied straight from another asset's copy button: paste something like `![diffuse](echo://img/diffuse.png)` and the field strips the Markdown wrapper down to `echo://img/diffuse.png` and applies it immediately, so you can grab a texture from the browser and drop it onto a model without hand-editing the path. Models appear in the asset browser under their own **Models** category (a Models filter tab that surfaces only when the game actually ships 3D assets); those that carry an attached texture are flagged with a small badge on their card. Like every other asset they are resolved from each reader's own copy of the game, never uploaded.
+Supported formats are `glb`, `gltf`, `obj`, `stl`, `ply`, `fbx`, `dae` (Collada), and `3mf`. GLB is recommended because it packs geometry and textures into a single self-contained file; formats that rely on sibling `.mtl` or texture files render geometry only. When a model loads untextured, the `?texture=` hint, or the **Texture** field in the asset browser's model preview, applies any imported image as its texture. That field also accepts a Markdown link pasted straight from another asset's copy button (e.g. `![diffuse](echo://img/diffuse.png)`), stripping it down to the `echo://` path automatically, so a texture can be grabbed from the browser and dropped onto a model without hand-editing the path.
+
+Models appear in the asset browser under their own **Models** category, which surfaces only when the game ships 3D assets; those carrying an attached texture are flagged with a small badge. Like every other asset, they resolve from each reader's own copy of the game and are never uploaded.
 
 The viewer and its format loaders are lazy-loaded: the three.js runtime is only fetched the first time a reader opens a model, so pages without 3D content carry no extra weight.
 
@@ -303,20 +305,20 @@ The file [docs/showcase.md](https://github.com/Kidev/EchoWiki/blob/main/docs/sho
 
 ## Asset Import
 
-If enabled, the users select their game folder. The app auto-detects the engine, extracts assets entirely in the browser, and stores them in IndexedDB. Nothing is uploaded.
+If enabled, users select their game folder. The app auto-detects the engine, extracts assets entirely in the browser, and stores them in IndexedDB. Nothing is uploaded.
 
 ### Supported Engines
 
 Engine detection is automatic. EchoWiki reads the biggest modern general-purpose engines, Unity, Unreal, and Godot, directly from their packaged data.
 
 #### **Unity**  
-EchoWiki reads Unity's serialized files (`resources.assets`, `sharedassets*.assets`, `globalgamemanagers`, `levelN`) and UnityFS asset bundles (`.bundle` / `.unity3d`), including LZ4/LZ4HC-compressed bundles. It extracts `Texture2D` objects: resolving streamed `.resS`/`.resource` pixel data: and decodes the common GPU formats (uncompressed RGBA/RGB/etc. and the DXT/BC1-BC5 block family) into PNGs entirely in the browser. Formats that need heavyweight decoders (BC7, ETC/EAC, ASTC, crunched) and LZMA-compressed bundles are skipped. It also extracts `Mesh` objects: Unity bakes geometry into raw vertex/index buffers rather than shipping model files, so EchoWiki decodes those buffers, converts them from Unity's coordinate system to glTF, and emits a self-contained [GLB model](#3d-models) for each mesh, linked to its base-color texture. Skinned, blend-shape, and compressed meshes are skipped.
+EchoWiki reads Unity's serialized data files (`resources.assets`, `sharedassets*.assets`, `globalgamemanagers`, `levelN`) and asset bundles (`.bundle` / `.unity3d`). It extracts textures as PNGs and, because Unity ships meshes as raw geometry rather than model files, rebuilds each mesh into a self-contained [GLB model](#3d-models) linked to its base-color texture all decoded in the browser. Textures in GPU formats that need heavyweight decoders, and skinned or compressed meshes, are skipped.
 
 #### **Unreal**  
-A full cooked-asset reader isn't feasible in the browser: shipping titles Oodle-compress their pak index and store textures in proprietary GPU formats, often encrypted. EchoWiki instead carves out any self-contained media (OGG, WAV, PNG, JPEG) stored uncompressed inside a `.pak`, reconstructing each file from its own length fields. Compressed/encrypted/cooked data is never matched, so it never produces garbage: it simply extracts what it safely can.
+A full cooked-asset reader isn't feasible in the browser, since shipping titles compress and often encrypt their `.pak` archives. EchoWiki instead carves out any self-contained media (OGG, WAV, PNG, JPEG) stored uncompressed inside a `.pak`. Compressed, encrypted, or cooked data is never matched, so it extracts only what it safely can rather than producing garbage.
 
 #### **Godot**  
-EchoWiki reads Godot's `.pck` pack files (the `GDPC` container used by both Godot 3 and 4), walking the file index to pull out the bundled images and audio.
+EchoWiki reads Godot's `.pck` pack files (used by both Godot 3 and 4), pulling out the bundled images and audio.
 
 Most other games work too. When no known engine is matched, EchoWiki falls back to a generic scan that picks up image and audio files from anywhere in the folder, using each file's parent folder as its category. Along the way it automatically unpacks common archives so these engines are supported out of the box:
 
@@ -443,7 +445,7 @@ Example:
 
 ![collaborative](docs/collaborative.png)
 
-The collaborative feature allows users to suggest changes to the wiki.  
+The collaborative feature lets users suggest changes to the wiki.
 
 - **Collaborative mode**: Toggle to enable or disable community suggestions.
 - **Eligibility thresholds**: Minimum karma and account age required to submit suggestions.
@@ -456,7 +458,7 @@ The collaborative feature allows users to suggest changes to the wiki.
 
 ![voting](docs/voting.png)
 
-The voting feature requires collaborative and improves it by engaging your community with votes at each change suggestion.  
+Voting builds on collaborative mode, which it requires, engaging your community with a vote on each suggested change.
 
 - **Voting**: Toggle to enable or disable community voting on suggestions (requires collaborative mode).
 - **Accept threshold**: Number of accept votes that approve a suggestion immediately. 0 disables the instant accept.
