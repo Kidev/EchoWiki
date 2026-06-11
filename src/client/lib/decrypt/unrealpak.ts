@@ -98,7 +98,12 @@ function jpegLength(view: DataView, start: number, end: number): number {
   let p = start + 2; // past SOI (FF D8)
 
   // The first real marker must be a segment marker (>= 0xC0).
-  if (p + 1 >= limit || view.getUint8(p) !== 0xff || view.getUint8(p + 1) < 0xc0) return -1;
+  if (
+    p + 1 >= limit ||
+    view.getUint8(p) !== 0xff ||
+    view.getUint8(p + 1) < 0xc0
+  )
+    return -1;
 
   while (p + 1 < limit) {
     if (view.getUint8(p) !== 0xff) return -1; // markers must be byte-aligned
@@ -141,27 +146,42 @@ function signatureAt(window: Uint8Array, i: number): boolean {
   // PNG: 89 50 4E 47
   if (b === 0x89)
     return (
-      i + 4 <= len && window[i + 1] === 0x50 && window[i + 2] === 0x4e && window[i + 3] === 0x47
+      i + 4 <= len &&
+      window[i + 1] === 0x50 &&
+      window[i + 2] === 0x4e &&
+      window[i + 3] === 0x47
     );
   // OGG: "OggS"
   if (b === 0x4f)
     return (
-      i + 4 <= len && window[i + 1] === 0x67 && window[i + 2] === 0x67 && window[i + 3] === 0x53
+      i + 4 <= len &&
+      window[i + 1] === 0x67 &&
+      window[i + 2] === 0x67 &&
+      window[i + 3] === 0x53
     );
   // RIFF: "RIFF"
   if (b === 0x52)
     return (
-      i + 4 <= len && window[i + 1] === 0x49 && window[i + 2] === 0x46 && window[i + 3] === 0x46
+      i + 4 <= len &&
+      window[i + 1] === 0x49 &&
+      window[i + 2] === 0x46 &&
+      window[i + 3] === 0x46
     );
   // JPEG: FF D8 FF
-  if (b === 0xff) return i + 3 <= len && window[i + 1] === 0xd8 && window[i + 2] === 0xff;
+  if (b === 0xff)
+    return i + 3 <= len && window[i + 1] === 0xd8 && window[i + 2] === 0xff;
   return false;
 }
 
-export async function* processUnrealPak(file: File): AsyncGenerator<ProcessedAsset> {
+export async function* processUnrealPak(
+  file: File,
+): AsyncGenerator<ProcessedAsset> {
   const size = file.size;
 
-  const readSlice = async (start: number, end: number): Promise<Uint8Array | null> => {
+  const readSlice = async (
+    start: number,
+    end: number,
+  ): Promise<Uint8Array | null> => {
     try {
       const buf = await file.slice(start, Math.min(end, size)).arrayBuffer();
       return new Uint8Array(buf);
@@ -179,16 +199,20 @@ export async function* processUnrealPak(file: File): AsyncGenerator<ProcessedAss
 
     if (b === 0x89) {
       const n = pngLength(view, 0, buf.length);
-      if (n >= 67) return { ext: "png", mime: "image/png", data: buf.slice(0, n) };
+      if (n >= 67)
+        return { ext: "png", mime: "image/png", data: buf.slice(0, n) };
     } else if (b === 0x4f) {
       const n = oggLength(view, 0, buf.length);
-      if (n >= 58) return { ext: "ogg", mime: "audio/ogg", data: buf.slice(0, n) };
+      if (n >= 58)
+        return { ext: "ogg", mime: "audio/ogg", data: buf.slice(0, n) };
     } else if (b === 0x52) {
       const n = wavLength(view, 0, buf.length);
-      if (n > 0) return { ext: "wav", mime: "audio/wav", data: buf.slice(0, n) };
+      if (n > 0)
+        return { ext: "wav", mime: "audio/wav", data: buf.slice(0, n) };
     } else if (b === 0xff) {
       const n = jpegLength(view, 0, buf.length);
-      if (n >= 125) return { ext: "jpg", mime: "image/jpeg", data: buf.slice(0, n) };
+      if (n >= 125)
+        return { ext: "jpg", mime: "image/jpeg", data: buf.slice(0, n) };
     }
     return null;
   };
@@ -208,7 +232,10 @@ export async function* processUnrealPak(file: File): AsyncGenerator<ProcessedAss
     let i = 0;
     while (i < limit) {
       const b = window[i]!;
-      if ((b === 0x89 || b === 0x4f || b === 0x52 || b === 0xff) && signatureAt(window, i)) {
+      if (
+        (b === 0x89 || b === 0x4f || b === 0x52 || b === 0xff) &&
+        signatureAt(window, i)
+      ) {
         const carved = await carveAt(pos + i);
         if (carved) {
           const isAudio = carved.mime.startsWith("audio/");

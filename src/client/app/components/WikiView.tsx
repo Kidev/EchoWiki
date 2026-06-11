@@ -18,6 +18,9 @@ import type {
   WikiSuggestionRequest,
   WikiSuggestionResponse,
   WikiUpdateRequest,
+  WikiDraft,
+  WikiDraftRequest,
+  WikiDraftResponse,
   ErrorResponse,
 } from "../../../shared/types/api";
 import { preloadPaths } from "../../lib/echo";
@@ -29,6 +32,8 @@ import {
   WikiSaveDialog,
   WikiSuggestDialog,
   WikiExistingSuggestionDialog,
+  WikiResumeDraftDialog,
+  WikiDraftElsewhereDialog,
 } from "./dialogs";
 
 const WikiToolbar = lazy(() => import("./WikiEditorToolbar"));
@@ -67,7 +72,9 @@ export const WikiView = memo(function WikiView({
   voteOnSaveAvailable?: boolean | undefined;
   suggestionToLoad?: string | null | undefined;
   onSuggestionLoaded?: (() => void) | undefined;
-  onNavigateToSuggestion?: ((page: string, content: string) => void) | undefined;
+  onNavigateToSuggestion?:
+    | ((page: string, content: string) => void)
+    | undefined;
   onInlineEditRequest?: ((e: MouseEvent) => void) | undefined;
   startInEditMode?: string | null | undefined;
   onStartInEditModeConsumed?: (() => void) | undefined;
@@ -77,6 +84,29 @@ export const WikiView = memo(function WikiView({
   const readScrollRef = useRef<HTMLDivElement>(null);
   const lastPageRef = useRef(currentPage);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // --- Draft persistence ---------------------------------------------------
+  // The user's single in-progress edit draft (persisted server-side, survives
+  // app close/restart). `draftRef` is the always-current source of truth read
+  // by the edit gate; `draft` state drives the proactive "Resume draft?" prompt.
+  const [draft, setDraft] = useState<WikiDraft | null>(null);
+  const draftRef = useRef<WikiDraft | null>(null);
+  // Baseline (saved page content) the current edit started from, used to detect
+  // whether there are unsaved changes worth persisting as a draft.
+  const baselineRef = useRef("");
+  // When true, auto-save is suppressed (no editor open, or the draft was just
+  // saved/submitted/discarded). Reset to false whenever an editor is opened.
+  const draftFinalizedRef = useRef(true);
+  const [showResumeDialog, setShowResumeDialog] = useState(false);
+  const [elsewhereDraft, setElsewhereDraft] = useState<WikiDraft | null>(null);
+  const [isDiscardingDraft, setIsDiscardingDraft] = useState(false);
+  const [pendingDraftOpen, setPendingDraftOpen] = useState<WikiDraft | null>(
+    null,
+  );
+  // Pages we've already prompted to resume this session (avoids re-nagging).
+  const resumeHandledRef = useRef<Set<string>>(new Set());
+  // Editor-open continuation deferred behind a draft prompt (resume/elsewhere).
+  const pendingProceedRef = useRef<(() => void) | null>(null);
 
   const [isEditing, setIsEditing] = useState(false);
   const [isProposeMode, setIsProposeMode] = useState(false);
@@ -90,10 +120,15 @@ export const WikiView = memo(function WikiView({
   const [suggestDescription, setSuggestDescription] = useState("");
   const [suggestError, setSuggestError] = useState<string | null>(null);
   const [showSuggestDialog, setShowSuggestDialog] = useState(false);
-  const [existingSuggestion, setExistingSuggestion] = useState<WikiSuggestion | null>(null);
+  const [existingSuggestion, setExistingSuggestion] =
+    useState<WikiSuggestion | null>(null);
   const [isDeletingSuggestion, setIsDeletingSuggestion] = useState(false);
-  const [proposeViewMode, setProposeViewMode] = useState<"normal" | "source" | "diff">("normal");
-  const [proposeHiddenPane, setProposeHiddenPane] = useState<null | "left" | "right">(null);
+  const [proposeViewMode, setProposeViewMode] = useState<
+    "normal" | "source" | "diff"
+  >("normal");
+  const [proposeHiddenPane, setProposeHiddenPane] = useState<
+    null | "left" | "right"
+  >(null);
   const [createVotePost, setCreateVotePost] = useState(true);
 
   useEffect(() => {
@@ -101,38 +136,18 @@ export const WikiView = memo(function WikiView({
   }, [proposeViewMode]);
 
   useEffect(() => {
-    if (
-      !startInEditMode ||
-      startInEditMode !== currentPage ||
-      loading ||
-      content === undefined ||
-      !isMod ||
-      !isExpanded
-    )
-      return;
-    setEditContent(content ?? "");
-    setIsEditing(true);
-    setIsProposeMode(false);
-    onStartInEditModeConsumed?.();
-  }, [
-    startInEditMode,
-    currentPage,
-    loading,
-    content,
-    isMod,
-    isExpanded,
-    onStartInEditModeConsumed,
-  ]);
-
-  useEffect(() => {
     const load = async () => {
       setLoading(true);
       try {
-        const res = await fetch(`/api/wiki?page=${encodeURIComponent(currentPage)}`);
+        const res = await fetch(
+          `/api/wiki?page=${encodeURIComponent(currentPage)}`,
+        );
         if (res.ok) {
           const data: WikiResponse = await res.json();
 
-          const echoPaths = data.content ? extractEchoPathsFromMarkdown(data.content) : [];
+          const echoPaths = data.content
+            ? extractEchoPathsFromMarkdown(data.content)
+            : [];
           if (echoPaths.length > 0) await preloadPaths(echoPaths);
           setContent(data.content);
         } else {
@@ -167,16 +182,151 @@ export const WikiView = memo(function WikiView({
     setShowSuggestDialog(false);
     setExistingSuggestion(null);
     setProposeViewMode("normal");
+    setShowResumeDialog(false);
+    setElsewhereDraft(null);
   }, [currentPage]);
 
   useEffect(() => {
     if (suggestionToLoad != null) {
       setEditContent(suggestionToLoad);
+      baselineRef.current = content ?? "";
+      draftFinalizedRef.current = false;
       setIsEditing(true);
       setIsProposeMode(true);
       onSuggestionLoaded?.();
     }
+    // `content` intentionally excluded: we only react to a new suggestion to load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [suggestionToLoad, onSuggestionLoaded]);
+
+  // Fetch the user's existing draft once on mount so the edit gate and the
+  // proactive resume prompt know about work left over from a previous session.
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch("/api/wiki/draft");
+        if (res.ok) {
+          const data: WikiDraftResponse = await res.json();
+          draftRef.current = data.draft;
+          setDraft(data.draft);
+        }
+      } catch {}
+    })();
+  }, []);
+
+  const deleteDraft = useCallback(async () => {
+    draftFinalizedRef.current = true;
+    draftRef.current = null;
+    setDraft(null);
+    try {
+      await fetch("/api/wiki/draft", { method: "DELETE" });
+    } catch {}
+  }, []);
+
+  // Auto-save the in-progress edit as a draft (debounced) whenever the editor
+  // content diverges from the saved page. Survives app close so nothing is lost.
+  useEffect(() => {
+    if (!isEditing || draftFinalizedRef.current) return;
+    if (editContent === baselineRef.current) return;
+    const mode = isProposeMode ? "suggest" : "edit";
+    const handle = setTimeout(() => {
+      if (draftFinalizedRef.current) return;
+      const body: WikiDraftRequest = {
+        page: currentPage,
+        content: editContent,
+        mode,
+      };
+      void (async () => {
+        try {
+          const res = await fetch("/api/wiki/draft", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          if (!res.ok || draftFinalizedRef.current) return;
+          const saved: WikiDraft = { ...body, updatedAt: Date.now() };
+          draftRef.current = saved;
+          // Only surface a state change when the draft's identity changes
+          // (first save of a session) to avoid re-rendering on every keystroke.
+          setDraft((prev) =>
+            prev && prev.page === saved.page && prev.mode === saved.mode
+              ? prev
+              : saved,
+          );
+        } catch {}
+      })();
+    }, 800);
+    return () => clearTimeout(handle);
+  }, [editContent, isEditing, isProposeMode, currentPage]);
+
+  // Open the editor seeded from a draft, honoring the user's current rank/perms:
+  // a draft saved as a direct edit downgrades to a suggestion if they can no
+  // longer edit directly.
+  const openDraftEditor = useCallback(
+    (d: WikiDraft) => {
+      const proposeMode = d.mode === "suggest" || !isMod;
+      setEditContent(d.content);
+      setIsProposeMode(proposeMode);
+      setIsEditing(true);
+      baselineRef.current = content ?? "";
+      draftFinalizedRef.current = false;
+      resumeHandledRef.current.add(d.page);
+    },
+    [content, isMod],
+  );
+
+  // Open the editor with the draft once navigation to its page has loaded.
+  useEffect(() => {
+    if (!pendingDraftOpen) return;
+    if (
+      pendingDraftOpen.page !== currentPage ||
+      loading ||
+      content === undefined
+    )
+      return;
+    openDraftEditor(pendingDraftOpen);
+    setPendingDraftOpen(null);
+  }, [pendingDraftOpen, currentPage, loading, content, openDraftEditor]);
+
+  // Proactively offer to resume when the user opens the page that holds a draft.
+  useEffect(() => {
+    if (isEditing || loading || content === undefined || pendingDraftOpen)
+      return;
+    if (!isExpanded || !(isMod || canSuggest)) return;
+    const d = draft;
+    if (!d || d.page !== currentPage) return;
+    if (resumeHandledRef.current.has(d.page)) return;
+    setShowResumeDialog(true);
+  }, [
+    draft,
+    currentPage,
+    isEditing,
+    loading,
+    content,
+    pendingDraftOpen,
+    isExpanded,
+    isMod,
+    canSuggest,
+  ]);
+
+  // Intercept an edit/suggest entry point to gate it behind the single-draft
+  // rule. With no draft, the editor opens immediately.
+  const gateBeforeEdit = useCallback(
+    (proceed: () => void) => {
+      const d = draftRef.current;
+      if (d) {
+        pendingProceedRef.current = proceed;
+        if (d.page === currentPage) {
+          setShowResumeDialog(true);
+        } else {
+          setElsewhereDraft(d);
+        }
+        return;
+      }
+      proceed();
+    },
+    [currentPage],
+  );
 
   const handlePageChange = useCallback(
     (page: string) => {
@@ -189,13 +339,15 @@ export const WikiView = memo(function WikiView({
     setEditContent(newValue);
   }, []);
 
-  const handleEditClick = useCallback(() => {
+  const proceedEdit = useCallback(() => {
     setEditContent(content ?? "");
-    setIsEditing(true);
+    baselineRef.current = content ?? "";
+    draftFinalizedRef.current = false;
     setIsProposeMode(false);
+    setIsEditing(true);
   }, [content]);
 
-  const handleSuggestClick = useCallback(async () => {
+  const proceedSuggest = useCallback(async () => {
     try {
       const res = await fetch("/api/wiki/suggestion");
       if (res.ok) {
@@ -203,6 +355,8 @@ export const WikiView = memo(function WikiView({
         if (data.suggestion) {
           if (data.suggestion.page === currentPage) {
             setEditContent(data.suggestion.content);
+            baselineRef.current = content ?? "";
+            draftFinalizedRef.current = false;
             setIsEditing(true);
             setIsProposeMode(true);
           } else {
@@ -214,9 +368,100 @@ export const WikiView = memo(function WikiView({
     } catch {}
 
     setEditContent(content ?? "");
+    baselineRef.current = content ?? "";
+    draftFinalizedRef.current = false;
     setIsEditing(true);
     setIsProposeMode(true);
   }, [currentPage, content]);
+
+  const handleEditClick = useCallback(() => {
+    gateBeforeEdit(proceedEdit);
+  }, [gateBeforeEdit, proceedEdit]);
+
+  const handleSuggestClick = useCallback(() => {
+    gateBeforeEdit(() => void proceedSuggest());
+  }, [gateBeforeEdit, proceedSuggest]);
+
+  // --- Draft prompt actions ------------------------------------------------
+  const handleResumeDraft = useCallback(() => {
+    const d = draftRef.current;
+    setShowResumeDialog(false);
+    resumeHandledRef.current.add(currentPage);
+    pendingProceedRef.current = null;
+    if (d && d.page === currentPage) openDraftEditor(d);
+  }, [currentPage, openDraftEditor]);
+
+  const handleDiscardResumeDraft = useCallback(async () => {
+    setIsDiscardingDraft(true);
+    const proceed = pendingProceedRef.current;
+    pendingProceedRef.current = null;
+    await deleteDraft();
+    setIsDiscardingDraft(false);
+    setShowResumeDialog(false);
+    resumeHandledRef.current.add(currentPage);
+    proceed?.();
+  }, [currentPage, deleteDraft]);
+
+  const handleDismissResumeDraft = useCallback(() => {
+    setShowResumeDialog(false);
+    resumeHandledRef.current.add(currentPage);
+    pendingProceedRef.current = null;
+  }, [currentPage]);
+
+  const handleSeeElsewhereDraft = useCallback(() => {
+    const d = elsewhereDraft;
+    setElsewhereDraft(null);
+    pendingProceedRef.current = null;
+    if (!d) return;
+    if (d.page === currentPage) {
+      openDraftEditor(d);
+    } else {
+      setPendingDraftOpen(d);
+      onPageChange(d.page);
+    }
+  }, [elsewhereDraft, currentPage, openDraftEditor, onPageChange]);
+
+  const handleDiscardElsewhereDraft = useCallback(async () => {
+    setIsDiscardingDraft(true);
+    const proceed = pendingProceedRef.current;
+    pendingProceedRef.current = null;
+    await deleteDraft();
+    setIsDiscardingDraft(false);
+    setElsewhereDraft(null);
+    proceed?.();
+  }, [deleteDraft]);
+
+  const handleCancelElsewhereDraft = useCallback(() => {
+    setElsewhereDraft(null);
+    pendingProceedRef.current = null;
+  }, []);
+
+  // Inline "edit" button (in the collapsed view) opens the page in the expanded
+  // view already pointed at this page; open the editor once it has loaded, gated
+  // by the single-draft rule like any other edit entry point.
+  useEffect(() => {
+    if (
+      !startInEditMode ||
+      startInEditMode !== currentPage ||
+      loading ||
+      content === undefined ||
+      !isMod ||
+      !isExpanded
+    )
+      return;
+    onStartInEditModeConsumed?.();
+    gateBeforeEdit(proceedEdit);
+  }, [
+    startInEditMode,
+    currentPage,
+    loading,
+    content,
+    isMod,
+    isExpanded,
+    onStartInEditModeConsumed,
+    gateBeforeEdit,
+    proceedEdit,
+  ]);
 
   const handleCancelConfirm = useCallback(() => {
     setIsEditing(false);
@@ -227,7 +472,9 @@ export const WikiView = memo(function WikiView({
     setSuggestDescription("");
     setSuggestError(null);
     setShowSuggestDialog(false);
-  }, []);
+    // Discarding the edit discards the draft too.
+    void deleteDraft();
+  }, [deleteDraft]);
 
   const handleSaveConfirm = useCallback(async () => {
     if (saveReason.trim().length < 10) {
@@ -257,12 +504,15 @@ export const WikiView = memo(function WikiView({
         setIsEditing(false);
         setShowSaveDialog(false);
         setSaveReason("");
+        void deleteDraft();
         showToast("Vote suggestion submitted!");
       } else {
         const body: WikiUpdateRequest = {
           page: currentPage,
           content: editContent,
-          reason: username ? `${username}: ${saveReason.trim()}` : saveReason.trim(),
+          reason: username
+            ? `${username}: ${saveReason.trim()}`
+            : saveReason.trim(),
         };
         const res = await fetch("/api/wiki/update", {
           method: "POST",
@@ -278,13 +528,22 @@ export const WikiView = memo(function WikiView({
         setIsEditing(false);
         setShowSaveDialog(false);
         setSaveReason("");
+        void deleteDraft();
       }
     } catch {
       setSaveError("Network error. Please try again.");
     } finally {
       setIsSaving(false);
     }
-  }, [createVotePost, currentPage, editContent, saveReason, username, voteOnSaveAvailable]);
+  }, [
+    createVotePost,
+    currentPage,
+    editContent,
+    saveReason,
+    username,
+    voteOnSaveAvailable,
+    deleteDraft,
+  ]);
 
   const handleSuggestConfirm = useCallback(async () => {
     if (!suggestDescription.trim()) {
@@ -313,18 +572,22 @@ export const WikiView = memo(function WikiView({
       setIsProposeMode(false);
       setShowSuggestDialog(false);
       setSuggestDescription("");
+      void deleteDraft();
       showToast("Suggestion submitted!");
     } catch {
       setSuggestError("Network error. Please try again.");
     } finally {
       setIsSaving(false);
     }
-  }, [currentPage, editContent, suggestDescription]);
+  }, [currentPage, editContent, suggestDescription, deleteDraft]);
 
   const handleExistingSuggestionSee = useCallback(() => {
     if (!existingSuggestion) return;
     setExistingSuggestion(null);
-    onNavigateToSuggestion?.(existingSuggestion.page, existingSuggestion.content);
+    onNavigateToSuggestion?.(
+      existingSuggestion.page,
+      existingSuggestion.content,
+    );
   }, [existingSuggestion, onNavigateToSuggestion]);
 
   const handleExistingSuggestionDelete = useCallback(async () => {
@@ -334,6 +597,8 @@ export const WikiView = memo(function WikiView({
       setExistingSuggestion(null);
 
       setEditContent(content ?? "");
+      baselineRef.current = content ?? "";
+      draftFinalizedRef.current = false;
       setIsEditing(true);
       setIsProposeMode(true);
     } catch {
@@ -344,7 +609,8 @@ export const WikiView = memo(function WikiView({
 
   const canEdit = isMod && isExpanded && !loading;
   const canSuggestHere = canSuggest && isExpanded && !loading;
-  const canInlineEdit = isMod && !isExpanded && !loading && content !== undefined;
+  const canInlineEdit =
+    isMod && !isExpanded && !loading && content !== undefined;
 
   return (
     <div className="relative flex-1 flex flex-col overflow-hidden">
@@ -354,7 +620,12 @@ export const WikiView = memo(function WikiView({
           title="Edit page (opens expanded)"
           className="absolute top-2 right-2 z-10 p-1 rounded text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--thumb-bg)] transition-colors cursor-pointer"
         >
-          <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <svg
+            className="w-3.5 h-3.5"
+            viewBox="0 0 16 16"
+            fill="currentColor"
+            aria-hidden="true"
+          >
             <path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61Zm.176 4.823L9.75 4.81l-6.286 6.287a.253.253 0 0 0-.064.108l-.558 1.953 1.953-.558a.253.253 0 0 0 .108-.064Zm1.238-3.763a.25.25 0 0 0-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 0 0 0-.354Z" />
           </svg>
         </button>
@@ -379,7 +650,7 @@ export const WikiView = memo(function WikiView({
 
       {canSuggestHere && !isEditing && (
         <button
-          onClick={() => void handleSuggestClick()}
+          onClick={handleSuggestClick}
           title="Suggest change"
           className="absolute top-2 right-6 z-10 flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md bg-[var(--thumb-bg)] text-[var(--text)] hover:opacity-80 shadow-sm transition-opacity cursor-pointer border border-gray-200"
         >
@@ -428,7 +699,11 @@ export const WikiView = memo(function WikiView({
                           : "text-[var(--text-muted)] hover:bg-[var(--control-bg)]"
                       }`}
                     >
-                      {m === "normal" ? "Normal" : m === "source" ? "Source" : "Diff"}
+                      {m === "normal"
+                        ? "Normal"
+                        : m === "source"
+                          ? "Source"
+                          : "Diff"}
                     </button>
                   ))}
                 </div>
@@ -437,13 +712,18 @@ export const WikiView = memo(function WikiView({
                 className="flex-1 overflow-hidden"
                 style={{
                   zoom:
-                    isProposeMode && proposeHiddenPane === null && proposeViewMode !== "diff"
+                    isProposeMode &&
+                    proposeHiddenPane === null &&
+                    proposeViewMode !== "diff"
                       ? 0.5
                       : 1,
                 }}
               >
                 {isProposeMode && proposeViewMode === "diff" ? (
-                  <SideBySideDiffView original={content ?? ""} proposed={editContent} />
+                  <SideBySideDiffView
+                    original={content ?? ""}
+                    proposed={editContent}
+                  />
                 ) : isProposeMode && proposeViewMode === "source" ? (
                   <div
                     className="h-full overflow-auto"
@@ -523,14 +803,18 @@ export const WikiView = memo(function WikiView({
               <Suspense fallback={null}>
                 <WikiToolbar
                   onInsert={handleToolbarInsert}
-                  textareaRef={textareaRef as MutableRefObject<HTMLTextAreaElement | null>}
+                  textareaRef={
+                    textareaRef as MutableRefObject<HTMLTextAreaElement | null>
+                  }
                 />
               </Suspense>
               <textarea
                 ref={textareaRef}
                 className="flex-1 resize-none p-4 font-mono text-sm bg-[var(--bg)] text-[var(--text)] placeholder:text-[var(--text-muted)] outline-none"
                 value={editContent}
-                onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setEditContent(e.target.value)}
+                onChange={(e: ChangeEvent<HTMLTextAreaElement>) =>
+                  setEditContent(e.target.value)
+                }
                 spellCheck={false}
                 placeholder="Write wiki markdown here..."
               />
@@ -545,7 +829,11 @@ export const WikiView = memo(function WikiView({
                 backgroundColor: "var(--thumb-bg)",
                 cursor: proposeHiddenPane !== null ? "pointer" : "default",
               }}
-              onClick={proposeHiddenPane !== null ? () => setProposeHiddenPane(null) : undefined}
+              onClick={
+                proposeHiddenPane !== null
+                  ? () => setProposeHiddenPane(null)
+                  : undefined
+              }
             >
               <div
                 style={{
@@ -581,7 +869,12 @@ export const WikiView = memo(function WikiView({
                   className="shrink-0 px-2 flex items-center"
                   style={{ color: "var(--text-muted)" }}
                 >
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg
+                    className="w-3 h-3"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
                     <path
                       strokeLinecap="round"
                       strokeLinejoin="round"
@@ -704,6 +997,25 @@ export const WikiView = memo(function WikiView({
           onDelete={() => void handleExistingSuggestionDelete()}
           onCancel={() => setExistingSuggestion(null)}
           isDeleting={isDeletingSuggestion}
+        />
+      )}
+
+      {showResumeDialog && (
+        <WikiResumeDraftDialog
+          onResume={handleResumeDraft}
+          onDiscard={() => void handleDiscardResumeDraft()}
+          onDismiss={handleDismissResumeDraft}
+          isDiscarding={isDiscardingDraft}
+        />
+      )}
+
+      {elsewhereDraft !== null && (
+        <WikiDraftElsewhereDialog
+          draftPage={elsewhereDraft.page}
+          onSee={handleSeeElsewhereDraft}
+          onDiscard={() => void handleDiscardElsewhereDraft()}
+          onCancel={handleCancelElsewhereDraft}
+          isDiscarding={isDiscardingDraft}
         />
       )}
     </div>

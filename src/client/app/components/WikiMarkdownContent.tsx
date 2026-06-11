@@ -1,4 +1,11 @@
-import { type CSSProperties, type ReactNode, lazy, Suspense, useLayoutEffect, useRef } from "react";
+import {
+  type CSSProperties,
+  type ReactNode,
+  lazy,
+  Suspense,
+  useLayoutEffect,
+  useRef,
+} from "react";
 import Markdown, { defaultUrlTransform } from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
@@ -59,11 +66,18 @@ function HeadingLinkButton({
       className="inline-flex items-center ml-2 opacity-0 group-hover/heading:opacity-100 transition-opacity cursor-pointer align-middle text-[var(--text-muted)] hover:text-[var(--link-color)]"
       title="Copy link to section"
       onClick={() => {
-        onCopyEchoLink(`echolink://r/${subredditName}/wiki/${currentPage}#${id}`);
+        onCopyEchoLink(
+          `echolink://r/${subredditName}/wiki/${currentPage}#${id}`,
+        );
       }}
       onContextMenu={(e) => e.preventDefault()}
     >
-      <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+      <svg
+        className="w-3.5 h-3.5"
+        viewBox="0 0 16 16"
+        fill="currentColor"
+        aria-hidden="true"
+      >
         <path d="M7.775 3.275a.75.75 0 0 0 1.06 1.06l1.25-1.25a2 2 0 1 1 2.83 2.83l-2.5 2.5a2 2 0 0 1-2.83 0 .75.75 0 0 0-1.06 1.06 3.5 3.5 0 0 0 4.95 0l2.5-2.5a3.5 3.5 0 0 0-4.95-4.95l-1.25 1.25Zm-4.69 9.64a2 2 0 0 1 0-2.83l2.5-2.5a2 2 0 0 1 2.83 0 .75.75 0 0 0 1.06-1.06 3.5 3.5 0 0 0-4.95 0l-2.5 2.5a3.5 3.5 0 0 0 4.95 4.95l1.25-1.25a.75.75 0 0 0-1.06-1.06l-1.25 1.25a2 2 0 0 1-2.83 0Z" />
       </svg>
     </span>
@@ -93,15 +107,23 @@ export function WikiMarkdownContent({
   useLayoutEffect(() => {
     if (!targetAnchor) return;
     const el =
-      containerRef.current?.querySelector(`[id="${CSS.escape(targetAnchor)}"]`) ??
-      containerRef.current?.querySelector(`[id="${CSS.escape(targetAnchor.toLowerCase())}"]`);
+      containerRef.current?.querySelector(
+        `[id="${CSS.escape(targetAnchor)}"]`,
+      ) ??
+      containerRef.current?.querySelector(
+        `[id="${CSS.escape(targetAnchor.toLowerCase())}"]`,
+      );
     if (el) {
       el.scrollIntoView({ behavior: "instant", block: "start" });
     }
     onAnchorConsumed?.();
   }, [targetAnchor, content, onAnchorConsumed]);
   const proseSize =
-    wikiFontSize === "small" ? "prose-sm" : wikiFontSize === "large" ? "prose-lg" : "";
+    wikiFontSize === "small"
+      ? "prose-sm"
+      : wikiFontSize === "large"
+        ? "prose-lg"
+        : "";
 
   return (
     <div ref={containerRef} className="px-4 py-4">
@@ -127,7 +149,9 @@ export function WikiMarkdownContent({
         <Markdown
           remarkPlugins={[remarkGfm]}
           rehypePlugins={[rehypeRaw]}
-          urlTransform={(url) => (url.startsWith("echo://") ? url : defaultUrlTransform(url))}
+          urlTransform={(url) =>
+            url.startsWith("echo://") ? url : defaultUrlTransform(url)
+          }
           components={{
             h1: ({ children: c }: { children?: ReactNode }) => {
               const text = typeof c === "string" ? c : "";
@@ -231,7 +255,13 @@ export function WikiMarkdownContent({
                 </h6>
               );
             },
-            p: ({ children, node }: { children?: ReactNode; node?: unknown }) => {
+            p: ({
+              children,
+              node,
+            }: {
+              children?: ReactNode;
+              node?: unknown;
+            }) => {
               const n = node as
                 | {
                     children?: {
@@ -295,7 +325,12 @@ export function WikiMarkdownContent({
                 // animation styles, so render them bare (no inline-asset wrapper).
                 if (imgClass?.split(/\s+/).includes("echo-raw")) {
                   return (
-                    <EchoRawImage path={rawPath} alt={alt} style={style} className={imgClass} />
+                    <EchoRawImage
+                      path={rawPath}
+                      alt={alt}
+                      style={style}
+                      className={imgClass}
+                    />
                   );
                 }
                 const { hints, cleanPath } = extractDisplayHints(rawPath);
@@ -313,14 +348,22 @@ export function WikiMarkdownContent({
                   hintStyle.outlineOffset = "2px";
                 }
                 const mergedStyle =
-                  Object.keys(hintStyle).length > 0 ? { ...hintStyle, ...style } : style;
+                  Object.keys(hintStyle).length > 0
+                    ? { ...hintStyle, ...style }
+                    : style;
                 return (
-                  <EchoInlineAsset path={cleanPath} style={mergedStyle} className={imgClass}>
+                  <EchoInlineAsset
+                    path={cleanPath}
+                    style={mergedStyle}
+                    className={imgClass}
+                  >
                     {alt ?? getFileName(cleanPath)}
                   </EchoInlineAsset>
                 );
               }
-              return <img src={src} alt={alt} style={style} className={imgClass} />;
+              return (
+                <img src={src} alt={alt} style={style} className={imgClass} />
+              );
             },
             a: ({
               href,
@@ -335,7 +378,11 @@ export function WikiMarkdownContent({
 
               if (href.startsWith("echo://")) {
                 const echoPath = href.slice("echo://".length).toLowerCase();
-                return <EchoInlineAsset path={echoPath}>{linkChildren}</EchoInlineAsset>;
+                return (
+                  <EchoInlineAsset path={echoPath}>
+                    {linkChildren}
+                  </EchoInlineAsset>
+                );
               }
 
               const wikiPage = extractWikiPage(href, subredditName);
@@ -347,7 +394,9 @@ export function WikiMarkdownContent({
                     onClick={() => onPageChange(wikiPage)}
                     onContextMenu={(e) => {
                       e.preventDefault();
-                      onCopyEchoLink(`echolink://r/${subredditName}/wiki/${wikiPage}`);
+                      onCopyEchoLink(
+                        `echolink://r/${subredditName}/wiki/${wikiPage}`,
+                      );
                     }}
                   >
                     {linkChildren}
@@ -363,17 +412,24 @@ export function WikiMarkdownContent({
                     onClick={() => {
                       const id = href.slice(1);
                       const target =
-                        containerRef.current?.querySelector(`[id="${CSS.escape(id)}"]`) ??
+                        containerRef.current?.querySelector(
+                          `[id="${CSS.escape(id)}"]`,
+                        ) ??
                         containerRef.current?.querySelector(
                           `[id="${CSS.escape(id.toLowerCase())}"]`,
                         );
                       if (target) {
-                        target.scrollIntoView({ behavior: "instant", block: "start" });
+                        target.scrollIntoView({
+                          behavior: "instant",
+                          block: "start",
+                        });
                       }
                     }}
                     onContextMenu={(e) => {
                       e.preventDefault();
-                      onCopyEchoLink(`echolink://r/${subredditName}/wiki/${currentPage}${href}`);
+                      onCopyEchoLink(
+                        `echolink://r/${subredditName}/wiki/${currentPage}${href}`,
+                      );
                     }}
                   >
                     {linkChildren}

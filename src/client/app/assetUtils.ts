@@ -47,7 +47,10 @@ export function getPrefixes(stem: string): string[] {
   return positions.map((pos) => lower.slice(0, pos));
 }
 
-export function getAssignedGroup(stem: string, groups: readonly string[]): string | null {
+export function getAssignedGroup(
+  stem: string,
+  groups: readonly string[],
+): string | null {
   if (groups.length === 0) return null;
   const valid = new Set(groups);
   let longest: string | null = null;
@@ -88,13 +91,18 @@ export function detectGroupsForFolder(
     for (const prefix of getPrefixes(stem)) {
       if (validPrefixes.has(prefix)) longest = prefix;
     }
-    if (longest !== null) assignedCounts.set(longest, (assignedCounts.get(longest) ?? 0) + 1);
+    if (longest !== null)
+      assignedCounts.set(longest, (assignedCounts.get(longest) ?? 0) + 1);
   }
 
-  const groups = [...assignedCounts.entries()].filter(([, c]) => c >= 3).map(([p]) => p);
+  const groups = [...assignedCounts.entries()]
+    .filter(([, c]) => c >= 3)
+    .map(([p]) => p);
 
   return groups.length >= 2
-    ? groups.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
+    ? groups.sort((a, b) =>
+        a.localeCompare(b, undefined, { sensitivity: "base" }),
+      )
     : [];
 }
 
@@ -105,7 +113,10 @@ export function getSubfolder(p: string): string | null {
   return folder && folder.length > 0 ? folder : null;
 }
 
-export function naturalSortKey(p: string, pathToMapped: Map<string, string>): string {
+export function naturalSortKey(
+  p: string,
+  pathToMapped: Map<string, string>,
+): string {
   const mapped = pathToMapped.get(p);
   return getFileName(mapped ?? p).toLowerCase();
 }
@@ -113,7 +124,9 @@ export function naturalSortKey(p: string, pathToMapped: Map<string, string>): st
 export function toDisplayName(path: string): string {
   const stem = getStem(path);
   const ext = getExt(path);
-  return stem.replace(/[_-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) + ext;
+  return (
+    stem.replace(/[_-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) + ext
+  );
 }
 
 export function slugify(text: string): string {

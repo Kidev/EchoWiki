@@ -15,7 +15,8 @@ const MIME_MAP: Record<string, string> = {
 };
 
 const PNG_HEADER = new Uint8Array([
-  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49,
+  0x48, 0x44, 0x52,
 ]);
 
 export function parseHexKey(hexKey: string): Uint8Array {
@@ -26,7 +27,10 @@ export function parseHexKey(hexKey: string): Uint8Array {
   return key;
 }
 
-export function decryptMvBuffer(encrypted: ArrayBuffer, key: Uint8Array): ArrayBuffer {
+export function decryptMvBuffer(
+  encrypted: ArrayBuffer,
+  key: Uint8Array,
+): ArrayBuffer {
   const src = new Uint8Array(encrypted);
   const result = new Uint8Array(src.length - RPGMV_HEADER_LEN);
 
@@ -39,7 +43,9 @@ export function decryptMvBuffer(encrypted: ArrayBuffer, key: Uint8Array): ArrayB
   return result.buffer as ArrayBuffer;
 }
 
-export function recoverKeyFromPng(encryptedBuffer: ArrayBuffer): Uint8Array | null {
+export function recoverKeyFromPng(
+  encryptedBuffer: ArrayBuffer,
+): Uint8Array | null {
   const src = new Uint8Array(encryptedBuffer);
   if (src.length < RPGMV_HEADER_LEN + 16) return null;
 
@@ -54,7 +60,10 @@ export async function extractKeyFromSystem(
   files: File[],
   dataRoot: string,
 ): Promise<string | null> {
-  const systemFile = getFileByNormalizedPath(files, `${dataRoot}data/System.json`);
+  const systemFile = getFileByNormalizedPath(
+    files,
+    `${dataRoot}data/System.json`,
+  );
   if (!systemFile) return null;
 
   try {
@@ -80,7 +89,11 @@ export function getMimeType(ext: string): string {
 
 export function isEncryptedMvFile(filename: string): boolean {
   const lower = filename.toLowerCase();
-  return lower.endsWith(".rpgmvp") || lower.endsWith(".rpgmvo") || lower.endsWith(".rpgmvm");
+  return (
+    lower.endsWith(".rpgmvp") ||
+    lower.endsWith(".rpgmvo") ||
+    lower.endsWith(".rpgmvm")
+  );
 }
 
 export type ProcessedAsset = {
@@ -111,7 +124,10 @@ export async function* processMvFiles(
     const relativePath = slashIdx >= 0 ? rel.slice(slashIdx + 1) : rel;
 
     let canonical = relativePath;
-    if (dataRoot && canonical.toLowerCase().startsWith(dataRoot.toLowerCase())) {
+    if (
+      dataRoot &&
+      canonical.toLowerCase().startsWith(dataRoot.toLowerCase())
+    ) {
       canonical = canonical.slice(dataRoot.length);
     }
     canonical = canonical.toLowerCase();
@@ -126,7 +142,8 @@ export async function* processMvFiles(
             const mime = getMimeType(decExt);
             const decrypted = decryptMvBuffer(buf, key);
             const extIdx = canonical.lastIndexOf(".");
-            const path = extIdx >= 0 ? canonical.slice(0, extIdx) + decExt : canonical;
+            const path =
+              extIdx >= 0 ? canonical.slice(0, extIdx) + decExt : canonical;
             yield {
               path,
               blob: new Blob([decrypted], { type: mime }),
@@ -143,7 +160,8 @@ export async function* processMvFiles(
       const mime = getMimeType(decExt);
       const decrypted = decryptMvBuffer(buf, key);
       const extIdx = canonical.lastIndexOf(".");
-      const path = extIdx >= 0 ? canonical.slice(0, extIdx) + decExt : canonical;
+      const path =
+        extIdx >= 0 ? canonical.slice(0, extIdx) + decExt : canonical;
       yield {
         path,
         blob: new Blob([decrypted], { type: mime }),

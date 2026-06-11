@@ -33,7 +33,14 @@ import { ColorPickerRow, MappingPanel } from "./MappingPanel";
 import { parseMappingText } from "../mappingUtils";
 import { SegmentedControl } from "./AssetBrowser";
 
-type SettingsTab = "general" | "game" | "style" | "theme" | "mapping" | "collaborative" | "voting";
+type SettingsTab =
+  | "general"
+  | "game"
+  | "style"
+  | "theme"
+  | "mapping"
+  | "collaborative"
+  | "voting";
 
 // Small "?" badge that reveals a help bubble on hover. Lets settings rows stay
 // terse while keeping a full explanation one hover away. The bubble opens
@@ -46,7 +53,10 @@ function HelpTip({ text }: { text: string }) {
         role="img"
         aria-label={text}
         className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full text-[9px] font-bold leading-none cursor-help select-none focus:outline-none"
-        style={{ backgroundColor: "var(--thumb-bg)", color: "var(--text-muted)" }}
+        style={{
+          backgroundColor: "var(--thumb-bg)",
+          color: "var(--text-muted)",
+        }}
       >
         ?
       </span>
@@ -75,7 +85,9 @@ function CollaborativePanel({
   const [isTogglingMode, setIsTogglingMode] = useState(false);
 
   const [minKarmaField, setMinKarmaField] = useState(String(config.minKarma));
-  const [minAgeDaysField, setMinAgeDaysField] = useState(String(config.minAccountAgeDays));
+  const [minAgeDaysField, setMinAgeDaysField] = useState(
+    String(config.minAccountAgeDays),
+  );
   const [editCooldownField, setEditCooldownField] = useState(
     String(config.suggestionEditCooldownMinutes),
   );
@@ -90,9 +102,13 @@ function CollaborativePanel({
   const [isSavingFlair, setIsSavingFlair] = useState(false);
 
   const [advCountField, setAdvCountField] = useState("0");
-  const [advFlairTemplateId, setAdvFlairTemplateId] = useState<string | null>(null);
+  const [advFlairTemplateId, setAdvFlairTemplateId] = useState<string | null>(
+    null,
+  );
   const [savedAdvCount, setSavedAdvCount] = useState("0");
-  const [savedAdvFlairTemplateId, setSavedAdvFlairTemplateId] = useState<string | null>(null);
+  const [savedAdvFlairTemplateId, setSavedAdvFlairTemplateId] = useState<
+    string | null
+  >(null);
   const [isSavingAdv, setIsSavingAdv] = useState(false);
 
   const [banned, setBanned] = useState<string[]>([]);
@@ -146,25 +162,43 @@ function CollaborativePanel({
   const handleSaveThresholds = useCallback(async () => {
     const minKarma = Math.max(0, parseInt(minKarmaField, 10) || 0);
     const minAccountAgeDays = Math.max(0, parseInt(minAgeDaysField, 10) || 0);
-    const suggestionEditCooldownMinutes = Math.max(0, parseInt(editCooldownField, 10) || 0);
+    const suggestionEditCooldownMinutes = Math.max(
+      0,
+      parseInt(editCooldownField, 10) || 0,
+    );
     setIsSavingThresholds(true);
     try {
       const res = await fetch("/api/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ minKarma, minAccountAgeDays, suggestionEditCooldownMinutes }),
+        body: JSON.stringify({
+          minKarma,
+          minAccountAgeDays,
+          suggestionEditCooldownMinutes,
+        }),
       });
       if (res.ok) {
         setMinKarmaField(String(minKarma));
         setMinAgeDaysField(String(minAccountAgeDays));
         setEditCooldownField(String(suggestionEditCooldownMinutes));
-        onConfigChanged({ ...config, minKarma, minAccountAgeDays, suggestionEditCooldownMinutes });
+        onConfigChanged({
+          ...config,
+          minKarma,
+          minAccountAgeDays,
+          suggestionEditCooldownMinutes,
+        });
       }
     } catch {
     } finally {
       setIsSavingThresholds(false);
     }
-  }, [minKarmaField, minAgeDaysField, editCooldownField, config, onConfigChanged]);
+  }, [
+    minKarmaField,
+    minAgeDaysField,
+    editCooldownField,
+    config,
+    onConfigChanged,
+  ]);
 
   const handleFlairChange = useCallback(async (templateId: string | null) => {
     setIsSavingFlair(true);
@@ -223,7 +257,9 @@ function CollaborativePanel({
         body: JSON.stringify(body),
       });
       if (res.ok) {
-        setBanned((prev) => (prev.includes(username) ? prev : [...prev, username]));
+        setBanned((prev) =>
+          prev.includes(username) ? prev : [...prev, username],
+        );
         setBanInput("");
       } else {
         const err = (await res.json()) as ErrorResponse;
@@ -250,7 +286,10 @@ function CollaborativePanel({
 
   const inputCls =
     "text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)] disabled:opacity-50";
-  const inputStyle = { backgroundColor: "var(--control-bg)", color: "var(--control-text)" };
+  const inputStyle = {
+    backgroundColor: "var(--control-bg)",
+    color: "var(--control-text)",
+  };
 
   return (
     <div className="flex flex-col gap-3 max-w-lg">
@@ -259,7 +298,8 @@ function CollaborativePanel({
         <div className="flex flex-col min-w-0">
           <span className="text-xs font-medium">Collaborative editing</span>
           <span className="text-[10px] text-[var(--text-muted)]">
-            Community members suggest changes; moderators approve before they go live.
+            Community members suggest changes; moderators approve before they go
+            live.
           </span>
         </div>
         <button
@@ -288,7 +328,9 @@ function CollaborativePanel({
               <HelpTip text="Who is allowed to submit suggestions. A member must meet both the minimum karma and the minimum account age to suggest changes. Set a value to 0 to drop that requirement. These checks fail open: if Reddit can't return a user's stats, the suggestion is allowed." />
             </span>
             <div className="flex items-center gap-2">
-              <label className="text-xs text-[var(--text-muted)] w-20 shrink-0">Min. karma</label>
+              <label className="text-xs text-[var(--text-muted)] w-20 shrink-0">
+                Min. karma
+              </label>
               <input
                 type="number"
                 min="0"
@@ -344,7 +386,9 @@ function CollaborativePanel({
               Contributor flair
             </span>
             <div className="flex items-center gap-2">
-              <label className="text-xs text-[var(--text-muted)] w-20 shrink-0">On accept</label>
+              <label className="text-xs text-[var(--text-muted)] w-20 shrink-0">
+                On accept
+              </label>
               <select
                 value={flairTemplateId ?? ""}
                 onChange={(e) => void handleFlairChange(e.target.value || null)}
@@ -368,7 +412,9 @@ function CollaborativePanel({
               Advanced contributor flair
             </span>
             <div className="flex items-center gap-2">
-              <label className="text-xs text-[var(--text-muted)] w-20 shrink-0">After</label>
+              <label className="text-xs text-[var(--text-muted)] w-20 shrink-0">
+                After
+              </label>
               <input
                 type="number"
                 min="0"
@@ -378,7 +424,9 @@ function CollaborativePanel({
                 className={`${inputCls} w-16`}
                 style={inputStyle}
               />
-              <span className="text-xs text-[var(--text-muted)] shrink-0">accepted</span>
+              <span className="text-xs text-[var(--text-muted)] shrink-0">
+                accepted
+              </span>
               <select
                 value={advFlairTemplateId ?? ""}
                 onChange={(e) => setAdvFlairTemplateId(e.target.value || null)}
@@ -435,7 +483,9 @@ function CollaborativePanel({
                 {isBanning ? "Banning..." : "Ban"}
               </button>
             </div>
-            {banError && <span className="text-xs text-red-500">{banError}</span>}
+            {banError && (
+              <span className="text-xs text-red-500">{banError}</span>
+            )}
             {banned.length > 0 && (
               <div className="flex flex-wrap gap-1.5 mt-0.5">
                 {banned.map((u) => (
@@ -476,22 +526,46 @@ function VotingSettingsPanel({
 }) {
   const [isSaving, setIsSaving] = useState(false);
   const [votingEnabled, setVotingEnabled] = useState(config.votingEnabled);
-  const [acceptThreshold, setAcceptThreshold] = useState(String(config.votingAcceptThreshold));
-  const [rejectThreshold, setRejectThreshold] = useState(String(config.votingRejectThreshold));
-  const [percentThreshold, setPercentThreshold] = useState(String(config.votingPercentThreshold));
-  const [durationDays, setDurationDays] = useState(String(config.votingDurationDays));
-  const [minVoters, setMinVoters] = useState(String(config.votingMinVotersForTiming));
-  const [allowVoteChange, setAllowVoteChange] = useState(config.votingAllowVoteChange);
-  const [changeCooldown, setChangeCooldown] = useState(String(config.votingChangeCooldownMinutes));
-  const [showVoterNames, setShowVoterNames] = useState(config.votingShowVoterNames);
-  const [voterMinKarma, setVoterMinKarma] = useState(String(config.votingVoterMinKarma));
-  const [voterMinAge, setVoterMinAge] = useState(String(config.votingVoterMinAccountAgeDays));
-  const [maxEdits, setMaxEdits] = useState(String(config.votingMaxSuggestionEdits));
+  const [acceptThreshold, setAcceptThreshold] = useState(
+    String(config.votingAcceptThreshold),
+  );
+  const [rejectThreshold, setRejectThreshold] = useState(
+    String(config.votingRejectThreshold),
+  );
+  const [percentThreshold, setPercentThreshold] = useState(
+    String(config.votingPercentThreshold),
+  );
+  const [durationDays, setDurationDays] = useState(
+    String(config.votingDurationDays),
+  );
+  const [minVoters, setMinVoters] = useState(
+    String(config.votingMinVotersForTiming),
+  );
+  const [allowVoteChange, setAllowVoteChange] = useState(
+    config.votingAllowVoteChange,
+  );
+  const [changeCooldown, setChangeCooldown] = useState(
+    String(config.votingChangeCooldownMinutes),
+  );
+  const [showVoterNames, setShowVoterNames] = useState(
+    config.votingShowVoterNames,
+  );
+  const [voterMinKarma, setVoterMinKarma] = useState(
+    String(config.votingVoterMinKarma),
+  );
+  const [voterMinAge, setVoterMinAge] = useState(
+    String(config.votingVoterMinAccountAgeDays),
+  );
+  const [maxEdits, setMaxEdits] = useState(
+    String(config.votingMaxSuggestionEdits),
+  );
   const [postTitle, setPostTitle] = useState(config.votingPostTitle);
   const [flairTemplateId, setFlairTemplateId] = useState<string | null>(
     config.votingFlairTemplateId,
   );
-  const [linkFlairTemplates, setLinkFlairTemplates] = useState<FlairTemplateInfo[]>([]);
+  const [linkFlairTemplates, setLinkFlairTemplates] = useState<
+    FlairTemplateInfo[]
+  >([]);
 
   useEffect(() => {
     void fetch("/api/wiki/collab-info")
@@ -549,16 +623,31 @@ function VotingSettingsPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           votingEnabled,
-          votingAcceptThreshold: Math.max(0, parseInt(acceptThreshold, 10) || 0),
-          votingRejectThreshold: Math.max(0, parseInt(rejectThreshold, 10) || 0),
-          votingPercentThreshold: Math.min(100, Math.max(0, parseInt(percentThreshold, 10) || 0)),
+          votingAcceptThreshold: Math.max(
+            0,
+            parseInt(acceptThreshold, 10) || 0,
+          ),
+          votingRejectThreshold: Math.max(
+            0,
+            parseInt(rejectThreshold, 10) || 0,
+          ),
+          votingPercentThreshold: Math.min(
+            100,
+            Math.max(0, parseInt(percentThreshold, 10) || 0),
+          ),
           votingDurationDays: Math.max(0, parseInt(durationDays, 10) || 0),
           votingMinVotersForTiming: Math.max(0, parseInt(minVoters, 10) || 0),
           votingAllowVoteChange: allowVoteChange,
-          votingChangeCooldownMinutes: Math.max(0, parseInt(changeCooldown, 10) || 0),
+          votingChangeCooldownMinutes: Math.max(
+            0,
+            parseInt(changeCooldown, 10) || 0,
+          ),
           votingShowVoterNames: showVoterNames,
           votingVoterMinKarma: Math.max(0, parseInt(voterMinKarma, 10) || 0),
-          votingVoterMinAccountAgeDays: Math.max(0, parseInt(voterMinAge, 10) || 0),
+          votingVoterMinAccountAgeDays: Math.max(
+            0,
+            parseInt(voterMinAge, 10) || 0,
+          ),
           votingMaxSuggestionEdits: Math.max(0, parseInt(maxEdits, 10) || 0),
           votingFlairTemplateId: flairTemplateId,
           votingPostTitle: postTitle.trim() || config.votingPostTitle,
@@ -599,10 +688,19 @@ function VotingSettingsPanel({
     "w-full text-xs px-2 py-1 rounded border border-gray-200 focus:outline-none focus:border-[var(--accent)]";
   const numInp =
     "w-14 text-xs px-1.5 py-1 rounded border border-gray-200 focus:outline-none focus:border-[var(--accent)] text-center tabular-nums";
-  const inpSt = { backgroundColor: "var(--control-bg)", color: "var(--control-text)" };
+  const inpSt = {
+    backgroundColor: "var(--control-bg)",
+    color: "var(--control-text)",
+  };
   const secHdr = "text-[10px] font-semibold uppercase tracking-wide mb-2";
   const secHdrSt = { color: "var(--text-muted)" };
-  const Toggle = ({ val, set }: { val: boolean; set: (v: boolean) => void }) => (
+  const Toggle = ({
+    val,
+    set,
+  }: {
+    val: boolean;
+    set: (v: boolean) => void;
+  }) => (
     <button
       onClick={() => set(!val)}
       className={`relative shrink-0 w-8 h-4 rounded-full transition-colors cursor-pointer ${val ? "bg-[var(--accent)]" : "bg-gray-300"}`}
@@ -618,7 +716,10 @@ function VotingSettingsPanel({
   return (
     <div className="text-xs" style={{ maxWidth: 680 }}>
       {}
-      <div className="flex items-center justify-between gap-3 px-3 py-2 border-b" style={divSt}>
+      <div
+        className="flex items-center justify-between gap-3 px-3 py-2 border-b"
+        style={divSt}
+      >
         <div className="flex items-center gap-1.5">
           <span className="font-semibold">Public Voting</span>
           <HelpTip text="When enabled, every new suggestion automatically creates its own vote post where the whole community decides whether to accept it, instead of a moderator deciding alone. Requires collaborative editing to be turned on." />
@@ -626,7 +727,9 @@ function VotingSettingsPanel({
             Each suggestion spawns a vote post.
           </span>
           {!config.collaborativeMode && (
-            <span className="text-amber-600 text-[10px]">Requires collaborative mode.</span>
+            <span className="text-amber-600 text-[10px]">
+              Requires collaborative mode.
+            </span>
           )}
         </div>
         <Toggle val={votingEnabled} set={setVotingEnabled} />
@@ -746,7 +849,9 @@ function VotingSettingsPanel({
                 className={numInp}
                 style={inpSt}
               />
-              <span style={{ color: "var(--text-muted)" }}>% to pass · 0 = majority</span>
+              <span style={{ color: "var(--text-muted)" }}>
+                % to pass · 0 = majority
+              </span>
             </label>
           </div>
         </div>
@@ -776,7 +881,9 @@ function VotingSettingsPanel({
                   className={numInp}
                   style={inpSt}
                 />
-                <span style={{ color: "var(--text-muted)" }}>min. · 0 = instant</span>
+                <span style={{ color: "var(--text-muted)" }}>
+                  min. · 0 = instant
+                </span>
               </label>
             )}
           </div>
@@ -818,7 +925,10 @@ function VotingSettingsPanel({
       {}
       <div className="flex gap-3 px-3 py-2 border-b" style={divSt}>
         <div className="shrink-0" style={{ width: 160 }}>
-          <label className="flex items-center gap-1 mb-1" style={{ color: "var(--text-muted)" }}>
+          <label
+            className="flex items-center gap-1 mb-1"
+            style={{ color: "var(--text-muted)" }}
+          >
             Vote Post Flair
             <HelpTip text="Link flair automatically applied to every vote post when it is created, so members can spot and filter wiki votes in the subreddit feed. Choose 'No flair' to leave them unflaired." />
           </label>
@@ -837,7 +947,10 @@ function VotingSettingsPanel({
           </select>
         </div>
         <div className="flex-1 min-w-0">
-          <label className="flex items-center gap-1 mb-1" style={{ color: "var(--text-muted)" }}>
+          <label
+            className="flex items-center gap-1 mb-1"
+            style={{ color: "var(--text-muted)" }}
+          >
             Vote Post Title
             <HelpTip text="Template for the title of each vote post. Placeholders are filled in automatically: %user% the author, %page% the page name, %pathPage% the full page path, and %shortPathPage% an abbreviated path. Leave empty to use the default title." />
             <span className="text-[10px] truncate">
@@ -887,7 +1000,10 @@ export function SettingsView({
   appearance: SubredditAppearance;
   subredditName: string;
   paths: readonly string[];
-  onMappingSaved: (text: string, mapping: Record<string, string> | null) => void;
+  onMappingSaved: (
+    text: string,
+    mapping: Record<string, string> | null,
+  ) => void;
   onStyleChanged: (style: StyleConfig) => void;
   onConfigChanged: (config: GameConfig) => void;
 }) {
@@ -895,11 +1011,17 @@ export function SettingsView({
   const [editingMode, setEditingMode] = useState<"light" | "dark">("light");
   const [gameTitle, setGameTitle] = useState(config.gameName);
   const [wikiTitleField, setWikiTitleField] = useState(config.wikiTitle);
-  const [wikiDescriptionField, setWikiDescriptionField] = useState(config.wikiDescription);
-  const [homeBackground, setHomeBackground] = useState<HomeBackground>(config.homeBackground);
+  const [wikiDescriptionField, setWikiDescriptionField] = useState(
+    config.wikiDescription,
+  );
+  const [homeBackground, setHomeBackground] = useState<HomeBackground>(
+    config.homeBackground,
+  );
   const [homeLogo, setHomeLogo] = useState<HomeLogo>(config.homeLogo);
   const [engineField, setEngineField] = useState<EngineType>(config.engine);
-  const [encryptionKeyField, setEncryptionKeyField] = useState(config.encryptionKey);
+  const [encryptionKeyField, setEncryptionKeyField] = useState(
+    config.encryptionKey,
+  );
   const [customTransformCodeField, setCustomTransformCodeField] = useState(
     config.customTransformCode ?? "",
   );
@@ -1057,7 +1179,8 @@ export function SettingsView({
     return { light, dark };
   }, [appearance]);
 
-  const editingDefaults = editingMode === "light" ? defaultColors.light : defaultColors.dark;
+  const editingDefaults =
+    editingMode === "light" ? defaultColors.light : defaultColors.dark;
 
   const SETTINGS_TABS: readonly { value: SettingsTab; label: string }[] = [
     { value: "general", label: "General" },
@@ -1081,7 +1204,11 @@ export function SettingsView({
                   ? "bg-[var(--accent)] text-white"
                   : "text-[var(--text-muted)]"
               }`}
-              style={settingsTab !== tab.value ? { backgroundColor: "transparent" } : undefined}
+              style={
+                settingsTab !== tab.value
+                  ? { backgroundColor: "transparent" }
+                  : undefined
+              }
               onMouseEnter={(e) => {
                 if (settingsTab !== tab.value)
                   e.currentTarget.style.backgroundColor = "var(--thumb-bg)";
@@ -1125,7 +1252,8 @@ export function SettingsView({
                 }}
               />
               <span className="text-[10px] text-[var(--text-muted)]">
-                Displayed on the home screen below the logo. Leave empty for default.
+                Displayed on the home screen below the logo. Leave empty for
+                default.
               </span>
             </div>
 
@@ -1174,7 +1302,9 @@ export function SettingsView({
                   <span className="text-xs font-medium">Engine</span>
                   <select
                     value={engineField}
-                    onChange={(e) => setEngineField(e.target.value as EngineType)}
+                    onChange={(e) =>
+                      setEngineField(e.target.value as EngineType)
+                    }
                     disabled={isTcoaalDetected}
                     className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)] disabled:opacity-50"
                     style={{
@@ -1188,20 +1318,30 @@ export function SettingsView({
                     <option value="godot">Godot (.pck pack)</option>
                     <optgroup label="RPG Maker">
                       <option value="rmmv">RPG Maker MV</option>
-                      <option value="rmmv-encrypted">RPG Maker MV (Encrypted)</option>
+                      <option value="rmmv-encrypted">
+                        RPG Maker MV (Encrypted)
+                      </option>
                       <option value="rmmz">RPG Maker MZ</option>
-                      <option value="rmmz-encrypted">RPG Maker MZ (Encrypted)</option>
+                      <option value="rmmz-encrypted">
+                        RPG Maker MZ (Encrypted)
+                      </option>
                       <option value="rmvxace">RPG Maker VX Ace</option>
                       <option value="rmvx">RPG Maker VX</option>
                       <option value="rmxp">RPG Maker XP</option>
                       <option value="rm2k3">RPG Maker 2003</option>
                     </optgroup>
                     <optgroup label="Other">
-                      <option value="generic">Generic (RenPy, GameMaker, or any other game)</option>
-                      <option value="tcoaal">TCOAAL (The Coffin of Andy and Leyley)</option>
+                      <option value="generic">
+                        Generic (RenPy, GameMaker, or any other game)
+                      </option>
+                      <option value="tcoaal">
+                        TCOAAL (The Coffin of Andy and Leyley)
+                      </option>
                     </optgroup>
                     <optgroup label="Advanced">
-                      <option value="custom">Custom transform (JavaScript)</option>
+                      <option value="custom">
+                        Custom transform (JavaScript)
+                      </option>
                     </optgroup>
                   </select>
                   <span className="text-[10px] text-[var(--text-muted)]">
@@ -1248,10 +1388,14 @@ export function SettingsView({
 
                 {engineField === "custom" && (
                   <div className="flex flex-col gap-2">
-                    <span className="text-xs font-medium">Custom Transform Code</span>
+                    <span className="text-xs font-medium">
+                      Custom Transform Code
+                    </span>
                     <textarea
                       value={customTransformCodeField}
-                      onChange={(e) => setCustomTransformCodeField(e.target.value)}
+                      onChange={(e) =>
+                        setCustomTransformCodeField(e.target.value)
+                      }
                       rows={10}
                       spellCheck={false}
                       placeholder={`// Called for every file in the game folder.
@@ -1281,14 +1425,16 @@ return { path: parent + '/' + name.toLowerCase(), data: await file.arrayBuffer()
                       }}
                     />
                     <span className="text-[10px] text-amber-600">
-                      ⚠ This code runs in users' browsers when they import game files. Only set
-                      this if you trust the source.
+                      ⚠ This code runs in users' browsers when they import game
+                      files. Only set this if you trust the source.
                     </span>
                     <span className="text-[10px] text-[var(--text-muted)]">
-                      The function body receives <code>file</code> (a File object) and must return{" "}
-                      <code>{"{ path, data, mimeType }"}</code> or <code>null</code> to skip. Use{" "}
-                      <code>await file.arrayBuffer()</code> to read bytes. Apply any custom
-                      decryption here.
+                      The function body receives <code>file</code> (a File
+                      object) and must return{" "}
+                      <code>{"{ path, data, mimeType }"}</code> or{" "}
+                      <code>null</code> to skip. Use{" "}
+                      <code>await file.arrayBuffer()</code> to read bytes. Apply
+                      any custom decryption here.
                     </span>
                   </div>
                 )}
@@ -1464,7 +1610,10 @@ return { path: parent + '/' + name.toLowerCase(), data: await file.arrayBuffer()
         )}
 
         {settingsTab === "collaborative" && (
-          <CollaborativePanel config={config} onConfigChanged={onConfigChanged} />
+          <CollaborativePanel
+            config={config}
+            onConfigChanged={onConfigChanged}
+          />
         )}
 
         {settingsTab === "voting" && (

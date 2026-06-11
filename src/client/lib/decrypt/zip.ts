@@ -24,7 +24,9 @@ function getMimeType(filename: string): string {
   return MIME_MAP[ext] ?? "application/octet-stream";
 }
 
-export async function* processZipArchive(archiveFile: File): AsyncGenerator<ProcessedAsset> {
+export async function* processZipArchive(
+  archiveFile: File,
+): AsyncGenerator<ProcessedAsset> {
   const buffer = await archiveFile.arrayBuffer();
   const reader = new BinaryReader(buffer);
 

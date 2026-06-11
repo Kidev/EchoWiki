@@ -43,7 +43,13 @@ function storedDeflate(data: Uint8Array): Uint8Array {
   while (pos < data.length || (pos === 0 && data.length === 0)) {
     const chunk = Math.min(0xffff, data.length - pos);
     const final = pos + chunk >= data.length ? 1 : 0;
-    blocks.push(final, chunk & 0xff, (chunk >> 8) & 0xff, ~chunk & 0xff, (~chunk >> 8) & 0xff);
+    blocks.push(
+      final,
+      chunk & 0xff,
+      (chunk >> 8) & 0xff,
+      ~chunk & 0xff,
+      (~chunk >> 8) & 0xff,
+    );
     for (let i = 0; i < chunk; i++) blocks.push(data[pos + i]!);
     pos += chunk;
     if (chunk === 0) break;
@@ -103,7 +109,10 @@ export async function encodePng(
   const raw = new Uint8Array(height * (stride + 1));
   for (let y = 0; y < height; y++) {
     raw[y * (stride + 1)] = 0;
-    raw.set(rgba.subarray(y * stride, y * stride + stride), y * (stride + 1) + 1);
+    raw.set(
+      rgba.subarray(y * stride, y * stride + stride),
+      y * (stride + 1) + 1,
+    );
   }
 
   const idatData = await deflate(raw);
@@ -118,12 +127,15 @@ export async function encodePng(
   ihdr[11] = 0; // filter
   ihdr[12] = 0; // interlace
 
-  const signature = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const signature = new Uint8Array([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+  ]);
   const ihdrChunk = chunk("IHDR", ihdr);
   const idatChunk = chunk("IDAT", idatData);
   const iendChunk = chunk("IEND", new Uint8Array(0));
 
-  const total = signature.length + ihdrChunk.length + idatChunk.length + iendChunk.length;
+  const total =
+    signature.length + ihdrChunk.length + idatChunk.length + iendChunk.length;
   const png = new Uint8Array(total);
   let off = 0;
   for (const part of [signature, ihdrChunk, idatChunk, iendChunk]) {

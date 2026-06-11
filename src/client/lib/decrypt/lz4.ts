@@ -2,7 +2,10 @@
 // store their block table and data blocks with LZ4 / LZ4HC, both of which decode
 // with this single routine since they share the on-disk block layout.
 
-export function lz4DecompressBlock(src: Uint8Array, decompressedSize: number): Uint8Array {
+export function lz4DecompressBlock(
+  src: Uint8Array,
+  decompressedSize: number,
+): Uint8Array {
   const dst = new Uint8Array(decompressedSize);
   let s = 0;
   let d = 0;

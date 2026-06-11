@@ -10,7 +10,10 @@ function chunkTag(buf: ArrayBuffer, pos: number): string {
   return String.fromCharCode(b[0]!, b[1]!, b[2]!, b[3]!);
 }
 
-function detectAudioType(buf: ArrayBuffer, offset: number): { mime: string; ext: string } {
+function detectAudioType(
+  buf: ArrayBuffer,
+  offset: number,
+): { mime: string; ext: string } {
   if (offset + 4 > buf.byteLength) return { mime: "audio/ogg", ext: ".ogg" };
   const b = new Uint8Array(buf, offset, Math.min(4, buf.byteLength - offset));
   // OGG: "OggS"
@@ -20,7 +23,8 @@ function detectAudioType(buf: ArrayBuffer, offset: number): { mime: string; ext:
   if (b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46)
     return { mime: "audio/wav", ext: ".wav" };
   // ID3 (MP3)
-  if (b[0] === 0x49 && b[1] === 0x44 && b[2] === 0x33) return { mime: "audio/mpeg", ext: ".mp3" };
+  if (b[0] === 0x49 && b[1] === 0x44 && b[2] === 0x33)
+    return { mime: "audio/mpeg", ext: ".mp3" };
   // MP3 sync
   if (b[0] === 0xff && b[1] !== undefined && (b[1] & 0xe0) === 0xe0)
     return { mime: "audio/mpeg", ext: ".mp3" };
@@ -43,7 +47,12 @@ function extractPng(buf: ArrayBuffer, startOffset: number): ArrayBuffer | null {
     const chunkLen = view.getUint32(pos, false); // big-endian
     if (chunkLen > 64 * 1024 * 1024) break; // sanity cap
     const typeBytes = new Uint8Array(buf, pos + 4, 4);
-    const type = String.fromCharCode(typeBytes[0]!, typeBytes[1]!, typeBytes[2]!, typeBytes[3]!);
+    const type = String.fromCharCode(
+      typeBytes[0]!,
+      typeBytes[1]!,
+      typeBytes[2]!,
+      typeBytes[3]!,
+    );
     pos += 12 + chunkLen; // length(4) + type(4) + data + crc(4)
     if (type === "IEND") {
       return buf.slice(startOffset, pos);
@@ -52,7 +61,9 @@ function extractPng(buf: ArrayBuffer, startOffset: number): ArrayBuffer | null {
   return null;
 }
 
-export async function* processGameMakerData(file: File): AsyncGenerator<ProcessedAsset> {
+export async function* processGameMakerData(
+  file: File,
+): AsyncGenerator<ProcessedAsset> {
   const buf = await file.arrayBuffer();
   const view = new DataView(buf);
 
@@ -110,7 +121,8 @@ export async function* processGameMakerData(file: File): AsyncGenerator<Processe
         const audioSize = view.getUint32(itemOffset, true);
         const audioStart = itemOffset + 4;
 
-        if (audioStart + audioSize > buf.byteLength || audioSize === 0) continue;
+        if (audioStart + audioSize > buf.byteLength || audioSize === 0)
+          continue;
         const audioData = buf.slice(audioStart, audioStart + audioSize);
         const { mime, ext } = detectAudioType(buf, audioStart);
 

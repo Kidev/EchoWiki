@@ -52,7 +52,10 @@ export function AssetNameLabel({
   }
 
   return (
-    <span ref={measureRef} className="asset-name-static text-[var(--text-muted)] leading-tight">
+    <span
+      ref={measureRef}
+      className="asset-name-static text-[var(--text-muted)] leading-tight"
+    >
       {displayName}
     </span>
   );
@@ -120,13 +123,29 @@ export function AssetCard({
   const [cardHovered, setCardHovered] = useState(false);
 
   const thumbClass =
-    cardSize === "compact" ? "w-12 h-12" : cardSize === "large" ? "w-24 h-24" : "w-16 h-16";
+    cardSize === "compact"
+      ? "w-12 h-12"
+      : cardSize === "large"
+        ? "w-24 h-24"
+        : "w-16 h-16";
   const labelClass =
-    cardSize === "compact" ? "text-[9px]" : cardSize === "large" ? "text-[11px]" : "text-[10px]";
+    cardSize === "compact"
+      ? "text-[9px]"
+      : cardSize === "large"
+        ? "text-[11px]"
+        : "text-[10px]";
   const copyIconClass =
-    cardSize === "compact" ? "w-2.5 h-2.5" : cardSize === "large" ? "w-3.5 h-3.5" : "w-3 h-3";
+    cardSize === "compact"
+      ? "w-2.5 h-2.5"
+      : cardSize === "large"
+        ? "w-3.5 h-3.5"
+        : "w-3 h-3";
   const badgeClass =
-    cardSize === "compact" ? "w-3 h-3" : cardSize === "large" ? "w-[18px] h-[18px]" : "w-4 h-4";
+    cardSize === "compact"
+      ? "w-3 h-3"
+      : cardSize === "large"
+        ? "w-[18px] h-[18px]"
+        : "w-4 h-4";
 
   return (
     <div
@@ -151,7 +170,11 @@ export function AssetCard({
           loading ? (
             <div className="w-4 h-4 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
           ) : url ? (
-            <img src={url} alt={name} className="w-full h-full object-contain" />
+            <img
+              src={url}
+              alt={name}
+              className="w-full h-full object-contain"
+            />
           ) : (
             <svg
               className="w-6 h-6 text-gray-300"
@@ -239,7 +262,12 @@ export function AssetCard({
           onClick={handleCopy}
           title="Copy echo link (Ctrl+click for original name)"
         >
-          <svg className={copyIconClass} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg
+            className={copyIconClass}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
             <path
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -253,7 +281,11 @@ export function AssetCard({
   );
 }
 
-export const FILTERS: readonly FilterType[] = ["images", "audio", "models"] as const;
+export const FILTERS: readonly FilterType[] = [
+  "images",
+  "audio",
+  "models",
+] as const;
 
 export function FilterTabs({
   active,
@@ -266,21 +298,27 @@ export function FilterTabs({
 }) {
   // Images and audio are always offered; the Models tab only appears once a game
   // actually has 3D assets, keeping the bar uncluttered for the common case.
-  const visible = FILTERS.filter((f) => f === "images" || f === "audio" || counts[f] > 0);
+  const visible = FILTERS.filter(
+    (f) => f === "images" || f === "audio" || counts[f] > 0,
+  );
   return (
     <div className="flex gap-1">
       {visible.map((f) => (
         <button
           key={f}
           className={`text-xs px-2.5 py-1 rounded-full transition-colors cursor-pointer ${
-            active === f ? "bg-[var(--accent)] text-white" : "text-[var(--text-muted)]"
+            active === f
+              ? "bg-[var(--accent)] text-white"
+              : "text-[var(--text-muted)]"
           }`}
           style={active !== f ? { backgroundColor: "transparent" } : undefined}
           onMouseEnter={(e) => {
-            if (active !== f) e.currentTarget.style.backgroundColor = "var(--thumb-bg)";
+            if (active !== f)
+              e.currentTarget.style.backgroundColor = "var(--thumb-bg)";
           }}
           onMouseLeave={(e) => {
-            if (active !== f) e.currentTarget.style.backgroundColor = "transparent";
+            if (active !== f)
+              e.currentTarget.style.backgroundColor = "transparent";
           }}
           onClick={() => onChange(f)}
         >
@@ -392,7 +430,11 @@ export function SubFilterTabs({
         <div
           ref={tabsRef}
           className="relative flex flex-wrap gap-1 transition-transform"
-          style={{ transform: collapsed ? `translateY(-${activeOffset}px)` : "translateY(0)" }}
+          style={{
+            transform: collapsed
+              ? `translateY(-${activeOffset}px)`
+              : "translateY(0)",
+          }}
         >
           {subcategories.map((s) => {
             const isActive = active === s.name;
@@ -404,14 +446,20 @@ export function SubFilterTabs({
               <div key={s.name} className="relative" data-sub-active={isActive}>
                 <button
                   className={`text-[10px] px-2 py-0.5 rounded-full transition-colors cursor-pointer inline-flex items-center gap-0.5 ${
-                    isActive ? "bg-[var(--accent)] text-white" : "text-[var(--text-muted)]"
+                    isActive
+                      ? "bg-[var(--accent)] text-white"
+                      : "text-[var(--text-muted)]"
                   }`}
-                  style={!isActive ? { backgroundColor: "transparent" } : undefined}
+                  style={
+                    !isActive ? { backgroundColor: "transparent" } : undefined
+                  }
                   onMouseEnter={(e) => {
-                    if (!isActive) e.currentTarget.style.backgroundColor = "var(--thumb-bg)";
+                    if (!isActive)
+                      e.currentTarget.style.backgroundColor = "var(--thumb-bg)";
                   }}
                   onMouseLeave={(e) => {
-                    if (!isActive) e.currentTarget.style.backgroundColor = "transparent";
+                    if (!isActive)
+                      e.currentTarget.style.backgroundColor = "transparent";
                   }}
                   onClick={() => {
                     onChange(s.name);
@@ -429,7 +477,9 @@ export function SubFilterTabs({
                   {folderHasGroups && (
                     <span
                       className={`text-[7px] leading-none px-1 py-0.5 -my-0.5 ${
-                        dropdownEnabled ? "opacity-70 cursor-pointer" : "opacity-30"
+                        dropdownEnabled
+                          ? "opacity-70 cursor-pointer"
+                          : "opacity-30"
                       }`}
                       onClick={(e) => {
                         if (!dropdownEnabled) return;
@@ -455,15 +505,17 @@ export function SubFilterTabs({
                           key={g ?? "__all"}
                           className="w-full text-left text-xs px-3 py-1.5 cursor-pointer text-[var(--text)]"
                           style={{
-                            backgroundColor: isActiveGroup ? "var(--thumb-bg)" : "transparent",
+                            backgroundColor: isActiveGroup
+                              ? "var(--thumb-bg)"
+                              : "transparent",
                           }}
                           onMouseEnter={(e) =>
-                            (e.currentTarget.style.backgroundColor = "var(--thumb-bg)")
+                            (e.currentTarget.style.backgroundColor =
+                              "var(--thumb-bg)")
                           }
                           onMouseLeave={(e) =>
-                            (e.currentTarget.style.backgroundColor = isActiveGroup
-                              ? "var(--thumb-bg)"
-                              : "transparent")
+                            (e.currentTarget.style.backgroundColor =
+                              isActiveGroup ? "var(--thumb-bg)" : "transparent")
                           }
                           onClick={() => {
                             onGroupChange(g);
@@ -487,7 +539,8 @@ export function SubFilterTabs({
           style={{
             opacity: collapsed ? 1 : 0,
             transition: "opacity 120ms ease",
-            background: "linear-gradient(to right, transparent, var(--bg) 55%, var(--bg) 100%)",
+            background:
+              "linear-gradient(to right, transparent, var(--bg) 55%, var(--bg) 100%)",
           }}
         >
           <span
@@ -518,14 +571,22 @@ export function SegmentedControl<T extends string>({
         <button
           key={opt.value}
           className={`text-xs px-3 py-1.5 transition-colors cursor-pointer ${
-            value === opt.value ? "bg-[var(--accent)] text-white" : "text-[var(--text-muted)]"
+            value === opt.value
+              ? "bg-[var(--accent)] text-white"
+              : "text-[var(--text-muted)]"
           }`}
-          style={value !== opt.value ? { backgroundColor: "var(--control-bg)" } : undefined}
+          style={
+            value !== opt.value
+              ? { backgroundColor: "var(--control-bg)" }
+              : undefined
+          }
           onMouseEnter={(e) => {
-            if (value !== opt.value) e.currentTarget.style.backgroundColor = "var(--thumb-bg)";
+            if (value !== opt.value)
+              e.currentTarget.style.backgroundColor = "var(--thumb-bg)";
           }}
           onMouseLeave={(e) => {
-            if (value !== opt.value) e.currentTarget.style.backgroundColor = "var(--control-bg)";
+            if (value !== opt.value)
+              e.currentTarget.style.backgroundColor = "var(--control-bg)";
           }}
           onClick={() => onChange(opt.value)}
         >

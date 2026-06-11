@@ -93,7 +93,12 @@ export const Splash = () => {
               {imported && meta ? (
                 <div className="flex flex-col items-center gap-2">
                   <div className="flex items-center gap-2 text-sm text-green-400">
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
                       <path
                         strokeLinecap="round"
                         strokeLinejoin="round"
@@ -101,7 +106,9 @@ export const Splash = () => {
                         d="M5 13l4 4L19 7"
                       />
                     </svg>
-                    <span>{meta.assetCount.toLocaleString()} echoes loaded</span>
+                    <span>
+                      {meta.assetCount.toLocaleString()} echoes loaded
+                    </span>
                   </div>
                   {meta.gameTitle && (
                     <p className="text-xs" style={{ color: "#677db7" }}>
@@ -122,7 +129,11 @@ export const Splash = () => {
             style={{ backgroundColor: "#6a5cff" }}
             onClick={(e) => requestExpandedMode(e.nativeEvent, "app")}
           >
-            {isGameIndependent ? "Open Wiki" : imported ? "Browse Echoes" : "Import Game Files"}
+            {isGameIndependent
+              ? "Open Wiki"
+              : imported
+                ? "Browse Echoes"
+                : "Import Game Files"}
           </button>
         </>
       ) : null}

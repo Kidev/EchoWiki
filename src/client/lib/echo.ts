@@ -21,7 +21,9 @@ const audioEditionParamsCache = new Map<string, AudioEditionParams>();
 
 let reverseMapping: Map<string, string> | null = null;
 
-export function setReverseMapping(pathToMapped: Map<string, string> | null): void {
+export function setReverseMapping(
+  pathToMapped: Map<string, string> | null,
+): void {
   if (!pathToMapped || pathToMapped.size === 0) {
     reverseMapping = null;
     return;
@@ -101,7 +103,9 @@ export async function resolveEchoPath(path: string): Promise<string | null> {
   return url;
 }
 
-export function getAudioEditionParamsForPath(echoPath: string): AudioEditionParams | null {
+export function getAudioEditionParamsForPath(
+  echoPath: string,
+): AudioEditionParams | null {
   return audioEditionParamsCache.get(echoPath.toLowerCase()) ?? null;
 }
 
@@ -169,7 +173,9 @@ export async function preloadPaths(
 
     if (editions.length > 0) {
       if (getEditionBlobUrl(normalized) === undefined) {
-        tasks.push(async () => resolveEchoPath(normalized).then(() => undefined));
+        tasks.push(async () =>
+          resolveEchoPath(normalized).then(() => undefined),
+        );
       }
       continue;
     }
@@ -248,7 +254,9 @@ export function useEchoUrl(echoPath: string | null): {
     const normalized = echoPath.toLowerCase();
     const { basePath, editions } = parseEditions(normalized);
     return (
-      (editions.length === 0 ? blobUrlCache.get(basePath) : getEditionBlobUrl(normalized)) ?? null
+      (editions.length === 0
+        ? blobUrlCache.get(basePath)
+        : getEditionBlobUrl(normalized)) ?? null
     );
   });
   const [loading, setLoading] = useState<boolean>(() => {

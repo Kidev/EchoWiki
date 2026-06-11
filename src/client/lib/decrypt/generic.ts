@@ -14,25 +14,63 @@ async function sniffFormat(file: File): Promise<BinFormat> {
   const header = new Uint8Array(await file.slice(0, 12).arrayBuffer());
 
   // ZIP: PK\x03\x04
-  if (header[0] === 0x50 && header[1] === 0x4b && header[2] === 0x03 && header[3] === 0x04)
+  if (
+    header[0] === 0x50 &&
+    header[1] === 0x4b &&
+    header[2] === 0x03 &&
+    header[3] === 0x04
+  )
     return "zip";
   // RPA-2.0 / RPA-3.0: starts with "RPA-"
-  if (header[0] === 0x52 && header[1] === 0x50 && header[2] === 0x41 && header[3] === 0x2d)
+  if (
+    header[0] === 0x52 &&
+    header[1] === 0x50 &&
+    header[2] === 0x41 &&
+    header[3] === 0x2d
+  )
     return "rpa";
   // Godot PCK: "GDPC" LE = 0x43504447
-  if (header[0] === 0x47 && header[1] === 0x44 && header[2] === 0x50 && header[3] === 0x43)
+  if (
+    header[0] === 0x47 &&
+    header[1] === 0x44 &&
+    header[2] === 0x50 &&
+    header[3] === 0x43
+  )
     return "godotpck";
   // GameMaker FORM: "FORM" LE = 0x4d524f46
-  if (header[0] === 0x46 && header[1] === 0x4f && header[2] === 0x52 && header[3] === 0x4d)
+  if (
+    header[0] === 0x46 &&
+    header[1] === 0x4f &&
+    header[2] === 0x52 &&
+    header[3] === 0x4d
+  )
     return "gamemaker";
 
   return "unknown";
 }
 
 const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"]);
-const AUDIO_EXTS = new Set([".ogg", ".mp3", ".m4a", ".wav", ".mid", ".midi", ".opus", ".flac"]);
+const AUDIO_EXTS = new Set([
+  ".ogg",
+  ".mp3",
+  ".m4a",
+  ".wav",
+  ".mid",
+  ".midi",
+  ".opus",
+  ".flac",
+]);
 const VIDEO_EXTS = new Set([".mp4", ".webm", ".ogv"]);
-const MODEL_EXTS = new Set([".glb", ".gltf", ".obj", ".stl", ".ply", ".fbx", ".dae", ".3mf"]);
+const MODEL_EXTS = new Set([
+  ".glb",
+  ".gltf",
+  ".obj",
+  ".stl",
+  ".ply",
+  ".fbx",
+  ".dae",
+  ".3mf",
+]);
 
 const MIME_MAP: Record<string, string> = {
   ".png": "image/png",
@@ -73,7 +111,12 @@ function getMimeType(name: string): string {
 
 function isMediaFile(name: string): boolean {
   const ext = getExtLower(name);
-  return IMAGE_EXTS.has(ext) || AUDIO_EXTS.has(ext) || VIDEO_EXTS.has(ext) || MODEL_EXTS.has(ext);
+  return (
+    IMAGE_EXTS.has(ext) ||
+    AUDIO_EXTS.has(ext) ||
+    VIDEO_EXTS.has(ext) ||
+    MODEL_EXTS.has(ext)
+  );
 }
 
 // Derive a stored path using the immediate parent folder as category.
@@ -87,7 +130,9 @@ function deriveStoredPath(relativePath: string): string {
   return `${parts[parts.length - 2]}/${parts[parts.length - 1]}`;
 }
 
-export async function* processGenericFiles(files: File[]): AsyncGenerator<ProcessedAsset> {
+export async function* processGenericFiles(
+  files: File[],
+): AsyncGenerator<ProcessedAsset> {
   const yielded = new Set<string>();
 
   // Unity builds: extract Texture2D objects from bundles / serialized files.
@@ -174,7 +219,11 @@ export async function* processGenericFiles(files: File[]): AsyncGenerator<Proces
 
     // Extract from GameMaker data files (data.win, game.ios, game.unx)
     const baseName = file.name.toLowerCase();
-    if (baseName === "data.win" || baseName === "game.ios" || baseName === "game.unx") {
+    if (
+      baseName === "data.win" ||
+      baseName === "game.ios" ||
+      baseName === "game.unx"
+    ) {
       try {
         for await (const asset of processGameMakerData(file)) {
           if (!yielded.has(asset.path)) {
@@ -204,7 +253,10 @@ export async function* processGenericFiles(files: File[]): AsyncGenerator<Proces
 
           for await (const asset of gen) {
             if (!isMediaFile(asset.path) && format !== "gamemaker") continue;
-            const stored = format === "gamemaker" ? asset.path : deriveStoredPath(asset.path);
+            const stored =
+              format === "gamemaker"
+                ? asset.path
+                : deriveStoredPath(asset.path);
             if (!yielded.has(stored)) {
               yielded.add(stored);
               yield { ...asset, path: stored };

@@ -1,6 +1,10 @@
 import type { EngineType } from "../../../shared/types/api";
 import type { DetectionResult } from "../detect";
-import { detectEngine, detectGameTitle, getFileByNormalizedPath } from "../detect";
+import {
+  detectEngine,
+  detectGameTitle,
+  getFileByNormalizedPath,
+} from "../detect";
 import { storeAssetBatch, setMeta, getAssetCount } from "../idb";
 import type { ProcessedAsset } from "./rmmv";
 import { processMvFiles } from "./rmmv";
@@ -51,7 +55,9 @@ async function getRtpDatNames(files: File[]): Promise<string[]> {
   }
 }
 
-async function sniffDatFormat(file: File): Promise<"rgssad" | "zip" | "unknown"> {
+async function sniffDatFormat(
+  file: File,
+): Promise<"rgssad" | "zip" | "unknown"> {
   const header = new Uint8Array(await file.slice(0, 8).arrayBuffer());
   if (
     header.length >= 7 &&
@@ -138,7 +144,14 @@ function getAssetGenerator(
 }
 
 export async function importGameFiles(options: ImportOptions): Promise<void> {
-  const { files, engineOverride, keyOverride, customTransformCode, onProgress, signal } = options;
+  const {
+    files,
+    engineOverride,
+    keyOverride,
+    customTransformCode,
+    onProgress,
+    signal,
+  } = options;
 
   onProgress({
     phase: "detecting",
@@ -149,7 +162,10 @@ export async function importGameFiles(options: ImportOptions): Promise<void> {
   });
 
   const detection = detectEngine(files);
-  let engine = engineOverride && engineOverride !== "auto" ? engineOverride : detection.engine;
+  let engine =
+    engineOverride && engineOverride !== "auto"
+      ? engineOverride
+      : detection.engine;
 
   // "auto" after detection means nothing was recognized: fall back to generic scan
   if (engine === "auto") {
@@ -208,7 +224,13 @@ export async function importGameFiles(options: ImportOptions): Promise<void> {
       assets.push(asset);
       count++;
       if (count % 20 === 0) {
-        onProgress({ phase: "decrypting", processed: count, total: 0, engine: eng, gameTitle });
+        onProgress({
+          phase: "decrypting",
+          processed: count,
+          total: 0,
+          engine: eng,
+          gameTitle,
+        });
       }
     }
     return assets;

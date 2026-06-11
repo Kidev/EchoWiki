@@ -94,14 +94,18 @@ export function WikiSaveDialog({
               onChange={(e) => onCreateVoteChange(!e.target.checked)}
               className="accent-[var(--accent)]"
             />
-            <span className="text-sm text-[var(--text)]">Bypass public vote</span>
+            <span className="text-sm text-[var(--text)]">
+              Bypass public vote
+            </span>
           </label>
         )}
         <input
           type="text"
           value={reason}
           onChange={(e) => onReasonChange(e.target.value)}
-          placeholder={isVoteMode ? "Describe your changes..." : "Reason for edit..."}
+          placeholder={
+            isVoteMode ? "Describe your changes..." : "Reason for edit..."
+          }
           autoFocus
           onKeyDown={(e) => {
             if (e.key === "Enter" && !isSaving && reason.trim()) onConfirm();
@@ -160,13 +164,16 @@ export function WikiSuggestDialog({
         className="bg-[var(--bg)] rounded-lg shadow-2xl p-6 max-w-sm w-full mx-4"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="font-semibold text-[var(--text)] mb-1">Submit suggestion</h3>
+        <h3 className="font-semibold text-[var(--text)] mb-1">
+          Submit suggestion
+        </h3>
         <p className="text-sm text-[var(--text-muted)] mb-1">
-          Describe your changes so moderators can understand what you&apos;re suggesting.
+          Describe your changes so moderators can understand what you&apos;re
+          suggesting.
         </p>
         <p className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>
-          If updating an existing suggestion, describe <strong>all</strong> changes made, not just
-          the latest.
+          If updating an existing suggestion, describe <strong>all</strong>{" "}
+          changes made, not just the latest.
         </p>
         <input
           type="text"
@@ -175,7 +182,12 @@ export function WikiSuggestDialog({
           placeholder="Description of changes (min. 10 chars)..."
           autoFocus
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !isSaving && description.trim().length >= 10) onConfirm();
+            if (
+              e.key === "Enter" &&
+              !isSaving &&
+              description.trim().length >= 10
+            )
+              onConfirm();
           }}
           className="w-full text-sm px-3 py-2 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)] mb-1"
         />
@@ -207,6 +219,118 @@ export function WikiSuggestDialog({
   );
 }
 
+export function WikiResumeDraftDialog({
+  onResume,
+  onDiscard,
+  onDismiss,
+  isDiscarding,
+}: {
+  onResume: () => void;
+  onDiscard: () => void;
+  onDismiss: () => void;
+  isDiscarding: boolean;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={onDismiss}
+    >
+      <div
+        className="bg-[var(--bg)] rounded-lg shadow-2xl p-6 max-w-sm w-full mx-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="font-semibold text-[var(--text)] mb-1">Resume draft?</h3>
+        <p className="text-sm text-[var(--text-muted)] mb-4">
+          You have unsaved changes for this page. Would you like to resume
+          editing your draft, or discard it and start fresh?
+        </p>
+        <div className="flex flex-col gap-2">
+          <button
+            onClick={onResume}
+            className="text-sm px-3 py-2 rounded bg-[var(--accent)] text-white hover:opacity-90 transition-opacity cursor-pointer text-left"
+          >
+            Resume draft
+          </button>
+          <button
+            onClick={onDiscard}
+            disabled={isDiscarding}
+            className="text-sm px-3 py-2 rounded border border-red-300 text-red-600 hover:bg-red-50 transition-colors cursor-pointer disabled:opacity-50 text-left"
+          >
+            {isDiscarding ? "Discarding..." : "Discard draft"}
+          </button>
+          <button
+            onClick={onDismiss}
+            className="text-sm px-3 py-2 rounded border border-gray-300 text-[var(--text-muted)] hover:bg-[var(--control-bg)] transition-colors cursor-pointer text-left"
+          >
+            Not now
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function WikiDraftElsewhereDialog({
+  draftPage,
+  onSee,
+  onDiscard,
+  onCancel,
+  isDiscarding,
+}: {
+  draftPage: string;
+  onSee: () => void;
+  onDiscard: () => void;
+  onCancel: () => void;
+  isDiscarding: boolean;
+}) {
+  const pageLabel = draftPage
+    .split("/")
+    .pop()!
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={onCancel}
+    >
+      <div
+        className="bg-[var(--bg)] rounded-lg shadow-2xl p-6 max-w-sm w-full mx-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="font-semibold text-[var(--text)] mb-1">
+          You already have a draft open
+        </h3>
+        <p className="text-sm text-[var(--text-muted)] mb-4">
+          You have an unsaved draft on{" "}
+          <span className="font-medium text-[var(--text)]">{pageLabel}</span>.
+          You can only have one draft at a time.
+        </p>
+        <div className="flex flex-col gap-2">
+          <button
+            onClick={onSee}
+            className="text-sm px-3 py-2 rounded bg-[var(--accent)] text-white hover:opacity-90 transition-opacity cursor-pointer text-left"
+          >
+            See my draft
+          </button>
+          <button
+            onClick={onDiscard}
+            disabled={isDiscarding}
+            className="text-sm px-3 py-2 rounded border border-red-300 text-red-600 hover:bg-red-50 transition-colors cursor-pointer disabled:opacity-50 text-left"
+          >
+            {isDiscarding ? "Discarding..." : "Discard draft"}
+          </button>
+          <button
+            onClick={onCancel}
+            className="text-sm px-3 py-2 rounded border border-gray-300 text-[var(--text-muted)] hover:bg-[var(--control-bg)] transition-colors cursor-pointer text-left"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function WikiExistingSuggestionDialog({
   existingPage,
   onSee,
@@ -220,7 +344,9 @@ export function WikiExistingSuggestionDialog({
   onCancel: () => void;
   isDeleting: boolean;
 }) {
-  const pageLabel = existingPage.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const pageLabel = existingPage
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
@@ -230,11 +356,13 @@ export function WikiExistingSuggestionDialog({
         className="bg-[var(--bg)] rounded-lg shadow-2xl p-6 max-w-sm w-full mx-4"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="font-semibold text-[var(--text)] mb-1">Already have a suggestion</h3>
+        <h3 className="font-semibold text-[var(--text)] mb-1">
+          Already have a suggestion
+        </h3>
         <p className="text-sm text-[var(--text-muted)] mb-4">
           You already have a pending suggestion on{" "}
-          <span className="font-medium text-[var(--text)]">{pageLabel}</span>. You can only have one
-          suggestion at a time.
+          <span className="font-medium text-[var(--text)]">{pageLabel}</span>.
+          You can only have one suggestion at a time.
         </p>
         <div className="flex flex-col gap-2">
           <button

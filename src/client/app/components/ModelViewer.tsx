@@ -108,13 +108,22 @@ function parseModelOptions(path: string): ModelOptions {
     const key = (eqIdx === -1 ? seg : seg.slice(0, eqIdx)).toLowerCase();
     const val = eqIdx === -1 ? "" : seg.slice(eqIdx + 1);
     if (key === "autorotate" || key === "spin") {
-      opts.autorotate = !(val === "false" || val === "0" || val === "no" || val === "off");
+      opts.autorotate = !(
+        val === "false" ||
+        val === "0" ||
+        val === "no" ||
+        val === "off"
+      );
     } else if (key === "width" || key === "w") {
       opts.width = val || undefined;
     } else if (key === "height" || key === "h") {
       opts.height = val || undefined;
     } else if (key === "bg") {
-      opts.bg = val ? (/^[0-9a-f]{3,8}$/i.test(val) ? `#${val}` : val) : undefined;
+      opts.bg = val
+        ? /^[0-9a-f]{3,8}$/i.test(val)
+          ? `#${val}`
+          : val
+        : undefined;
     } else if (key === "texture" || key === "tex") {
       // The value is an echo asset path. Accept it with or without the
       // `echo://` scheme; resolveEchoPath works on the bare, scheme-less path.
@@ -128,10 +137,16 @@ function parseModelOptions(path: string): ModelOptions {
 // Lazily import only the loader needed for a given extension, returning the
 // loaded scene/object graph. Geometry-only formats (STL, PLY) are wrapped in a
 // mesh with a sensible default material.
-async function loadModelObject(ext: string, url: string): Promise<THREE.Object3D> {
+async function loadModelObject(
+  ext: string,
+  url: string,
+): Promise<THREE.Object3D> {
   const e = ext.replace(/^\./, "").toLowerCase();
 
-  const standardMesh = (geometry: THREE.BufferGeometry, vertexColors: boolean): THREE.Object3D => {
+  const standardMesh = (
+    geometry: THREE.BufferGeometry,
+    vertexColors: boolean,
+  ): THREE.Object3D => {
     if (!geometry.attributes["normal"]) geometry.computeVertexNormals();
     const material = new THREE.MeshStandardMaterial({
       color: vertexColors ? 0xffffff : 0xb0b4bd,
@@ -146,34 +161,48 @@ async function loadModelObject(ext: string, url: string): Promise<THREE.Object3D
   switch (e) {
     case "glb":
     case "gltf": {
-      const { GLTFLoader } = await import("three/examples/jsm/loaders/GLTFLoader.js");
+      const { GLTFLoader } = await import(
+        "three/examples/jsm/loaders/GLTFLoader.js"
+      );
       const gltf = await new GLTFLoader().loadAsync(url);
       return gltf.scene;
     }
     case "obj": {
-      const { OBJLoader } = await import("three/examples/jsm/loaders/OBJLoader.js");
+      const { OBJLoader } = await import(
+        "three/examples/jsm/loaders/OBJLoader.js"
+      );
       return await new OBJLoader().loadAsync(url);
     }
     case "fbx": {
-      const { FBXLoader } = await import("three/examples/jsm/loaders/FBXLoader.js");
+      const { FBXLoader } = await import(
+        "three/examples/jsm/loaders/FBXLoader.js"
+      );
       return await new FBXLoader().loadAsync(url);
     }
     case "dae": {
-      const { ColladaLoader } = await import("three/examples/jsm/loaders/ColladaLoader.js");
+      const { ColladaLoader } = await import(
+        "three/examples/jsm/loaders/ColladaLoader.js"
+      );
       const collada = await new ColladaLoader().loadAsync(url);
       return collada.scene;
     }
     case "3mf": {
-      const { ThreeMFLoader } = await import("three/examples/jsm/loaders/3MFLoader.js");
+      const { ThreeMFLoader } = await import(
+        "three/examples/jsm/loaders/3MFLoader.js"
+      );
       return await new ThreeMFLoader().loadAsync(url);
     }
     case "stl": {
-      const { STLLoader } = await import("three/examples/jsm/loaders/STLLoader.js");
+      const { STLLoader } = await import(
+        "three/examples/jsm/loaders/STLLoader.js"
+      );
       const geometry = await new STLLoader().loadAsync(url);
       return standardMesh(geometry, false);
     }
     case "ply": {
-      const { PLYLoader } = await import("three/examples/jsm/loaders/PLYLoader.js");
+      const { PLYLoader } = await import(
+        "three/examples/jsm/loaders/PLYLoader.js"
+      );
       const geometry = await new PLYLoader().loadAsync(url);
       return standardMesh(geometry, Boolean(geometry.attributes["color"]));
     }
@@ -187,7 +216,10 @@ function disposeObject(obj: THREE.Object3D): void {
   obj.traverse((child) => {
     const mesh = child as THREE.Mesh;
     if (mesh.geometry) mesh.geometry.dispose();
-    const material = mesh.material as THREE.Material | THREE.Material[] | undefined;
+    const material = mesh.material as
+      | THREE.Material
+      | THREE.Material[]
+      | undefined;
     if (Array.isArray(material)) material.forEach((m) => m.dispose());
     else material?.dispose();
   });
@@ -223,8 +255,9 @@ function ModelCanvas({
     let cancelled = false;
     let raf = 0;
     let renderer: THREE.WebGLRenderer | null = null;
-    let controls: import("three/examples/jsm/controls/OrbitControls.js").OrbitControls | null =
-      null;
+    let controls:
+      | import("three/examples/jsm/controls/OrbitControls.js").OrbitControls
+      | null = null;
     let model: THREE.Object3D | null = null;
     let resizeObserver: ResizeObserver | null = null;
     let textures: THREE.Texture[] = [];
@@ -246,7 +279,12 @@ function ModelCanvas({
         const height = Math.max(1, container.clientHeight);
 
         const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(50, width / height, 0.01, 100000);
+        const camera = new THREE.PerspectiveCamera(
+          50,
+          width / height,
+          0.01,
+          100000,
+        );
 
         renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -281,13 +319,15 @@ function ModelCanvas({
         // conventional bottom-left, so flip the override texture accordingly.
         const e = ext.replace(/^\./, "").toLowerCase();
         const texFlipY = !(e === "glb" || e === "gltf");
-        void applyEchoTextures(object, textureOverride, texFlipY).then((loaded) => {
-          if (cancelled) {
-            for (const t of loaded) t.dispose();
-          } else {
-            textures = loaded;
-          }
-        });
+        void applyEchoTextures(object, textureOverride, texFlipY).then(
+          (loaded) => {
+            if (cancelled) {
+              for (const t of loaded) t.dispose();
+            } else {
+              textures = loaded;
+            }
+          },
+        );
 
         const maxDim = Math.max(size.x, size.y, size.z) || 1;
         const fov = (camera.fov * Math.PI) / 180;
@@ -297,7 +337,9 @@ function ModelCanvas({
         camera.far = dist * 100;
         camera.updateProjectionMatrix();
 
-        const { OrbitControls } = await import("three/examples/jsm/controls/OrbitControls.js");
+        const { OrbitControls } = await import(
+          "three/examples/jsm/controls/OrbitControls.js"
+        );
         if (cancelled) {
           disposeObject(object);
           renderer.dispose();
@@ -340,7 +382,9 @@ function ModelCanvas({
         resizeObserver.observe(container);
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load 3D model");
+          setError(
+            err instanceof Error ? err.message : "Failed to load 3D model",
+          );
           setLoading(false);
         }
       }
@@ -491,7 +535,9 @@ export default function ModelViewer({
           {loading ? (
             <span className="w-7 h-7 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
           ) : (
-            <span className="text-[11px] text-[var(--text-muted)]">3D model not found</span>
+            <span className="text-[11px] text-[var(--text-muted)]">
+              3D model not found
+            </span>
           )}
         </span>
       )}

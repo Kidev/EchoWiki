@@ -78,9 +78,15 @@ export function MappingPanel({
   const [modalOpen, setModalOpen] = useState(false);
   const [draftText, setDraftText] = useState(mappingText);
   const [saving, setSaving] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<{ ok: boolean; message: string } | null>(null);
+  const [saveStatus, setSaveStatus] = useState<{
+    ok: boolean;
+    message: string;
+  } | null>(null);
 
-  const parsedEntries = useMemo(() => parseMappingText(mappingText), [mappingText]);
+  const parsedEntries = useMemo(
+    () => parseMappingText(mappingText),
+    [mappingText],
+  );
 
   const stemToGroup = useMemo(() => {
     const origToMapped = new Map<string, string>(parsedEntries);
@@ -129,7 +135,10 @@ export function MappingPanel({
       setSaveStatus({ ok: true, message: "Saved" });
       setModalOpen(false);
     } catch (err) {
-      setSaveStatus({ ok: false, message: err instanceof Error ? err.message : "Save failed" });
+      setSaveStatus({
+        ok: false,
+        message: err instanceof Error ? err.message : "Save failed",
+      });
     } finally {
       setSaving(false);
     }
@@ -154,7 +163,10 @@ export function MappingPanel({
       </div>
 
       {}
-      <div className="flex-1 overflow-auto" style={{ scrollbarGutter: "stable both-edges" }}>
+      <div
+        className="flex-1 overflow-auto"
+        style={{ scrollbarGutter: "stable both-edges" }}
+      >
         {parsedEntries.length > 0 ? (
           <table className="w-full table-fixed text-[11px]">
             <thead>
@@ -182,7 +194,9 @@ export function MappingPanel({
                       <span className="block truncate">{val}</span>
                     </td>
                     <td className="px-2 py-1 text-[var(--text-muted)] overflow-hidden">
-                      <span className="block truncate">{group ? groupLabel(group) : ""}</span>
+                      <span className="block truncate">
+                        {group ? groupLabel(group) : ""}
+                      </span>
                     </td>
                   </tr>
                 );
@@ -210,12 +224,19 @@ export function MappingPanel({
           >
             {}
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 flex-shrink-0">
-              <span className="text-sm font-medium text-[var(--text)]">Update Mapping</span>
+              <span className="text-sm font-medium text-[var(--text)]">
+                Update Mapping
+              </span>
               <button
                 className="text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
                 onClick={handleCancel}
               >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"

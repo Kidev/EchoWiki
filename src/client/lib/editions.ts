@@ -1,5 +1,10 @@
 export type CropEdition = { type: "crop" };
-export type SpriteEdition = { type: "sprite"; rows: number; cols: number; index: number };
+export type SpriteEdition = {
+  type: "sprite";
+  rows: number;
+  cols: number;
+  index: number;
+};
 export type PitchEdition = { type: "pitch"; value: number };
 export type SpeedEdition = { type: "speed"; value: number };
 export type Edition = CropEdition | SpriteEdition | PitchEdition | SpeedEdition;
@@ -17,7 +22,9 @@ export function parseEditions(echoPath: string): ParsedEchoPath {
 
   for (const segment of query.split("&")) {
     const eqIdx = segment.indexOf("=");
-    const key = (eqIdx === -1 ? segment : segment.slice(0, eqIdx)).toLowerCase();
+    const key = (
+      eqIdx === -1 ? segment : segment.slice(0, eqIdx)
+    ).toLowerCase();
     const val = eqIdx === -1 ? "" : segment.slice(eqIdx + 1);
 
     if (key === "crop") {
@@ -55,8 +62,13 @@ const EDITION_ORDER: Record<Edition["type"], number> = {
   pitch: 3,
 };
 
-export function serializeEditions(basePath: string, editions: Edition[]): string {
-  const sorted = [...editions].sort((a, b) => EDITION_ORDER[a.type] - EDITION_ORDER[b.type]);
+export function serializeEditions(
+  basePath: string,
+  editions: Edition[],
+): string {
+  const sorted = [...editions].sort(
+    (a, b) => EDITION_ORDER[a.type] - EDITION_ORDER[b.type],
+  );
   const params: string[] = [];
   for (const ed of sorted) {
     switch (ed.type) {
@@ -170,7 +182,10 @@ export async function applySpriteEdition(
   return canvasToBlob(canvas);
 }
 
-export async function applyImageEditions(blob: Blob, editions: Edition[]): Promise<Blob> {
+export async function applyImageEditions(
+  blob: Blob,
+  editions: Edition[],
+): Promise<Blob> {
   let current = blob;
   const crop = editions.find((e) => e.type === "crop");
   if (crop) {
@@ -178,7 +193,12 @@ export async function applyImageEditions(blob: Blob, editions: Edition[]): Promi
   }
   const sprite = editions.find((e) => e.type === "sprite");
   if (sprite && sprite.type === "sprite") {
-    current = await applySpriteEdition(current, sprite.rows, sprite.cols, sprite.index);
+    current = await applySpriteEdition(
+      current,
+      sprite.rows,
+      sprite.cols,
+      sprite.index,
+    );
   }
   return current;
 }

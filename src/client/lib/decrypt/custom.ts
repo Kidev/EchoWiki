@@ -19,11 +19,14 @@ export type CustomTransformResult =
 //   file.webkitRelativePath  (e.g. "GameFolder/images/characters/hero.png")
 //   file.arrayBuffer()       -> Promise<ArrayBuffer>
 //   file.text()              -> Promise<string>
-function compileTransform(code: string): (file: File) => Promise<CustomTransformResult> {
+function compileTransform(
+  code: string,
+): (file: File) => Promise<CustomTransformResult> {
   // Using the AsyncFunction constructor avoids needing eval.
   // The code runs in the browser's JS sandbox: no Node or server access.
 
-  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor as new (
+  const AsyncFunction = Object.getPrototypeOf(async function () {})
+    .constructor as new (
     ...args: string[]
   ) => (file: File) => Promise<CustomTransformResult>;
   return new AsyncFunction("file", code);

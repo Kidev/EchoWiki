@@ -60,7 +60,9 @@ class PickleParser {
   }
 
   private top(): PickleVal {
-    return this.stack.length > 0 ? (this.stack[this.stack.length - 1] ?? null) : null;
+    return this.stack.length > 0
+      ? (this.stack[this.stack.length - 1] ?? null)
+      : null;
   }
 
   private memoize(idx: number): void {
@@ -70,7 +72,12 @@ class PickleParser {
   private setItems(mark: number): void {
     const items = this.stack.splice(mark);
     const d = this.top();
-    if (d !== null && typeof d === "object" && !Array.isArray(d) && !(d instanceof Uint8Array)) {
+    if (
+      d !== null &&
+      typeof d === "object" &&
+      !Array.isArray(d) &&
+      !(d instanceof Uint8Array)
+    ) {
       for (let i = 0; i + 1 < items.length; i += 2) {
         (d as PickleMap)[String(items[i])] = items[i + 1] ?? null;
       }
@@ -256,7 +263,8 @@ class PickleParser {
           const m = this.marks.pop() ?? 0;
           const items = this.stack.splice(m);
           const d: PickleMap = {};
-          for (let i = 0; i + 1 < items.length; i += 2) d[String(items[i])] = items[i + 1] ?? null;
+          for (let i = 0; i + 1 < items.length; i += 2)
+            d[String(items[i])] = items[i + 1] ?? null;
           this.stack.push(d);
           break;
         }
@@ -356,7 +364,11 @@ class PickleParser {
           ) {
             // OrderedDict constructor called with list of (k,v) pairs
             const d: PickleMap = {};
-            if (Array.isArray(args) && args.length > 0 && Array.isArray(args[0])) {
+            if (
+              Array.isArray(args) &&
+              args.length > 0 &&
+              Array.isArray(args[0])
+            ) {
               for (const pair of args[0] as PickleVal[]) {
                 if (Array.isArray(pair) && pair.length >= 2) {
                   d[String(pair[0])] = pair[1] ?? null;
@@ -476,7 +488,9 @@ type RpaHeader = { indexOffset: number; key: number };
 
 async function readRpaHeader(file: File): Promise<RpaHeader | null> {
   const headerBuf = await file.slice(0, 128).arrayBuffer();
-  const headerText = new TextDecoder("ascii", { fatal: false }).decode(headerBuf);
+  const headerText = new TextDecoder("ascii", { fatal: false }).decode(
+    headerBuf,
+  );
   const firstLine = (headerText.split("\n")[0] ?? "").trim();
 
   const v3 = /^RPA-3\.0 ([0-9a-f]{16}) ([0-9a-f]{8})$/i.exec(firstLine);
@@ -514,7 +528,8 @@ function parseIndex(pickleVal: PickleVal): Map<string, RpaEntry> {
     const rawLength = first[1];
     const rawPrefix = first[2];
 
-    if (typeof rawOffset !== "number" || typeof rawLength !== "number") continue;
+    if (typeof rawOffset !== "number" || typeof rawLength !== "number")
+      continue;
 
     const prefix =
       rawPrefix instanceof Uint8Array
@@ -528,16 +543,21 @@ function parseIndex(pickleVal: PickleVal): Map<string, RpaEntry> {
   return index;
 }
 
-export async function* processRpaArchive(archiveFile: File): AsyncGenerator<ProcessedAsset> {
+export async function* processRpaArchive(
+  archiveFile: File,
+): AsyncGenerator<ProcessedAsset> {
   const header = await readRpaHeader(archiveFile);
   if (!header) throw new Error("Not a valid RPA archive");
 
   const { indexOffset, key } = header;
   const fileSize = archiveFile.size;
-  if (indexOffset >= fileSize) throw new Error("RPA index offset out of bounds");
+  if (indexOffset >= fileSize)
+    throw new Error("RPA index offset out of bounds");
 
   // Read and decompress the pickle index
-  const indexCompressed = new Uint8Array(await archiveFile.slice(indexOffset).arrayBuffer());
+  const indexCompressed = new Uint8Array(
+    await archiveFile.slice(indexOffset).arrayBuffer(),
+  );
   const indexBuf = await decompress(indexCompressed);
   const pickleVal = new PickleParser(indexBuf).parse();
 
@@ -552,7 +572,9 @@ export async function* processRpaArchive(archiveFile: File): AsyncGenerator<Proc
 
     const mime = getMimeType(filename);
     const rawData = new Uint8Array(
-      await archiveFile.slice(actualOffset, actualOffset + actualLength).arrayBuffer(),
+      await archiveFile
+        .slice(actualOffset, actualOffset + actualLength)
+        .arrayBuffer(),
     );
 
     let data: Uint8Array;

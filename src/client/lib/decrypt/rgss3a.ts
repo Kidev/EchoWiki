@@ -83,7 +83,10 @@ function readDirectory(reader: BinaryReader): ArchiveEntry[] {
   return entries;
 }
 
-function decryptFileData(reader: BinaryReader, entry: ArchiveEntry): Uint8Array {
+function decryptFileData(
+  reader: BinaryReader,
+  entry: ArchiveEntry,
+): Uint8Array {
   reader.seek(entry.offset);
   const encrypted = reader.readBytes(entry.size);
   const result = new Uint8Array(entry.size);
@@ -107,7 +110,9 @@ function decryptFileData(reader: BinaryReader, entry: ArchiveEntry): Uint8Array 
   return result;
 }
 
-export async function* processRgss3aArchive(archiveFile: File): AsyncGenerator<ProcessedAsset> {
+export async function* processRgss3aArchive(
+  archiveFile: File,
+): AsyncGenerator<ProcessedAsset> {
   const buffer = await archiveFile.arrayBuffer();
   const reader = new BinaryReader(buffer);
 

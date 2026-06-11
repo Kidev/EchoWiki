@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { useEchoUrl } from "../../lib/echo";
 import { parseEditions } from "../../lib/editions";
 import { getAudioEditionParamsForPath } from "../../lib/echo";
@@ -132,7 +138,14 @@ export function EchoInlineAsset({
 
   // Phase 2+3: URL ready: use EchoInlineImageLoader to prevent reflow during image decode
   if (isImagePath(basePath) && url) {
-    return <EchoInlineImageLoader url={url} alt={name} style={style} className={className} />;
+    return (
+      <EchoInlineImageLoader
+        url={url}
+        alt={name}
+        style={style}
+        className={className}
+      />
+    );
   }
 
   if (isAudioPath(basePath) && url) {

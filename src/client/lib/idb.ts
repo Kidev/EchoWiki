@@ -45,7 +45,11 @@ function getDB(): Promise<IDBDatabase> {
   return dbPromise;
 }
 
-export async function storeAsset(path: string, blob: Blob, mimeType: string): Promise<void> {
+export async function storeAsset(
+  path: string,
+  blob: Blob,
+  mimeType: string,
+): Promise<void> {
   const db = await getDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(ASSETS_STORE, "readwrite");
@@ -177,7 +181,9 @@ export async function setMeta(meta: Omit<EchoMeta, "key">): Promise<void> {
   });
 }
 
-export async function applyMapping(mapping: Record<string, string>): Promise<Map<string, string>> {
+export async function applyMapping(
+  mapping: Record<string, string>,
+): Promise<Map<string, string>> {
   const db = await getDB();
   const entries = Object.entries(mapping);
   const result = new Map<string, string>();

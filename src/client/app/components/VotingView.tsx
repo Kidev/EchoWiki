@@ -76,13 +76,16 @@ function VotingView({
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
-    if (voteStatus.status !== "active" || config.votingDurationDays <= 0) return;
+    if (voteStatus.status !== "active" || config.votingDurationDays <= 0)
+      return;
     const interval = setInterval(() => setNow(Date.now()), 60000);
     return () => clearInterval(interval);
   }, [voteStatus.status, config.votingDurationDays]);
 
   const pageLabel = suggestion.page
-    ? suggestion.page.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+    ? suggestion.page
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase())
     : "";
   const decidedDateStr = voteStatus.decidedAt
     ? new Date(voteStatus.decidedAt).toLocaleDateString(undefined, {
@@ -156,10 +159,15 @@ function VotingView({
           : "";
 
   return (
-    <div className="flex flex-col h-full overflow-hidden" style={{ color: "var(--text)" }}>
+    <div
+      className="flex flex-col h-full overflow-hidden"
+      style={{ color: "var(--text)" }}
+    >
       {}
       {!isActive && (
-        <div className={`px-4 py-2 border-b shrink-0 text-sm ${resultBannerBg}`}>
+        <div
+          className={`px-4 py-2 border-b shrink-0 text-sm ${resultBannerBg}`}
+        >
           <span className="font-bold">
             {voteStatus.status === "accepted"
               ? "✓ ACCEPTED"
@@ -170,7 +178,9 @@ function VotingView({
           {decidedDateStr && (
             <span className="text-xs ml-2">
               on {decidedDateStr}
-              {voteStatus.reason ? `: ${voteReasonLabel(voteStatus.reason)}` : ""}
+              {voteStatus.reason
+                ? `: ${voteReasonLabel(voteStatus.reason)}`
+                : ""}
             </span>
           )}
         </div>
@@ -179,7 +189,10 @@ function VotingView({
       {}
       <div
         className="flex items-center justify-between gap-3 px-3 py-1.5 border-b shrink-0"
-        style={{ borderColor: "var(--thumb-bg)", backgroundColor: "var(--thumb-bg)" }}
+        style={{
+          borderColor: "var(--thumb-bg)",
+          backgroundColor: "var(--thumb-bg)",
+        }}
       >
         {}
         <div className="flex items-center gap-1">
@@ -250,7 +263,8 @@ function VotingView({
           {}
           <div className="relative group cursor-default select-none">
             <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-              {voteStatus.totalVoters} voter{voteStatus.totalVoters !== 1 ? "s" : ""}
+              {voteStatus.totalVoters} voter
+              {voteStatus.totalVoters !== 1 ? "s" : ""}
             </span>
             {config.votingShowVoterNames && voteStatus.totalVoters > 0 && (
               <div
@@ -265,7 +279,13 @@ function VotingView({
                   .filter((v) => v.username)
                   .map((v, i) => (
                     <div key={i}>
-                      <span className={v.vote === "accept" ? "text-green-600" : "text-red-500"}>
+                      <span
+                        className={
+                          v.vote === "accept"
+                            ? "text-green-600"
+                            : "text-red-500"
+                        }
+                      >
                         {v.vote === "accept" ? "✓" : "✗"}
                       </span>{" "}
                       u/{v.username}
@@ -276,9 +296,14 @@ function VotingView({
           </div>
           {}
           {isActive && config.votingDurationDays > 0 && (
-            <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+            <span
+              className="text-[10px]"
+              style={{ color: "var(--text-muted)" }}
+            >
               {formatTimeRemaining(
-                suggestion.createdAt + config.votingDurationDays * 86400000 - now,
+                suggestion.createdAt +
+                  config.votingDurationDays * 86400000 -
+                  now,
               )}
             </span>
           )}
@@ -290,7 +315,12 @@ function VotingView({
               }}
               className="text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer"
             >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -325,7 +355,10 @@ function VotingView({
       {}
       <div
         className="px-4 py-2.5 border-t shrink-0 flex items-center justify-between gap-4"
-        style={{ borderColor: "var(--thumb-bg)", backgroundColor: "var(--control-bg)" }}
+        style={{
+          borderColor: "var(--thumb-bg)",
+          backgroundColor: "var(--control-bg)",
+        }}
       >
         {}
         <div className="flex flex-col gap-0.5 min-w-0 overflow-hidden">
@@ -333,14 +366,21 @@ function VotingView({
             <button
               className="font-medium cursor-pointer hover:underline"
               style={{ color: "var(--accent)" }}
-              onClick={() => navigateTo({ url: `https://www.reddit.com/u/${suggestion.username}` })}
+              onClick={() =>
+                navigateTo({
+                  url: `https://www.reddit.com/u/${suggestion.username}`,
+                })
+              }
             >
               u/{suggestion.username}
             </button>
             {pageLabel && (
               <>
                 <span style={{ color: "var(--text-muted)" }}>{"->"}</span>
-                <span className="font-medium italic" style={{ color: "var(--text)" }}>
+                <span
+                  className="font-medium italic"
+                  style={{ color: "var(--text)" }}
+                >
                   {pageLabel}
                 </span>
               </>
@@ -351,14 +391,21 @@ function VotingView({
               className="flex items-center gap-2 text-[10px] flex-wrap"
               style={{ color: "var(--text-muted)" }}
             >
-              <span>{formatAuthorKarma(data.suggestionAuthorInfo.karma)} karma</span>
+              <span>
+                {formatAuthorKarma(data.suggestionAuthorInfo.karma)} karma
+              </span>
               <span>·</span>
-              <span>{formatAuthorAge(data.suggestionAuthorInfo.accountAgeDays)} old</span>
+              <span>
+                {formatAuthorAge(data.suggestionAuthorInfo.accountAgeDays)} old
+              </span>
               <span>·</span>
               {data.suggestionAuthorInfo.acceptedContributions > 0 ? (
                 <span>
-                  {data.suggestionAuthorInfo.acceptedContributions} accepted contribution
-                  {data.suggestionAuthorInfo.acceptedContributions !== 1 ? "s" : ""}
+                  {data.suggestionAuthorInfo.acceptedContributions} accepted
+                  contribution
+                  {data.suggestionAuthorInfo.acceptedContributions !== 1
+                    ? "s"
+                    : ""}
                 </span>
               ) : (
                 <span>no previous contributions</span>
@@ -367,28 +414,35 @@ function VotingView({
           )}
           {suggestion.description && (
             <div className="relative group">
-              <p className="text-[10px] truncate font-bold" style={{ color: "var(--text)" }}>
+              <p
+                className="text-[10px] truncate font-bold"
+                style={{ color: "var(--text)" }}
+              >
                 {suggestion.description}
               </p>
-              {suggestion.previousDescriptions && suggestion.previousDescriptions.length > 0 && (
-                <div
-                  className="absolute bottom-full left-0 mb-1.5 z-50 hidden group-hover:block rounded-md shadow-lg p-2 text-[10px] max-w-64"
-                  style={{
-                    backgroundColor: "var(--control-bg)",
-                    border: "1px solid var(--thumb-bg)",
-                    color: "var(--text-muted)",
-                  }}
-                >
-                  <div className="font-medium mb-1" style={{ color: "var(--text)" }}>
-                    Previous reasons:
-                  </div>
-                  {suggestion.previousDescriptions.map((d, i) => (
-                    <div key={i} className="truncate">
-                      · {d}
+              {suggestion.previousDescriptions &&
+                suggestion.previousDescriptions.length > 0 && (
+                  <div
+                    className="absolute bottom-full left-0 mb-1.5 z-50 hidden group-hover:block rounded-md shadow-lg p-2 text-[10px] max-w-64"
+                    style={{
+                      backgroundColor: "var(--control-bg)",
+                      border: "1px solid var(--thumb-bg)",
+                      color: "var(--text-muted)",
+                    }}
+                  >
+                    <div
+                      className="font-medium mb-1"
+                      style={{ color: "var(--text)" }}
+                    >
+                      Previous reasons:
                     </div>
-                  ))}
-                </div>
-              )}
+                    {suggestion.previousDescriptions.map((d, i) => (
+                      <div key={i} className="truncate">
+                        · {d}
+                      </div>
+                    ))}
+                  </div>
+                )}
             </div>
           )}
         </div>
@@ -409,7 +463,9 @@ function VotingView({
               >
                 <button
                   onClick={() =>
-                    void (myVote === "accept" ? handleRetract() : handleVote("accept"))
+                    void (myVote === "accept"
+                      ? handleRetract()
+                      : handleVote("accept"))
                   }
                   disabled={isCasting}
                   className="whitespace-nowrap text-sm px-5 py-2 rounded-lg font-bold cursor-pointer disabled:opacity-50 bg-green-600 text-white hover:bg-green-700 transition-colors"
@@ -433,7 +489,9 @@ function VotingView({
               >
                 <button
                   onClick={() =>
-                    void (myVote === "reject" ? handleRetract() : handleVote("reject"))
+                    void (myVote === "reject"
+                      ? handleRetract()
+                      : handleVote("reject"))
                   }
                   disabled={isCasting}
                   className="whitespace-nowrap text-sm px-5 py-2 rounded-lg font-bold cursor-pointer disabled:opacity-50 bg-red-600 text-white hover:bg-red-700 transition-colors"
@@ -445,7 +503,9 @@ function VotingView({
                   )}
                 </button>
               </div>
-              {voteError && <span className="text-xs text-red-500">{voteError}</span>}
+              {voteError && (
+                <span className="text-xs text-red-500">{voteError}</span>
+              )}
             </>
           ) : !canVote && isActive ? (
             <span className="text-xs" style={{ color: "var(--text-muted)" }}>

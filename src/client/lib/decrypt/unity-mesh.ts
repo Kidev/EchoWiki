@@ -20,7 +20,12 @@ export const CLASS_MESH = 43;
 
 type StreamingInfo = { offset: number; size: number; path: string };
 
-type ChannelInfo = { stream: number; offset: number; format: number; dimension: number };
+type ChannelInfo = {
+  stream: number;
+  offset: number;
+  format: number;
+  dimension: number;
+};
 type StreamInfo = { channelMask: number; offset: number; stride: number };
 type SubMesh = {
   firstByte: number;
@@ -118,7 +123,12 @@ function halfToFloat(h: number): number {
   return (s ? -1 : 1) * Math.pow(2, e - 15) * (1 + f / 1024);
 }
 
-function decodeComponent(view: DataView, off: number, vf: number, little: boolean): number {
+function decodeComponent(
+  view: DataView,
+  off: number,
+  vf: number,
+  little: boolean,
+): number {
   switch (vf) {
     case VF.Float:
       return view.getFloat32(off, little);
@@ -235,7 +245,11 @@ function skipBlendShapeData(r: UnityReader): void {
 }
 
 // GetStreams (Unity 5.0+): derive per-stream stride/offset from the channels.
-function computeStreams(channels: ChannelInfo[], vertexCount: number, uv: number[]): StreamInfo[] {
+function computeStreams(
+  channels: ChannelInfo[],
+  vertexCount: number,
+  uv: number[],
+): StreamInfo[] {
   let streamCount = 0;
   for (const c of channels) streamCount = Math.max(streamCount, c.stream + 1);
   const streams: StreamInfo[] = [];
@@ -276,7 +290,14 @@ function parseMesh(r: UnityReader, uv: number[]): ParsedMesh | null {
       vertexCount = r.u32();
       skipBytes(r, 24); // localAABB: center vec3 + extent vec3
     }
-    subMeshes.push({ firstByte, indexCount, topology, baseVertex, firstVertex, vertexCount });
+    subMeshes.push({
+      firstByte,
+      indexCount,
+      topology,
+      baseVertex,
+      firstVertex,
+      vertexCount,
+    });
   }
 
   skipBlendShapeData(r); // m_Shapes (>= 4.1)
@@ -389,7 +410,11 @@ function decodeChannel(
   const compSize = formatSize(vf);
   const dim = channel.dimension;
   const out = new Float32Array(mesh.vertexCount * dim);
-  const view = new DataView(vertexBytes.buffer, vertexBytes.byteOffset, vertexBytes.byteLength);
+  const view = new DataView(
+    vertexBytes.buffer,
+    vertexBytes.byteOffset,
+    vertexBytes.byteLength,
+  );
 
   for (let v = 0; v < mesh.vertexCount; v++) {
     const base = stream.offset + channel.offset + stream.stride * v;
@@ -409,7 +434,9 @@ function buildIndices(mesh: ParsedMesh): Uint32Array {
     mesh.indexBytes.byteLength,
   );
   const read = (i: number): number =>
-    mesh.use16BitIndices ? view.getUint16(i * 2, true) : view.getUint32(i * 4, true);
+    mesh.use16BitIndices
+      ? view.getUint16(i * 2, true)
+      : view.getUint32(i * 4, true);
   const total = mesh.use16BitIndices
     ? (mesh.indexBytes.length / 2) | 0
     : (mesh.indexBytes.length / 4) | 0;
@@ -426,7 +453,11 @@ function buildIndices(mesh: ParsedMesh): Uint32Array {
       for (let i = 0; i + 2 < count; i += 3) {
         const a = firstIndex + i;
         if (a + 2 >= total) break;
-        out.push(read(a) + sm.baseVertex, read(a + 1) + sm.baseVertex, read(a + 2) + sm.baseVertex);
+        out.push(
+          read(a) + sm.baseVertex,
+          read(a + 1) + sm.baseVertex,
+          read(a + 2) + sm.baseVertex,
+        );
       }
     } else if (sm.topology === 1) {
       // Triangle strip: de-stripify with winding flip-flop.
@@ -453,7 +484,10 @@ function buildIndices(mesh: ParsedMesh): Uint32Array {
   return Uint32Array.from(out);
 }
 
-function computeNormals(positions: Float32Array, indices: Uint32Array): Float32Array {
+function computeNormals(
+  positions: Float32Array,
+  indices: Uint32Array,
+): Float32Array {
   const normals = new Float32Array(positions.length);
   for (let i = 0; i + 2 < indices.length; i += 3) {
     const a = indices[i]! * 3;
@@ -548,7 +582,12 @@ function encodeGlb(geo: Geometry, textureRef: string | null): Uint8Array {
     { buffer: 0, byteOffset: posOff, byteLength: posBytes, target: 34962 },
   ];
   const accessors: unknown[] = [
-    { bufferView: 0, componentType: 5125, count: indices.length, type: "SCALAR" }, // UNSIGNED_INT
+    {
+      bufferView: 0,
+      componentType: 5125,
+      count: indices.length,
+      type: "SCALAR",
+    }, // UNSIGNED_INT
     {
       bufferView: 1,
       componentType: 5126,
@@ -561,7 +600,12 @@ function encodeGlb(geo: Geometry, textureRef: string | null): Uint8Array {
   const attributes: Record<string, number> = { POSITION: 1 };
   if (normals) {
     attributes["NORMAL"] = accessors.length;
-    bufferViews.push({ buffer: 0, byteOffset: nrmOff, byteLength: nrmBytes, target: 34962 });
+    bufferViews.push({
+      buffer: 0,
+      byteOffset: nrmOff,
+      byteLength: nrmBytes,
+      target: 34962,
+    });
     accessors.push({
       bufferView: bufferViews.length - 1,
       componentType: 5126,
@@ -571,7 +615,12 @@ function encodeGlb(geo: Geometry, textureRef: string | null): Uint8Array {
   }
   if (uv) {
     attributes["TEXCOORD_0"] = accessors.length;
-    bufferViews.push({ buffer: 0, byteOffset: uvOff, byteLength: uvBytes, target: 34962 });
+    bufferViews.push({
+      buffer: 0,
+      byteOffset: uvOff,
+      byteLength: uvBytes,
+      target: 34962,
+    });
     accessors.push({
       bufferView: bufferViews.length - 1,
       componentType: 5126,
@@ -584,8 +633,16 @@ function encodeGlb(geo: Geometry, textureRef: string | null): Uint8Array {
   // a neutral grey otherwise. The texture reference rides in material.extras.
   const material: Record<string, unknown> = {
     pbrMetallicRoughness: hasTexture
-      ? { baseColorFactor: [1, 1, 1, 1], metallicFactor: 0.0, roughnessFactor: 0.9 }
-      : { baseColorFactor: [0.75, 0.76, 0.8, 1], metallicFactor: 0.05, roughnessFactor: 0.8 },
+      ? {
+          baseColorFactor: [1, 1, 1, 1],
+          metallicFactor: 0.0,
+          roughnessFactor: 0.9,
+        }
+      : {
+          baseColorFactor: [0.75, 0.76, 0.8, 1],
+          metallicFactor: 0.05,
+          roughnessFactor: 0.8,
+        },
     doubleSided: true,
   };
   if (hasTexture) material["extras"] = { echoTex: textureRef };
@@ -595,7 +652,9 @@ function encodeGlb(geo: Geometry, textureRef: string | null): Uint8Array {
     scene: 0,
     scenes: [{ nodes: [0] }],
     nodes: [{ mesh: 0 }],
-    meshes: [{ primitives: [{ attributes, indices: 0, mode: 4, material: 0 }] }],
+    meshes: [
+      { primitives: [{ attributes, indices: 0, mode: 4, material: 0 }] },
+    ],
     materials: [material],
     bufferViews,
     accessors,
@@ -641,7 +700,8 @@ export async function extractMeshGlb(
   textureRef?: string | null,
 ): Promise<ExtractedMesh | null> {
   const mesh = parseMesh(new UnityReader(objBytes, little), uv);
-  if (!mesh || mesh.vertexCount === 0 || mesh.subMeshes.length === 0) return null;
+  if (!mesh || mesh.vertexCount === 0 || mesh.subMeshes.length === 0)
+    return null;
 
   // Resolve the vertex buffer (streamed in modern builds, inline otherwise).
   let vertexBytes = mesh.inlineVertexData;
@@ -706,6 +766,9 @@ export async function extractMeshGlb(
 
   if (!normals) normals = computeNormals(positions, indices);
 
-  const data = encodeGlb({ positions, normals, uv: uv0, indices }, textureRef ?? null);
+  const data = encodeGlb(
+    { positions, normals, uv: uv0, indices },
+    textureRef ?? null,
+  );
   return { name: sanitize(mesh.name), data };
 }

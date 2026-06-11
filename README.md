@@ -429,7 +429,11 @@ const mime = name.endsWith(".png")
         ? "audio/wav"
         : "application/octet-stream";
 
-return { path: parent + "/" + name.toLowerCase(), data: await file.arrayBuffer(), mimeType: mime };
+return {
+  path: parent + "/" + name.toLowerCase(),
+  data: await file.arrayBuffer(),
+  mimeType: mime,
+};
 ```
 
 > ⚠ This code runs in users' browsers when they import game files. Only set it from a source you trust.
@@ -514,4 +518,3 @@ All game files are processed locally in the browser using IndexedDB. No assets a
 [EchoWiki is available on GitHub](https://github.com/Kidev/EchoWiki)
 
 > _An echo is never a copy, it is a sound that returns to those who were there to make it. An `echo://` link stores no game file anywhere; it is a call that resolves inside the reader's own browser. Players who own the game hear the echo and see the art; everyone else sees only its name. The wiki speaks, and each player's own copy answers._
-

@@ -111,7 +111,8 @@ export class UnityReader {
 
   stringToNull(): string {
     const start = this.pos;
-    while (this.pos < this.length && this.view.getUint8(this.pos) !== 0) this.pos++;
+    while (this.pos < this.length && this.view.getUint8(this.pos) !== 0)
+      this.pos++;
     const s = new TextDecoder().decode(this.bytes.subarray(start, this.pos));
     this.pos++; // consume terminator
     return s;
@@ -119,7 +120,8 @@ export class UnityReader {
 
   alignedString(): string {
     const len = this.i32();
-    if (len < 0 || len > this.remaining) throw new RangeError("bad string length");
+    if (len < 0 || len > this.remaining)
+      throw new RangeError("bad string length");
     const s = new TextDecoder().decode(this.bytesN(len));
     this.align(4);
     return s;
@@ -174,7 +176,8 @@ function decompressBlock(
   compression: number,
 ): Uint8Array {
   if (compression === 0) return data;
-  if (compression === 2 || compression === 3) return lz4DecompressBlock(data, uncompressedSize);
+  if (compression === 2 || compression === 3)
+    return lz4DecompressBlock(data, uncompressedSize);
   // 1 = LZMA: requires a heavy dedicated decoder, not supported.
   throw new Error(`unsupported bundle compression ${compression}`);
 }
@@ -206,12 +209,20 @@ function parseBundle(bytes: Uint8Array): BundleNode[] {
     infoBytes = reader.bytesN(compressedInfoSize);
   }
 
-  const infoRaw = decompressBlock(infoBytes, uncompressedInfoSize, flags & 0x3f);
+  const infoRaw = decompressBlock(
+    infoBytes,
+    uncompressedInfoSize,
+    flags & 0x3f,
+  );
   const info = new UnityReader(infoRaw, false); // big-endian
   info.bytesN(16); // uncompressed data hash
 
   const blockCount = info.i32();
-  const blocks: { uncompressedSize: number; compressedSize: number; flags: number }[] = [];
+  const blocks: {
+    uncompressedSize: number;
+    compressedSize: number;
+    flags: number;
+  }[] = [];
   for (let i = 0; i < blockCount; i++) {
     const uncompressedSize = info.u32();
     const compressedSize = info.u32();
@@ -233,12 +244,19 @@ function parseBundle(bytes: Uint8Array): BundleNode[] {
   reader.pos = headerEnd;
   if (flags & 0x200) reader.align(16);
 
-  const totalUncompressed = blocks.reduce((sum, b) => sum + b.uncompressedSize, 0);
+  const totalUncompressed = blocks.reduce(
+    (sum, b) => sum + b.uncompressedSize,
+    0,
+  );
   const blockData = new Uint8Array(totalUncompressed);
   let writePos = 0;
   for (const block of blocks) {
     const comp = reader.bytesN(block.compressedSize);
-    const out = decompressBlock(comp, block.uncompressedSize, block.flags & 0x3f);
+    const out = decompressBlock(
+      comp,
+      block.uncompressedSize,
+      block.flags & 0x3f,
+    );
     blockData.set(out.subarray(0, block.uncompressedSize), writePos);
     writePos += block.uncompressedSize;
   }
@@ -251,7 +269,12 @@ function parseBundle(bytes: Uint8Array): BundleNode[] {
 
 // SerializedFile parsing
 
-type ObjectInfo = { classID: number; pathID: number; byteStart: number; byteSize: number };
+type ObjectInfo = {
+  classID: number;
+  pathID: number;
+  byteStart: number;
+  byteSize: number;
+};
 
 type SerializedFile = {
   little: boolean;
@@ -343,7 +366,8 @@ function parseSerializedFile(bytes: Uint8Array): SerializedFile | null {
       pathID = reader.i64();
     }
 
-    const byteStart = (version >= 22 ? reader.i64() : reader.u32()) + dataOffset;
+    const byteStart =
+      (version >= 22 ? reader.i64() : reader.u32()) + dataOffset;
     const byteSize = reader.u32();
     const typeID = reader.i32();
 
@@ -394,7 +418,13 @@ function parseSerializedFile(bytes: Uint8Array): SerializedFile | null {
     // Leave externals as parsed so far.
   }
 
-  return { little: reader.little, unityVersion, formatVersion: version, objects, externals };
+  return {
+    little: reader.little,
+    unityVersion,
+    formatVersion: version,
+    objects,
+    externals,
+  };
 }
 
 // Scene-graph parsing: just enough to link Mesh -> Material -> Texture2D.
@@ -503,7 +533,10 @@ function readSkinnedMeshRenderer(
   return { mesh, materials };
 }
 
-function readMeshFilter(r: UnityReader, fv: number): { gameObject: number; mesh: PPtr } {
+function readMeshFilter(
+  r: UnityReader,
+  fv: number,
+): { gameObject: number; mesh: PPtr } {
   const gameObject = readPPtr(r, fv).pathID; // Component.m_GameObject
   const mesh = readPPtr(r, fv); // m_Mesh (may be cross-file)
   return { gameObject, mesh };
@@ -512,7 +545,11 @@ function readMeshFilter(r: UnityReader, fv: number): { gameObject: number; mesh:
 // Reads a Material far enough to recover its main texture PPtr. The PPtr may be
 // cross-file (fileID != 0); the caller resolves it via the owning file's
 // external dependency list. Null when the material binds no usable texture.
-function readMaterialMainTexture(r: UnityReader, uv: number[], fv: number): PPtr | null {
+function readMaterialMainTexture(
+  r: UnityReader,
+  uv: number[],
+  fv: number,
+): PPtr | null {
   r.alignedString(); // m_Name
   readPPtr(r, fv); // m_Shader
   if (versionGte(uv, [2021, 3])) {
@@ -548,7 +585,10 @@ function readMaterialMainTexture(r: UnityReader, uv: number[], fv: number): PPtr
     if (tex.pathID === 0) continue; // unbound texture slot
     if (first === null) first = tex;
     const k = key.toLowerCase();
-    if (preferred === null && (k === "_maintex" || k === "_basemap" || k === "_basecolormap")) {
+    if (
+      preferred === null &&
+      (k === "_maintex" || k === "_basemap" || k === "_basecolormap")
+    ) {
       preferred = tex;
     }
   }
@@ -557,7 +597,10 @@ function readMaterialMainTexture(r: UnityReader, uv: number[], fv: number): PPtr
 
 // Texture2D field reading
 
-function readTexture2D(reader: UnityReader, uv: number[]): TextureDescriptor | null {
+function readTexture2D(
+  reader: UnityReader,
+  uv: number[],
+): TextureDescriptor | null {
   const name = reader.alignedString();
 
   // Texture base
@@ -661,7 +704,8 @@ type ObjRef = { fileKey: string; pathID: number };
 
 // Composite key for the global object maps. pathID is i64 but, like the rest of
 // this reader, is carried as a number: consistent with the existing same-file code.
-const objKey = (fileKey: string, pathID: number): string => `${fileKey} ${pathID}`;
+const objKey = (fileKey: string, pathID: number): string =>
+  `${fileKey} ${pathID}`;
 
 // Entry points
 
@@ -680,17 +724,23 @@ function isUnityCandidate(name: string): boolean {
 // True if the file set looks like a Unity build worth scanning.
 export function looksLikeUnity(files: File[]): boolean {
   for (const file of files) {
-    if (isUnityCandidate(baseName(file.webkitRelativePath || file.name))) return true;
+    if (isUnityCandidate(baseName(file.webkitRelativePath || file.name)))
+      return true;
   }
   return false;
 }
 
-export async function* processUnityFiles(files: File[]): AsyncGenerator<ProcessedAsset> {
+export async function* processUnityFiles(
+  files: File[],
+): AsyncGenerator<ProcessedAsset> {
   // Index every file by basename so streamed texture data (.resS / .resource)
   // and bundle siblings can be resolved on demand.
   const onDisk = new Map<string, File>();
   for (const file of files) {
-    onDisk.set(baseName(file.webkitRelativePath || file.name).toLowerCase(), file);
+    onDisk.set(
+      baseName(file.webkitRelativePath || file.name).toLowerCase(),
+      file,
+    );
   }
 
   const cache = new Map<string, Uint8Array | null>();
@@ -742,7 +792,8 @@ export async function* processUnityFiles(files: File[]): AsyncGenerator<Processe
   const claimName = (folder: string, stem: string, extn: string): string => {
     let path = `${folder}/${stem}.${extn}`.toLowerCase();
     let suffix = 1;
-    while (usedNames.has(path)) path = `${folder}/${stem}_${suffix++}.${extn}`.toLowerCase();
+    while (usedNames.has(path))
+      path = `${folder}/${stem}_${suffix++}.${extn}`.toLowerCase();
     usedNames.add(path);
     return path;
   };
@@ -768,7 +819,8 @@ export async function* processUnityFiles(files: File[]): AsyncGenerator<Processe
     const externals = sf.externals.map((p) => baseName(p).toLowerCase());
     const inBounds = (o: ObjectInfo) =>
       o.byteStart >= 0 && o.byteStart + o.byteSize <= bytes.length;
-    const bytesOf = (o: ObjectInfo) => bytes.subarray(o.byteStart, o.byteStart + o.byteSize);
+    const bytesOf = (o: ObjectInfo) =>
+      bytes.subarray(o.byteStart, o.byteStart + o.byteSize);
 
     const byPath = new Map<number, ObjectInfo>();
     const texObjs: ObjectInfo[] = [];
@@ -799,7 +851,10 @@ export async function* processUnityFiles(files: File[]): AsyncGenerator<Processe
             meshObjs.push(obj);
             break;
           case CLASS_MESH_FILTER: {
-            const mf = readMeshFilter(new UnityReader(bytesOf(obj), sf.little), fv);
+            const mf = readMeshFilter(
+              new UnityReader(bytesOf(obj), sf.little),
+              fv,
+            );
             const ref = derefLocal(mf.mesh);
             if (ref) goToMesh.set(mf.gameObject, ref);
             break;
@@ -810,11 +865,16 @@ export async function* processUnityFiles(files: File[]): AsyncGenerator<Processe
               uv,
               fv,
             );
-            if (mr.materials.length > 0) goToMats.set(mr.gameObject, mr.materials);
+            if (mr.materials.length > 0)
+              goToMats.set(mr.gameObject, mr.materials);
             break;
           }
           case CLASS_SKINNED_MESH_RENDERER: {
-            const smr = readSkinnedMeshRenderer(new UnityReader(bytesOf(obj), sf.little), uv, fv);
+            const smr = readSkinnedMeshRenderer(
+              new UnityReader(bytesOf(obj), sf.little),
+              uv,
+              fv,
+            );
             const ref = derefLocal(smr.mesh);
             if (ref && smr.materials.length > 0) {
               meshToMats.set(objKey(ref.fileKey, ref.pathID), {
@@ -884,7 +944,8 @@ export async function* processUnityFiles(files: File[]): AsyncGenerator<Processe
         continue; // LZMA / unsupported / corrupt bundle
       }
       const nodeMap = new Map<string, Uint8Array>();
-      for (const node of nodes) nodeMap.set(baseName(node.path).toLowerCase(), node.data);
+      for (const node of nodes)
+        nodeMap.set(baseName(node.path).toLowerCase(), node.data);
       const resolver = makeResolver(nodeMap);
       for (const node of nodes) {
         const nkey = baseName(node.path).toLowerCase();
@@ -904,9 +965,17 @@ export async function* processUnityFiles(files: File[]): AsyncGenerator<Processe
     info: ObjectInfo,
   ): Promise<{ png: Uint8Array; name: string } | null> => {
     const bytes = await entry.getBytes();
-    if (!bytes || info.byteStart < 0 || info.byteStart + info.byteSize > bytes.length) return null;
+    if (
+      !bytes ||
+      info.byteStart < 0 ||
+      info.byteStart + info.byteSize > bytes.length
+    )
+      return null;
     const desc = readTexture2D(
-      new UnityReader(bytes.subarray(info.byteStart, info.byteStart + info.byteSize), entry.little),
+      new UnityReader(
+        bytes.subarray(info.byteStart, info.byteStart + info.byteSize),
+        entry.little,
+      ),
       entry.unityVersion,
     );
     if (!desc) return null;
@@ -953,7 +1022,11 @@ export async function* processUnityFiles(files: File[]): AsyncGenerator<Processe
     const info = entry?.byPath.get(ref.pathID);
     if (entry && info && info.classID === CLASS_MATERIAL) {
       const bytes = await entry.getBytes();
-      if (bytes && info.byteStart >= 0 && info.byteStart + info.byteSize <= bytes.length) {
+      if (
+        bytes &&
+        info.byteStart >= 0 &&
+        info.byteStart + info.byteSize <= bytes.length
+      ) {
         try {
           result = readMaterialMainTexture(
             new UnityReader(
@@ -995,7 +1068,8 @@ export async function* processUnityFiles(files: File[]): AsyncGenerator<Processe
     const bytes = await entry.getBytes();
     if (!bytes) continue;
     for (const info of entry.meshObjs) {
-      if (info.byteStart < 0 || info.byteStart + info.byteSize > bytes.length) continue;
+      if (info.byteStart < 0 || info.byteStart + info.byteSize > bytes.length)
+        continue;
       const textureRef = await meshTextureRef(objKey(entry.key, info.pathID));
 
       let extracted: { name: string; data: Uint8Array } | null;

@@ -50,7 +50,9 @@ function readPaddedString(bytes: Uint8Array, length: number): string {
   return new TextDecoder().decode(slice.subarray(0, end));
 }
 
-export async function* processGodotPck(file: File): AsyncGenerator<ProcessedAsset> {
+export async function* processGodotPck(
+  file: File,
+): AsyncGenerator<ProcessedAsset> {
   const buf = await file.arrayBuffer();
   const reader = new BinaryReader(buf);
 

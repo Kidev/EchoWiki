@@ -50,7 +50,10 @@ function computeLineDiff(a: string, b: string): DiffLine[] {
       result.unshift({ type: "equal", line: aLines[i - 1]! });
       i--;
       j--;
-    } else if (j > 0 && (i === 0 || dp[i * stride + (j - 1)]! >= dp[(i - 1) * stride + j]!)) {
+    } else if (
+      j > 0 &&
+      (i === 0 || dp[i * stride + (j - 1)]! >= dp[(i - 1) * stride + j]!)
+    ) {
       result.unshift({ type: "add", line: bLines[j - 1]! });
       j--;
     } else {
@@ -61,7 +64,10 @@ function computeLineDiff(a: string, b: string): DiffLine[] {
   return result;
 }
 
-function computeCharDiff(left: string, right: string): [CharSpan[], CharSpan[]] {
+function computeCharDiff(
+  left: string,
+  right: string,
+): [CharSpan[], CharSpan[]] {
   const m = left.length;
   const n = right.length;
   const stride = n + 1;
@@ -89,7 +95,10 @@ function computeCharDiff(left: string, right: string): [CharSpan[], CharSpan[]] 
       rBuf.unshift({ kind: "same", c: right[j - 1]! });
       i--;
       j--;
-    } else if (j > 0 && (i === 0 || dp[i * stride + (j - 1)]! >= dp[(i - 1) * stride + j]!)) {
+    } else if (
+      j > 0 &&
+      (i === 0 || dp[i * stride + (j - 1)]! >= dp[(i - 1) * stride + j]!)
+    ) {
       rBuf.unshift({ kind: "add", c: right[j - 1]! });
       j--;
     } else {
@@ -97,7 +106,9 @@ function computeCharDiff(left: string, right: string): [CharSpan[], CharSpan[]] 
       i--;
     }
   }
-  function mergeSpans<T extends { kind: string; c: string }>(buf: T[]): CharSpan[] {
+  function mergeSpans<T extends { kind: string; c: string }>(
+    buf: T[],
+  ): CharSpan[] {
     const spans: CharSpan[] = [];
     for (const item of buf) {
       if (spans.length > 0 && spans[spans.length - 1]!.kind === item.kind) {
@@ -111,7 +122,10 @@ function computeCharDiff(left: string, right: string): [CharSpan[], CharSpan[]] 
   return [mergeSpans(lBuf), mergeSpans(rBuf)];
 }
 
-function computeSideBySideDiff(original: string, proposed: string): SideBySideLine[] {
+function computeSideBySideDiff(
+  original: string,
+  proposed: string,
+): SideBySideLine[] {
   const lineDiff = computeLineDiff(original, proposed);
   const raw: SideBySideLine[] = [];
   let leftNum = 0;
@@ -140,15 +154,29 @@ function computeSideBySideDiff(original: string, proposed: string): SideBySideLi
         leftNum++;
         rightNum++;
         const [lChars, rChars] = computeCharDiff(removes[k]!, adds[k]!);
-        raw.push({ type: "changed", leftNum, rightNum, leftChars: lChars, rightChars: rChars });
+        raw.push({
+          type: "changed",
+          leftNum,
+          rightNum,
+          leftChars: lChars,
+          rightChars: rChars,
+        });
       }
       for (let k = pairCount; k < removes.length; k++) {
         leftNum++;
-        raw.push({ type: "remove", leftNum, leftChars: [{ text: removes[k]!, kind: "remove" }] });
+        raw.push({
+          type: "remove",
+          leftNum,
+          leftChars: [{ text: removes[k]!, kind: "remove" }],
+        });
       }
       for (let k = pairCount; k < adds.length; k++) {
         rightNum++;
-        raw.push({ type: "add", rightNum, rightChars: [{ text: adds[k]!, kind: "add" }] });
+        raw.push({
+          type: "add",
+          rightNum,
+          rightChars: [{ text: adds[k]!, kind: "add" }],
+        });
       }
     }
   }
@@ -182,9 +210,17 @@ function computeSideBySideDiff(original: string, proposed: string): SideBySideLi
   return result;
 }
 
-export function SideBySideDiffView({ original, proposed }: { original: string; proposed: string }) {
+export function SideBySideDiffView({
+  original,
+  proposed,
+}: {
+  original: string;
+  proposed: string;
+}) {
   const tooLarge = useMemo(
-    () => original.split("\n").length + proposed.split("\n").length > DIFF_LINE_LIMIT,
+    () =>
+      original.split("\n").length + proposed.split("\n").length >
+      DIFF_LINE_LIMIT,
     [original, proposed],
   );
   const lines = useMemo(
@@ -211,7 +247,8 @@ export function SideBySideDiffView({ original, proposed }: { original: string; p
 
   function renderChars(spans: CharSpan[], side: "left" | "right") {
     return spans.map((span, si) => {
-      if (span.kind === "same") return <span key={si}>{span.text || "\u00a0"}</span>;
+      if (span.kind === "same")
+        return <span key={si}>{span.text || "\u00a0"}</span>;
       if (side === "left" && span.kind === "remove")
         return (
           <span key={si} className="bg-red-500/50 rounded-[1px]">
@@ -248,7 +285,10 @@ export function SideBySideDiffView({ original, proposed }: { original: string; p
               <div className="w-9 shrink-0" />
               <div
                 className="flex-1 px-2 py-0.5 text-[10px] italic border-r"
-                style={{ color: "var(--text-muted)", borderColor: "var(--thumb-bg)" }}
+                style={{
+                  color: "var(--text-muted)",
+                  borderColor: "var(--thumb-bg)",
+                }}
               >
                 ··· {line.count} unchanged line{line.count !== 1 ? "s" : ""}
               </div>
@@ -260,7 +300,11 @@ export function SideBySideDiffView({ original, proposed }: { original: string; p
         const leftNum = line.type !== "add" ? line.leftNum : null;
         const rightNum = line.type !== "remove" ? line.rightNum : null;
         const leftBg =
-          line.type === "remove" ? "bg-red-500/15" : line.type === "changed" ? "bg-red-500/10" : "";
+          line.type === "remove"
+            ? "bg-red-500/15"
+            : line.type === "changed"
+              ? "bg-red-500/10"
+              : "";
         const rightBg =
           line.type === "add"
             ? "bg-green-500/15"
@@ -336,7 +380,9 @@ export function CompareView({
   rightLabel?: string;
   mode?: "normal" | "source" | "diff";
 }) {
-  const [internalMode, setInternalMode] = useState<"normal" | "source" | "diff">("normal");
+  const [internalMode, setInternalMode] = useState<
+    "normal" | "source" | "diff"
+  >("normal");
   const mode = controlledMode ?? internalMode;
   const [hiddenCol, setHiddenCol] = useState<null | "left" | "right">(null);
   useEffect(() => {
@@ -347,7 +393,10 @@ export function CompareView({
       {controlledMode === undefined && (
         <div
           className="flex items-center gap-1 px-3 py-1.5 border-b shrink-0"
-          style={{ borderColor: "var(--thumb-bg)", backgroundColor: "var(--thumb-bg)" }}
+          style={{
+            borderColor: "var(--thumb-bg)",
+            backgroundColor: "var(--thumb-bg)",
+          }}
         >
           {(["normal", "source", "diff"] as const).map((m) => (
             <button
@@ -382,7 +431,10 @@ export function CompareView({
               borderRight: "1px solid var(--thumb-bg)",
             }}
           >
-            <div className="h-full overflow-auto" style={{ scrollbarGutter: "stable both-edges" }}>
+            <div
+              className="h-full overflow-auto"
+              style={{ scrollbarGutter: "stable both-edges" }}
+            >
               <div style={{ zoom: hiddenCol === null ? 0.5 : 1 }}>
                 {mode === "normal" ? (
                   original ? (
@@ -424,7 +476,10 @@ export function CompareView({
               transition: "flex-grow 0.35s ease",
             }}
           >
-            <div className="h-full overflow-auto" style={{ scrollbarGutter: "stable both-edges" }}>
+            <div
+              className="h-full overflow-auto"
+              style={{ scrollbarGutter: "stable both-edges" }}
+            >
               <div style={{ zoom: hiddenCol === null ? 0.5 : 1 }}>
                 {mode === "normal" ? (
                   <WikiMarkdownContent
@@ -488,8 +543,16 @@ export function CompareView({
           </span>
         </div>
         {hiddenCol === null && (
-          <div className="shrink-0 px-2 flex items-center" style={{ color: "var(--text-muted)" }}>
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div
+            className="shrink-0 px-2 flex items-center"
+            style={{ color: "var(--text-muted)" }}
+          >
+            <svg
+              className="w-3 h-3"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"

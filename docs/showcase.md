@@ -3,7 +3,7 @@
 This page demonstrates every visual feature the echo system supports. Assets are rendered from locally-imported game files. Nothing is uploaded to Reddit's servers: assets are resolved on each reader's device.
 
 > [!NOTE]
-> Replace any `echo://` paths below with paths from **your own** asset browser. The paths shown here match *The Coffin of Andy and Leyley*.
+> Replace any `echo://` paths below with paths from **your own** asset browser. The paths shown here match _The Coffin of Andy and Leyley_.
 
 [1. Inline image](#1-inline-image)  
 [2. Audio player](#2-audio-player)  
@@ -27,7 +27,7 @@ Embed any game image with the standard markdown image syntax.
 ![Ashley](echo://img/faces/ashley_(content).png)
 ```
 
-![Ashley](echo://img/faces/ashley_(content).png)
+![Ashley](<echo://img/faces/ashley_(content).png>)
 
 Use `>>> <<<` to center images or any other content:
 
@@ -35,7 +35,7 @@ Use `>>> <<<` to center images or any other content:
 >>>![Ashley](echo://img/faces/ashley_(content).png)<<<
 ```
 
->>>![Ashley](echo://img/faces/ashley_(content).png)<<<
+> > > ![Ashley](<echo://img/faces/ashley_(content).png>)<<<
 
 ---
 
@@ -67,17 +67,17 @@ Interactive 3D models embed with the **same image syntax** as a picture. The mod
 ```
 
 > [!NOTE]
-> Unlike the image examples on this page, 3D models only appear for games that actually ship 3D assets (Unity, Unreal, Godot). *The Coffin of Andy and Leyley* is a 2D RPG Maker game, so the model paths in this section will not resolve in its demo. Swap in an `echo://` model path from your own asset browser.
+> Unlike the image examples on this page, 3D models only appear for games that actually ship 3D assets (Unity, Unreal, Godot). _The Coffin of Andy and Leyley_ is a 2D RPG Maker game, so the model paths in this section will not resolve in its demo. Swap in an `echo://` model path from your own asset browser.
 
 Append display hints to the path, combined with `&`:
 
-| Param | Example | Effect |
-|---|---|---|
-| `?autorotate` (alias `?spin`) | `?autorotate` | Start with the model slowly spinning |
-| `?height` (alias `?h`) | `?height=400px` | Set the viewer height |
-| `?width` (alias `?w`) | `?width=80%` | Set the viewer width |
-| `?bg` | `?bg=111` | Background color (hex, `#` is added for you) |
-| `?texture` (alias `?tex`) | `?texture=img/diffuse.png` | Use an imported image as the model's texture |
+| Param                         | Example                    | Effect                                       |
+| ----------------------------- | -------------------------- | -------------------------------------------- |
+| `?autorotate` (alias `?spin`) | `?autorotate`              | Start with the model slowly spinning         |
+| `?height` (alias `?h`)        | `?height=400px`            | Set the viewer height                        |
+| `?width` (alias `?w`)         | `?width=80%`               | Set the viewer width                         |
+| `?bg`                         | `?bg=111`                  | Background color (hex, `#` is added for you) |
+| `?texture` (alias `?tex`)     | `?texture=img/diffuse.png` | Use an imported image as the model's texture |
 
 ```
 ![King statue](echo://meshes/king.glb?spin&height=420px&bg=151515)
@@ -107,10 +107,10 @@ Extract one cell from a grid spritesheet with `?sprite=cols,rows,index`. Index c
 
 Four consecutive cells from the same row:
 
-| | | | |
-|---|---|---|---|
+|                                                                                    |                                                                                    |                                                                                    |                                                                                    |
+| ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | ![frame 6](echo://img/characters/spritessheet_12x8_characters_7.png?sprite=12,8,6) | ![frame 7](echo://img/characters/spritessheet_12x8_characters_7.png?sprite=12,8,7) | ![frame 8](echo://img/characters/spritessheet_12x8_characters_7.png?sprite=12,8,8) | ![frame 9](echo://img/characters/spritessheet_12x8_characters_7.png?sprite=12,8,9) |
-| `index 6` | `index 7` | `index 8` | `index 9` |
+| `index 6`                                                                          | `index 7`                                                                          | `index 8`                                                                          | `index 9`                                                                          |
 
 ---
 
@@ -118,14 +118,13 @@ Four consecutive cells from the same row:
 
 Trims transparent padding using `?crop`, keeping only the bounding box of visible pixels. Adding `?outline` on top shows the bounding box clearly.
 
-| Original | `?crop` |
-|---|---|
+| Original                                                 | `?crop`                                                               |
+| -------------------------------------------------------- | --------------------------------------------------------------------- |
 | ![Artifact](echo://img/pictures/pictures_53.png?outline) | ![Artifact cropped](echo://img/pictures/pictures_53.png?crop&outline) |
 
 The first image shows the original with `?outline` marking the full image bounds, including transparent padding. The second shows the result of `?crop&outline`: the image is trimmed to the bounding box of visible pixels, and the outline now sits tight against the content.
 
-> [!IMPORTANT]
-> `?crop` cannot be combined with `?sprite`.
+> [!IMPORTANT] > `?crop` cannot be combined with `?sprite`.
 
 ---
 
@@ -141,7 +140,7 @@ Renders the image inline with surrounding text at `1.2em` height, vertically ali
 Ashley ![Ashley](echo://img/faces/ashley_(content).png?emoji) is the protagonist.
 ```
 
-Ashley ![Ashley](echo://img/faces/ashley_(content).png?emoji) is the protagonist, while Andrew ![Andrew](echo://img/faces/andrew_(content).png?emoji) is her brother.
+Ashley ![Ashley](<echo://img/faces/ashley_(content).png?emoji>) is the protagonist, while Andrew ![Andrew](<echo://img/faces/andrew_(content).png?emoji>) is her brother.
 
 Combine with `?sprite` and other params using `&`:
 
@@ -157,8 +156,8 @@ Sprite 7: ![icon](echo://img/characters/spritessheet_12x8_characters_8.png?sprit
 
 Draws a dashed accent-color outline around the image. Useful to highlight or contrast an image.
 
-| Without `?outline` | With `?outline` |
-|---|---|
+| Without `?outline`                                      | With `?outline`                                                   |
+| ------------------------------------------------------- | ----------------------------------------------------------------- |
 | ![No outline](echo://img/pictures/pictures_53.png?crop) | ![With outline](echo://img/pictures/pictures_53.png?crop&outline) |
 
 You can combine `?outline` with `?crop`, `?sprite`, and `?emoji`:
@@ -167,11 +166,10 @@ You can combine `?outline` with `?crop`, `?sprite`, and `?emoji`:
 ![outlined sprite](echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,6&outline)
 ```
 
+|                                                                                                    |                                                                                                    |                                                                                                    |
+| -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| ![outlined sprite](echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,0&outline) | ![outlined sprite](echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,4&outline) | ![outlined sprite](echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,7&outline) |
 
-
-| | | |
-|---|---|---|
-| ![outlined sprite](echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,0&outline)  | ![outlined sprite](echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,4&outline)  | ![outlined sprite](echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,7&outline)
 |
 
 ---
@@ -220,7 +218,7 @@ Live render:
 
 # Ashley Graves
 
-:::infobox title="Ashley Graves" image=echo://img/faces/ashley_(content).png align=right
+:::infobox title="Ashley Graves" image=echo://img/faces/ashley\_(content).png align=right
 Alias | Leyley
 Age | 20
 Species | Human
@@ -232,9 +230,9 @@ Victims | [Nina](/r/echo_wiki_dev/wiki/index/characters/nina), others (determina
 Crimes | Murder, cannibalism, manipulation, obstruction of justice
 :::
 
-> *"It's us against the world, Andy. It always has been."*
+> _"It's us against the world, Andy. It always has been."_
 
-**Ashley Graves**, nicknamed **Leyley**, is the younger of the Graves siblings and co-protagonist of *The Coffin of Andy and Leyley*. She is the primary driver of the story's events, propelled by an obsessive and possessive attachment to her brother Andrew.
+**Ashley Graves**, nicknamed **Leyley**, is the younger of the Graves siblings and co-protagonist of _The Coffin of Andy and Leyley_. She is the primary driver of the story's events, propelled by an obsessive and possessive attachment to her brother Andrew.
 
 ## Appearance
 
@@ -321,9 +319,7 @@ echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,25
 :::
 Fast: `fps=12`
 
-
-> [!TIP]
-> **Picking frame indices:** open the Asset Browser, click a spritesheet, and use the Sprite editor to preview individual cells. Note down the indices you want, then write them into the `?sprite=cols,rows,index` parameter.
+> [!TIP] > **Picking frame indices:** open the Asset Browser, click a spritesheet, and use the Sprite editor to preview individual cells. Note down the indices you want, then write them into the `?sprite=cols,rows,index` parameter.
 
 ---
 
@@ -359,7 +355,7 @@ echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,26
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,25
 :::
 
-*Walking across a background:*
+_Walking across a background:_
 
 :::anim ref=ashley-right duration=2.5s width=50% height=75% bg=echo://img/parallaxes/backgrounds_66.png?crop bgopacity=1
 0% left=10% bottom=5%
@@ -438,26 +434,26 @@ echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,13
 
 ### echo:// links
 
-| Feature | Syntax |
-|---|---|
-| Inline image | `![alt](echo://path/to/image.png)` |
-| Audio player | `![label](echo://path/to/sound.ogg)` |
-| Interactive 3D model | `![alt](echo://path/to/model.glb)` |
-| Model: auto-rotate | `?autorotate` (alias `?spin`) appended to a model path |
-| Model: size / background | `?height=400px`, `?width=80%`, `?bg=111` |
-| Model: texture | `?texture=img/diffuse.png` (alias `?tex`); the preview's Texture field also accepts a pasted `![](echo://...)` link |
-| Sprite cell | `?sprite=cols,rows,index` appended to an image path |
-| Crop transparent padding | `?crop` appended to an image path |
-| Inline emoji-size image | `?emoji` appended to any image path |
-| Outlined image | `?outline` appended to any image path |
-| Audio speed | `?speed=1.5` |
-| Audio pitch (semitones) | `?pitch=5` |
-| Combine params | `?crop&outline` or `?emoji&sprite=12,8,0` |
+| Feature                  | Syntax                                                                                                              |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| Inline image             | `![alt](echo://path/to/image.png)`                                                                                  |
+| Audio player             | `![label](echo://path/to/sound.ogg)`                                                                                |
+| Interactive 3D model     | `![alt](echo://path/to/model.glb)`                                                                                  |
+| Model: auto-rotate       | `?autorotate` (alias `?spin`) appended to a model path                                                              |
+| Model: size / background | `?height=400px`, `?width=80%`, `?bg=111`                                                                            |
+| Model: texture           | `?texture=img/diffuse.png` (alias `?tex`); the preview's Texture field also accepts a pasted `![](echo://...)` link |
+| Sprite cell              | `?sprite=cols,rows,index` appended to an image path                                                                 |
+| Crop transparent padding | `?crop` appended to an image path                                                                                   |
+| Inline emoji-size image  | `?emoji` appended to any image path                                                                                 |
+| Outlined image           | `?outline` appended to any image path                                                                               |
+| Audio speed              | `?speed=1.5`                                                                                                        |
+| Audio pitch (semitones)  | `?pitch=5`                                                                                                          |
+| Combine params           | `?crop&outline` or `?emoji&sprite=12,8,0`                                                                           |
 
 ### Layout helpers
 
-| Feature | Syntax |
-|---|---|
+| Feature            | Syntax          |
+| ------------------ | --------------- |
 | Center any content | `>>>content<<<` |
 
 ### Path aliases (`:::def`)
@@ -486,9 +482,9 @@ layer: echo://~sheet?sprite=12,8,0 bottom=5% left=48% height=25%
 Live demo (alias defined once, reused in image and scene):
 
 :::def
-ashley = echo://img/faces/ashley_(content).png
-bg     = echo://img/parallaxes/backgrounds_66.png?crop
-sheet  = echo://img/characters/spritessheet_12x8_characters_8.png
+ashley = echo://img/faces/ashley\_(content).png
+bg = echo://img/parallaxes/backgrounds_66.png?crop
+sheet = echo://img/characters/spritessheet_12x8_characters_8.png
 :::
 
 ![Ashley face](echo://~ashley?emoji) Walk right: ![walk r0](echo://~sheet?sprite=12,8,24&emoji) ![walk r1](echo://~sheet?sprite=12,8,25&emoji) ![walk r2](echo://~sheet?sprite=12,8,26&emoji)
@@ -520,11 +516,11 @@ Crimes | Murder, cannibalism, manipulation, obstruction of justice
 :::
 ```
 
-| Param | Default | Description |
-|---|---|---|
-| `title` | | Text shown in the colored header bar |
-| `image` | | Echo path of the portrait |
-| `align` | `right` | Float side: `right` or `left` |
+| Param   | Default | Description                          |
+| ------- | ------- | ------------------------------------ |
+| `title` |         | Text shown in the colored header bar |
+| `image` |         | Echo path of the portrait            |
+| `align` | `right` | Float side: `right` or `left`        |
 
 Body lines follow the format `Key | Value`.
 
@@ -545,11 +541,11 @@ A young woman with a complicated relationship with the world.
 :::
 ```
 
-| Param | Default | Description |
-|---|---|---|
-| `image` | | Echo path of the portrait/image |
-| `size` | `120px` | Width of the image |
-| `align` | `right` | Float side: `right` or `left` |
+| Param   | Default | Description                     |
+| ------- | ------- | ------------------------------- |
+| `image` |         | Echo path of the portrait/image |
+| `size`  | `120px` | Width of the image              |
+| `align` | `right` | Float side: `right` or `left`   |
 
 #### `:::scene` Layered scene
 
@@ -561,16 +557,16 @@ fg: echo://...
 :::
 ```
 
-| Param | Default | Description |
-|---|---|---|
-| `width` | `100%` | Container width |
+| Param    | Default | Description      |
+| -------- | ------- | ---------------- |
+| `width`  | `100%`  | Container width  |
 | `height` | `200px` | Container height |
 
-| Line prefix | Description |
-|---|---|
-| `bg:` | Background image, fills the container |
-| `layer:` | Absolutely-positioned image; append CSS properties as `key=value` |
-| `fg:` | Foreground overlay, `pointer-events: none` |
+| Line prefix | Description                                                       |
+| ----------- | ----------------------------------------------------------------- |
+| `bg:`       | Background image, fills the container                             |
+| `layer:`    | Absolutely-positioned image; append CSS properties as `key=value` |
+| `fg:`       | Foreground overlay, `pointer-events: none`                        |
 
 #### `:::fbf` Frame-by-frame animation
 
@@ -581,11 +577,11 @@ echo://path/frame2.png?sprite=...
 :::
 ```
 
-| Param | Default | Description |
-|---|---|---|
-| `fps` | `2.5` | Frames per second |
-| `size` | natural | Box size: a pixel value (e.g. `64`) fixes it; omit it (or use a `%`) to render at the sprite's natural size |
-| `alias` | | Name this block so `:::anim` can reference it |
+| Param   | Default | Description                                                                                                 |
+| ------- | ------- | ----------------------------------------------------------------------------------------------------------- |
+| `fps`   | `2.5`   | Frames per second                                                                                           |
+| `size`  | natural | Box size: a pixel value (e.g. `64`) fixes it; omit it (or use a `%`) to render at the sprite's natural size |
+| `alias` |         | Name this block so `:::anim` can reference it                                                               |
 
 #### `:::anim` Moving animation
 
@@ -603,19 +599,19 @@ M% key=value [key=value ...]
 :::
 ```
 
-| Param | Default | Description |
-|---|---|---|
-| `ref` | | Alias of an `:::fbf` block to use as the sprite |
-| `fps` | `2.5` | Frames per second. Treated as a target: see `hold`. Ignored when `ref` is set |
-| `spritesize` | natural | Sprite size: a pixel value (e.g. `48`) fixes it; omit it (or use a `%`) to render at the sprite's natural size. Ignored when `ref` is set |
-| `loops` | `1` | Number of whole walk cycles per movement. Movement time is derived as `loops × frames ÷ fps`. Ignored when `duration` is set |
-| `duration` | `3s` | Explicit time for one full movement. Overrides `loops` |
-| `hold` | `true` | Lock the walk to the movement: the cycle is snapped so a whole number of cycles exactly fills the movement, so the sprite never switches direction mid-stride. Set `hold=false` to keep the raw `fps` and let the cycle drift against the movement |
-| `width` | `50%` | Scene container width |
-| `height` | `50%` | Scene container height (use %, not px, with backgrounds) |
-| `pingpong` | `false` | `true` = reverse at end of cycle (sprite does not flip) |
-| `bg` | | Echo path for the background image |
-| `bgopacity` | `1` | Background opacity (0-1) |
+| Param        | Default | Description                                                                                                                                                                                                                                        |
+| ------------ | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ref`        |         | Alias of an `:::fbf` block to use as the sprite                                                                                                                                                                                                    |
+| `fps`        | `2.5`   | Frames per second. Treated as a target: see `hold`. Ignored when `ref` is set                                                                                                                                                                      |
+| `spritesize` | natural | Sprite size: a pixel value (e.g. `48`) fixes it; omit it (or use a `%`) to render at the sprite's natural size. Ignored when `ref` is set                                                                                                          |
+| `loops`      | `1`     | Number of whole walk cycles per movement. Movement time is derived as `loops × frames ÷ fps`. Ignored when `duration` is set                                                                                                                       |
+| `duration`   | `3s`    | Explicit time for one full movement. Overrides `loops`                                                                                                                                                                                             |
+| `hold`       | `true`  | Lock the walk to the movement: the cycle is snapped so a whole number of cycles exactly fills the movement, so the sprite never switches direction mid-stride. Set `hold=false` to keep the raw `fps` and let the cycle drift against the movement |
+| `width`      | `50%`   | Scene container width                                                                                                                                                                                                                              |
+| `height`     | `50%`   | Scene container height (use %, not px, with backgrounds)                                                                                                                                                                                           |
+| `pingpong`   | `false` | `true` = reverse at end of cycle (sprite does not flip)                                                                                                                                                                                            |
+| `bg`         |         | Echo path for the background image                                                                                                                                                                                                                 |
+| `bgopacity`  | `1`     | Background opacity (0-1)                                                                                                                                                                                                                           |
 
 Movement keyframe lines: `N% key=value ...` where `N%` is the animation percentage.
 
@@ -644,4 +640,4 @@ Phase params (`fps`, `spritesize`, `loops`, `duration`, `hold`) go on the `---` 
 
 ---
 
-*Back to [Index](/r/echo_wiki_dev/wiki/index)*
+_Back to [Index](/r/echo_wiki_dev/wiki/index)_

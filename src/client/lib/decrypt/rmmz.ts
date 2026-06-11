@@ -28,7 +28,11 @@ function getMimeType(ext: string): string {
 
 function isEncryptedMzFile(filename: string): boolean {
   const lower = filename.toLowerCase();
-  return lower.endsWith(".png_") || lower.endsWith(".ogg_") || lower.endsWith(".m4a_");
+  return (
+    lower.endsWith(".png_") ||
+    lower.endsWith(".ogg_") ||
+    lower.endsWith(".m4a_")
+  );
 }
 
 async function extractKeyFromSystem(files: File[]): Promise<string | null> {
@@ -75,7 +79,8 @@ export async function* processMzFiles(
             const mime = getMimeType(decExt);
             const decrypted = decryptMvBuffer(buf, key);
             const extIdx = canonical.lastIndexOf(".");
-            const path = extIdx >= 0 ? canonical.slice(0, extIdx) + decExt : canonical;
+            const path =
+              extIdx >= 0 ? canonical.slice(0, extIdx) + decExt : canonical;
             yield {
               path,
               blob: new Blob([decrypted], { type: mime }),
@@ -92,7 +97,8 @@ export async function* processMzFiles(
       const mime = getMimeType(decExt);
       const decrypted = decryptMvBuffer(buf, key);
       const extIdx = canonical.lastIndexOf(".");
-      const path = extIdx >= 0 ? canonical.slice(0, extIdx) + decExt : canonical;
+      const path =
+        extIdx >= 0 ? canonical.slice(0, extIdx) + decExt : canonical;
       yield {
         path,
         blob: new Blob([decrypted], { type: mime }),

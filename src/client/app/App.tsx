@@ -34,7 +34,13 @@ import type {
   WikiPagesResponse,
   WikiResponse,
 } from "../../shared/types/api";
-import { hasAssets, getMeta, wipeAll, listAssetPaths, applyMapping } from "../lib/idb";
+import {
+  hasAssets,
+  getMeta,
+  wipeAll,
+  listAssetPaths,
+  applyMapping,
+} from "../lib/idb";
 import { importGameFiles } from "../lib/decrypt/index";
 import type { ImportProgress } from "../lib/decrypt/index";
 import {
@@ -73,20 +79,32 @@ import {
 
 // Predicate for the active asset-browser filter tab.
 function matchesFilter(p: string, f: FilterType): boolean {
-  return f === "images" ? isImagePath(p) : f === "audio" ? isAudioPath(p) : isModelPath(p);
+  return f === "images"
+    ? isImagePath(p)
+    : f === "audio"
+      ? isAudioPath(p)
+      : isModelPath(p);
 }
 import { extractEchoPathsFromMarkdown } from "./echoRender";
 import { EchoLinkDialog } from "./components/EchoLinkDialog";
 import { parseEchoLink } from "./wikiLinks";
 import { WikiView } from "./components/WikiView";
-import { AssetCard, FilterTabs, SubFilterTabs } from "./components/AssetBrowser";
+import {
+  AssetCard,
+  FilterTabs,
+  SubFilterTabs,
+} from "./components/AssetBrowser";
 const AssetPreview = lazy(() =>
-  import("./components/AssetPreview").then((m) => ({ default: m.AssetPreview })),
+  import("./components/AssetPreview").then((m) => ({
+    default: m.AssetPreview,
+  })),
 );
 const VotingView = lazy(() => import("./components/VotingView"));
 const SubmissionsPanel = lazy(() => import("./components/SubmissionsPanel"));
 const SettingsView = lazy(() =>
-  import("./components/SettingsView").then((m) => ({ default: m.SettingsView })),
+  import("./components/SettingsView").then((m) => ({
+    default: m.SettingsView,
+  })),
 );
 
 export const App = () => {
@@ -116,17 +134,25 @@ export const App = () => {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   const [mapping, setMapping] = useState<Record<string, string> | null>(null);
-  const [mappingText, setMappingText] = useState('"original_filename": "mapped_filename"');
-  const [pathToMapped, setPathToMapped] = useState<Map<string, string>>(new Map());
+  const [mappingText, setMappingText] = useState(
+    '"original_filename": "mapped_filename"',
+  );
+  const [pathToMapped, setPathToMapped] = useState<Map<string, string>>(
+    new Map(),
+  );
 
   const [gameMismatch, setGameMismatch] = useState<{
     expected: string;
     detected: string;
   } | null>(null);
-  const [mappingUpdateInfo, setMappingUpdateInfo] = useState<string | null>(null);
+  const [mappingUpdateInfo, setMappingUpdateInfo] = useState<string | null>(
+    null,
+  );
   const mappingRef = useRef<Record<string, string> | null>(null);
   const [style, setStyle] = useState<StyleConfig>({ ...DEFAULT_STYLE });
-  const [appearance, setAppearance] = useState<SubredditAppearance>({ ...DEFAULT_APPEARANCE });
+  const [appearance, setAppearance] = useState<SubredditAppearance>({
+    ...DEFAULT_APPEARANCE,
+  });
   const [initResolved, setInitResolved] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [isReturningUser, setIsReturningUser] = useState<boolean | null>(null);
@@ -150,7 +176,9 @@ export const App = () => {
   }, [mapping]);
 
   const [previewPath, setPreviewPath] = useState<string | null>(null);
-  const [previewInitialEditions, setPreviewInitialEditions] = useState<Edition[] | null>(null);
+  const [previewInitialEditions, setPreviewInitialEditions] = useState<
+    Edition[] | null
+  >(null);
 
   const [wikiCurrentPage, setWikiCurrentPage] = useState("index");
   const [wikiPages, setWikiPages] = useState<string[]>([]);
@@ -166,10 +194,14 @@ export const App = () => {
   const [assetsGridReady, setAssetsGridReady] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [showBreadcrumb, setShowBreadcrumb] = useState(false);
-  const [openBreadcrumbDropdown, setOpenBreadcrumbDropdown] = useState<number | null>(null);
+  const [openBreadcrumbDropdown, setOpenBreadcrumbDropdown] = useState<
+    number | null
+  >(null);
   const breadcrumbBarRef = useRef<HTMLDivElement>(null);
   const topBarRef = useRef<HTMLDivElement>(null);
-  const breadcrumbHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const breadcrumbHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   const cancelBreadcrumbHide = useCallback(() => {
     if (breadcrumbHideTimerRef.current) {
@@ -179,7 +211,8 @@ export const App = () => {
   }, []);
 
   const scheduleBreadcrumbHide = useCallback(() => {
-    if (breadcrumbHideTimerRef.current) clearTimeout(breadcrumbHideTimerRef.current);
+    if (breadcrumbHideTimerRef.current)
+      clearTimeout(breadcrumbHideTimerRef.current);
     breadcrumbHideTimerRef.current = setTimeout(() => {
       breadcrumbHideTimerRef.current = null;
       setShowBreadcrumb(false);
@@ -189,7 +222,8 @@ export const App = () => {
 
   useEffect(
     () => () => {
-      if (breadcrumbHideTimerRef.current) clearTimeout(breadcrumbHideTimerRef.current);
+      if (breadcrumbHideTimerRef.current)
+        clearTimeout(breadcrumbHideTimerRef.current);
     },
     [],
   );
@@ -204,7 +238,11 @@ export const App = () => {
       setOpenBreadcrumbDropdown(null);
     };
     document.documentElement.addEventListener("mouseleave", handleAppLeave);
-    return () => document.documentElement.removeEventListener("mouseleave", handleAppLeave);
+    return () =>
+      document.documentElement.removeEventListener(
+        "mouseleave",
+        handleAppLeave,
+      );
   }, []);
 
   useEffect(() => {
@@ -236,7 +274,10 @@ export const App = () => {
   useEffect(() => {
     if (!showFlairDropdown) return;
     const handler = (e: MouseEvent) => {
-      if (flairDropdownRef.current && !flairDropdownRef.current.contains(e.target as Node)) {
+      if (
+        flairDropdownRef.current &&
+        !flairDropdownRef.current.contains(e.target as Node)
+      ) {
         setShowFlairDropdown(false);
       }
     };
@@ -244,22 +285,25 @@ export const App = () => {
     return () => document.removeEventListener("mousedown", handler);
   }, [showFlairDropdown]);
 
-  const handleEquipFlair = useCallback(async (flairTemplateId: string | null) => {
-    try {
-      const body: EquipFlairRequest = { flairTemplateId };
-      const res = await fetch("/api/wiki/equip-flair", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (res.ok) {
-        const data: EquipFlairResponse = await res.json();
-        setEquippedFlairId(data.flairTemplateId);
-        showToast(data.flairTemplateId ? "Flair equipped!" : "Flair removed");
-      }
-    } catch {}
-    setShowFlairDropdown(false);
-  }, []);
+  const handleEquipFlair = useCallback(
+    async (flairTemplateId: string | null) => {
+      try {
+        const body: EquipFlairRequest = { flairTemplateId };
+        const res = await fetch("/api/wiki/equip-flair", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (res.ok) {
+          const data: EquipFlairResponse = await res.json();
+          setEquippedFlairId(data.flairTemplateId);
+          showToast(data.flairTemplateId ? "Flair equipped!" : "Flair removed");
+        }
+      } catch {}
+      setShowFlairDropdown(false);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (openBreadcrumbDropdown === null) return;
@@ -341,7 +385,9 @@ export const App = () => {
       setDisplayedProgress((prev) => {
         const diff = loadingProgress - prev;
         if (diff <= 0) return prev;
-        const step = readyToTransition ? diff : Math.max(0.5, Math.min(diff * 0.15, 4));
+        const step = readyToTransition
+          ? diff
+          : Math.max(0.5, Math.min(diff * 0.15, 4));
         return Math.min(prev + step, loadingProgress);
       });
     });
@@ -400,7 +446,9 @@ export const App = () => {
               if (mappingRes?.ok) {
                 const mappingData: MappingResponse = await mappingRes.json();
                 if (mappingData.mapping) {
-                  const pathToMappedResult = await applyMapping(mappingData.mapping);
+                  const pathToMappedResult = await applyMapping(
+                    mappingData.mapping,
+                  );
                   setPathToMapped(pathToMappedResult);
                   setReverseMapping(pathToMappedResult);
                 }
@@ -410,7 +458,9 @@ export const App = () => {
             if (uniqueEchoPaths.length > 0) {
               setLoadingProgress(5);
               await preloadPaths(uniqueEchoPaths, (loaded) => {
-                setLoadingProgress(5 + Math.round((loaded / uniqueEchoPaths.length) * 90));
+                setLoadingProgress(
+                  5 + Math.round((loaded / uniqueEchoPaths.length) * 90),
+                );
               });
               setLoadingProgress(100);
               setReadyToTransition(true);
@@ -428,7 +478,9 @@ export const App = () => {
         setUsername(initData.username);
         setPostId(initData.postId);
         try {
-          const savedPage = localStorage.getItem(`echowiki:page:${initData.postId}`);
+          const savedPage = localStorage.getItem(
+            `echowiki:page:${initData.postId}`,
+          );
           if (savedPage) setWikiCurrentPage(savedPage);
         } catch {}
         setAppearance(initData.appearance);
@@ -494,7 +546,10 @@ export const App = () => {
           m?.gameTitle &&
           initConfig.gameName.toLowerCase() !== m.gameTitle.toLowerCase()
         ) {
-          setGameMismatch({ expected: initConfig.gameName, detected: m.gameTitle });
+          setGameMismatch({
+            expected: initConfig.gameName,
+            detected: m.gameTitle,
+          });
           setActiveTab("assets");
         }
 
@@ -511,7 +566,9 @@ export const App = () => {
     const folderPaths = paths.filter(
       (p) => matchesFilter(p, filter) && getSubfolder(p) === subFilter,
     );
-    return detectGroupsForFolder(folderPaths, (p) => getStem(pathToMapped.get(p) ?? p));
+    return detectGroupsForFolder(folderPaths, (p) =>
+      getStem(pathToMapped.get(p) ?? p),
+    );
   }, [paths, filter, subFilter, pathToMapped]);
 
   const filteredPaths = useMemo(() => {
@@ -536,12 +593,24 @@ export const App = () => {
       });
     }
     return [...result].sort((a, b) =>
-      naturalSortKey(a, pathToMapped).localeCompare(naturalSortKey(b, pathToMapped), undefined, {
-        numeric: true,
-        sensitivity: "base",
-      }),
+      naturalSortKey(a, pathToMapped).localeCompare(
+        naturalSortKey(b, pathToMapped),
+        undefined,
+        {
+          numeric: true,
+          sensitivity: "base",
+        },
+      ),
     );
-  }, [paths, filter, subFilter, groupFilter, currentFolderGroups, search, pathToMapped]);
+  }, [
+    paths,
+    filter,
+    subFilter,
+    groupFilter,
+    currentFolderGroups,
+    search,
+    pathToMapped,
+  ]);
 
   const subcategories = useMemo(() => {
     const categoryPaths = paths.filter((p) => matchesFilter(p, filter));
@@ -554,7 +623,9 @@ export const App = () => {
       }
     }
     return [...folderCounts.entries()]
-      .sort(([a], [b]) => a.localeCompare(b, undefined, { sensitivity: "base" }))
+      .sort(([a], [b]) =>
+        a.localeCompare(b, undefined, { sensitivity: "base" }),
+      )
       .map(([name, count]) => ({ name, count }));
   }, [paths, filter]);
 
@@ -570,7 +641,10 @@ export const App = () => {
   const hasMore = visibleCount < filteredPaths.length;
 
   useEffect(() => {
-    if (subcategories.length > 0 && !subcategories.some((s) => s.name === subFilter)) {
+    if (
+      subcategories.length > 0 &&
+      !subcategories.some((s) => s.name === subFilter)
+    ) {
       setSubFilter(subcategories[0]!.name);
     }
   }, [subcategories, subFilter]);
@@ -592,7 +666,11 @@ export const App = () => {
       const folderPaths = paths.filter(
         (p) => matchesFilter(p, filter) && getSubfolder(p) === s.name,
       );
-      if (detectGroupsForFolder(folderPaths, (p) => getStem(pathToMapped.get(p) ?? p)).length > 0) {
+      if (
+        detectGroupsForFolder(folderPaths, (p) =>
+          getStem(pathToMapped.get(p) ?? p),
+        ).length > 0
+      ) {
         result.add(s.name);
       }
     }
@@ -665,7 +743,9 @@ export const App = () => {
             progressRef.current = p;
 
             if (p.phase === "decrypting" && p.processed > 0) {
-              const pct = Math.round(45 * (1 - Math.pow(0.92, p.processed / 20)));
+              const pct = Math.round(
+                45 * (1 - Math.pow(0.92, p.processed / 20)),
+              );
               setLoadingProgress((prev) => Math.max(prev, pct));
             }
 
@@ -708,7 +788,8 @@ export const App = () => {
         if (
           config?.gameName &&
           progressRef.current?.gameTitle &&
-          config.gameName.toLowerCase() !== progressRef.current.gameTitle.toLowerCase()
+          config.gameName.toLowerCase() !==
+            progressRef.current.gameTitle.toLowerCase()
         ) {
           setGameMismatch({
             expected: config.gameName,
@@ -764,7 +845,9 @@ export const App = () => {
   }, []);
 
   const handleCopyEchoLink = useCallback((link: string) => {
-    const container = document.querySelector("[data-wiki-scroll]") as HTMLElement | null;
+    const container = document.querySelector(
+      "[data-wiki-scroll]",
+    ) as HTMLElement | null;
     const savedTop = container?.scrollTop ?? 0;
     if (container && savedTop > 0) {
       requestAnimationFrame(() => {
@@ -772,7 +855,8 @@ export const App = () => {
       });
     }
     void navigator.clipboard.writeText(link).then(() => {
-      if (container && container.scrollTop === 0 && savedTop > 0) container.scrollTop = savedTop;
+      if (container && container.scrollTop === 0 && savedTop > 0)
+        container.scrollTop = savedTop;
       showToast("Copied echo link");
     });
   }, []);
@@ -794,11 +878,14 @@ export const App = () => {
     [postId, wikiCurrentPage],
   );
 
-  const handleNavigateToSuggestion = useCallback((page: string, suggestionContent: string) => {
-    setWikiCurrentPage(page);
-    setSuggestionToLoad(suggestionContent);
-    setActiveTab("wiki");
-  }, []);
+  const handleNavigateToSuggestion = useCallback(
+    (page: string, suggestionContent: string) => {
+      setWikiCurrentPage(page);
+      setSuggestionToLoad(suggestionContent);
+      setActiveTab("wiki");
+    },
+    [],
+  );
 
   const handleSuggestionLoaded = useCallback(() => {
     setSuggestionToLoad(null);
@@ -867,7 +954,9 @@ export const App = () => {
 
       const lostNames = new Map<string, string>();
       if (oldMapping) {
-        for (const [originalKey, oldMappedValue] of Object.entries(oldMapping)) {
+        for (const [originalKey, oldMappedValue] of Object.entries(
+          oldMapping,
+        )) {
           if (newMapping?.[originalKey] !== oldMappedValue) {
             lostNames.set(oldMappedValue, originalKey);
           }
@@ -884,7 +973,9 @@ export const App = () => {
             const updatedPages: string[] = [];
 
             for (const page of pagesData.pages) {
-              const wikiRes = await fetch(`/api/wiki?page=${encodeURIComponent(page)}`);
+              const wikiRes = await fetch(
+                `/api/wiki?page=${encodeURIComponent(page)}`,
+              );
               if (!wikiRes.ok) continue;
               const wikiData: WikiResponse = await wikiRes.json();
               if (!wikiData.content) continue;
@@ -1006,7 +1097,9 @@ export const App = () => {
   // the mode listener) ensures the UI re-renders when that happens: otherwise the
   // inline "edit (opens expanded)" button lingers in the expanded view and clicking
   // it calls requestExpandedMode while already expanded (which throws).
-  const [webViewMode, setWebViewModeState] = useState<string>(() => getWebViewMode());
+  const [webViewMode, setWebViewModeState] = useState<string>(() =>
+    getWebViewMode(),
+  );
   useEffect(() => {
     const handler = (mode: string) => setWebViewModeState(mode);
     addWebViewModeListener(handler);
@@ -1152,7 +1245,8 @@ export const App = () => {
                 height: 120,
                 opacity:
                   initResolved &&
-                  (config?.homeBackground === "banner" || config?.homeBackground === "both") &&
+                  (config?.homeBackground === "banner" ||
+                    config?.homeBackground === "both") &&
                   appState !== "importing"
                     ? 0.3
                     : 0,
@@ -1170,18 +1264,22 @@ export const App = () => {
           {}
           <div
             className={
-              appState === "importing" || (appState === "loading" && isReturningUser === true)
+              appState === "importing" ||
+              (appState === "loading" && isReturningUser === true)
                 ? "ripple-container ripple-inward"
                 : initResolved &&
                     isReturningUser === false &&
-                    (config?.homeBackground === "ripple" || config?.homeBackground === "both")
+                    (config?.homeBackground === "ripple" ||
+                      config?.homeBackground === "both")
                   ? "ripple-container"
                   : "ripple-container ripple-hidden"
             }
             style={{
               position: "absolute",
               top:
-                !initResolved || appState === "loading" || appState === "importing"
+                !initResolved ||
+                appState === "loading" ||
+                appState === "importing"
                   ? "calc(50% - 150px)"
                   : "-5%",
               transition: "top 0.7s ease-in-out",
@@ -1198,7 +1296,10 @@ export const App = () => {
               alt="EchoWiki"
               className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-50 object-contain z-1 title-crossfade"
               style={{
-                opacity: !initResolved || !config || config.homeLogo === "echowiki" ? 1 : 0,
+                opacity:
+                  !initResolved || !config || config.homeLogo === "echowiki"
+                    ? 1
+                    : 0,
               }}
             />
 
@@ -1209,7 +1310,8 @@ export const App = () => {
                 alt={subredditName}
                 className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-30 w-30 rounded-full object-cover z-1 title-crossfade"
                 style={{
-                  opacity: initResolved && config?.homeLogo === "subreddit" ? 1 : 0,
+                  opacity:
+                    initResolved && config?.homeLogo === "subreddit" ? 1 : 0,
                 }}
               />
             )}
@@ -1220,8 +1322,13 @@ export const App = () => {
                 className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none z-1 title-content-reveal"
                 style={{ top: "70%" }}
               >
-                <span className="text-base text-[var(--text)] whitespace-nowrap">{wikiTitle}</span>
-                <span className="relative mt-1 flex justify-center" style={{ minHeight: 16 }}>
+                <span className="text-base text-[var(--text)] whitespace-nowrap">
+                  {wikiTitle}
+                </span>
+                <span
+                  className="relative mt-1 flex justify-center"
+                  style={{ minHeight: 16 }}
+                >
                   {config?.wikiDescription && (
                     <span
                       className="text-xs text-[var(--text-muted)] whitespace-nowrap title-crossfade"
@@ -1241,68 +1348,73 @@ export const App = () => {
             )}
           </div>
 
-          {(appState === "no-assets" || appState === "importing") && initResolved && (
-            <div
-              className={`flex flex-col items-center gap-6 max-w-md text-center${appState === "no-assets" ? " home-content-reveal" : ""}`}
-              style={{
-                position: "absolute",
-                top: "50%",
-                zIndex: 3,
-                opacity: appState === "no-assets" ? 1 : 0,
-                transition: "opacity 0.5s ease-out",
-                pointerEvents: appState === "no-assets" ? "auto" : "none",
-              }}
-            >
-              {appMode === "voting" ? (
-                <p className="text-[var(--text-muted)] text-sm">
-                  This vote includes game assets.
-                  {config?.gameName ? (
-                    <>
-                      {" "}
-                      Select the folder containing
-                      <br />
-                      <span className="font-semibold text-[var(--text)]">{config.gameName}</span>
-                      <br />
-                    </>
-                  ) : (
-                    <>
-                      {" "}
-                      Select your game folder
-                      <br />
-                    </>
-                  )}
-                  to view the comparison.
-                </p>
-              ) : config?.gameName ? (
-                <p className="text-[var(--text-muted)] text-sm">
-                  To view the Wiki, select the folder containing
-                  <br />
-                  <span className="font-semibold text-[var(--text)]">{config.gameName}</span>
-                  <br />
-                </p>
-              ) : (
-                <p className="text-[var(--text-muted)] text-sm">
-                  To view the Wiki, select your game folder
-                  <br />
-                </p>
-              )}
-              <button
-                className="flex items-center justify-center h-10 rounded-full cursor-pointer transition-all px-6 font-medium hover:scale-105 hover:font-bold hover:border-2 hover:border-[var(--text)]"
+          {(appState === "no-assets" || appState === "importing") &&
+            initResolved && (
+              <div
+                className={`flex flex-col items-center gap-6 max-w-md text-center${appState === "no-assets" ? " home-content-reveal" : ""}`}
                 style={{
-                  backgroundColor: "var(--accent)",
-                  color: "var(--text)",
+                  position: "absolute",
+                  top: "50%",
+                  zIndex: 3,
+                  opacity: appState === "no-assets" ? 1 : 0,
+                  transition: "opacity 0.5s ease-out",
+                  pointerEvents: appState === "no-assets" ? "auto" : "none",
                 }}
-                onClick={handleImport}
               >
-                Select Game Folder
-              </button>
-              {error && (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
-                  {error}
-                </div>
-              )}
-            </div>
-          )}
+                {appMode === "voting" ? (
+                  <p className="text-[var(--text-muted)] text-sm">
+                    This vote includes game assets.
+                    {config?.gameName ? (
+                      <>
+                        {" "}
+                        Select the folder containing
+                        <br />
+                        <span className="font-semibold text-[var(--text)]">
+                          {config.gameName}
+                        </span>
+                        <br />
+                      </>
+                    ) : (
+                      <>
+                        {" "}
+                        Select your game folder
+                        <br />
+                      </>
+                    )}
+                    to view the comparison.
+                  </p>
+                ) : config?.gameName ? (
+                  <p className="text-[var(--text-muted)] text-sm">
+                    To view the Wiki, select the folder containing
+                    <br />
+                    <span className="font-semibold text-[var(--text)]">
+                      {config.gameName}
+                    </span>
+                    <br />
+                  </p>
+                ) : (
+                  <p className="text-[var(--text-muted)] text-sm">
+                    To view the Wiki, select your game folder
+                    <br />
+                  </p>
+                )}
+                <button
+                  className="flex items-center justify-center h-10 rounded-full cursor-pointer transition-all px-6 font-medium hover:scale-105 hover:font-bold hover:border-2 hover:border-[var(--text)]"
+                  style={{
+                    backgroundColor: "var(--accent)",
+                    color: "var(--text)",
+                  }}
+                  onClick={handleImport}
+                >
+                  Select Game Folder
+                </button>
+                {error && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
+                    {error}
+                  </div>
+                )}
+              </div>
+            )}
 
           {appState === "server-unavailable" && (
             <div
@@ -1330,10 +1442,16 @@ export const App = () => {
                   d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
                 />
               </svg>
-              <p className="text-sm font-semibold" style={{ color: "var(--text)" }}>
+              <p
+                className="text-sm font-semibold"
+                style={{ color: "var(--text)" }}
+              >
                 EchoWiki is not available
               </p>
-              <p className="text-xs leading-relaxed" style={{ color: "var(--text-muted)" }}>
+              <p
+                className="text-xs leading-relaxed"
+                style={{ color: "var(--text-muted)" }}
+              >
                 This app may have been removed from the subreddit.
                 <br />
                 Contact the moderators for more information.
@@ -1350,7 +1468,9 @@ export const App = () => {
           isInline={isInline}
           onVoteCast={(updatedStatus, updatedMyVote) => {
             setVotingData((prev) =>
-              prev ? { ...prev, voteStatus: updatedStatus, myVote: updatedMyVote } : null,
+              prev
+                ? { ...prev, voteStatus: updatedStatus, myVote: updatedMyVote }
+                : null,
             );
           }}
         />
@@ -1381,12 +1501,17 @@ export const App = () => {
                         ? "bg-[var(--accent)] text-white"
                         : "text-[var(--text-muted)]"
                     }`}
-                    style={activeTab !== "wiki" ? { backgroundColor: "transparent" } : undefined}
+                    style={
+                      activeTab !== "wiki"
+                        ? { backgroundColor: "transparent" }
+                        : undefined
+                    }
                     onMouseEnter={(e) => {
                       if (activeTab === "wiki") {
                         setShowBreadcrumb(true);
                       } else {
-                        e.currentTarget.style.backgroundColor = "var(--thumb-bg)";
+                        e.currentTarget.style.backgroundColor =
+                          "var(--thumb-bg)";
                       }
                     }}
                     onMouseLeave={(e) => {
@@ -1405,10 +1530,15 @@ export const App = () => {
                         ? "bg-[var(--accent)] text-white"
                         : "text-[var(--text-muted)]"
                     }`}
-                    style={activeTab !== "assets" ? { backgroundColor: "transparent" } : undefined}
+                    style={
+                      activeTab !== "assets"
+                        ? { backgroundColor: "transparent" }
+                        : undefined
+                    }
                     onMouseEnter={(e) => {
                       if (activeTab !== "assets")
-                        e.currentTarget.style.backgroundColor = "var(--thumb-bg)";
+                        e.currentTarget.style.backgroundColor =
+                          "var(--thumb-bg)";
                     }}
                     onMouseLeave={(e) => {
                       if (activeTab !== "assets")
@@ -1418,7 +1548,9 @@ export const App = () => {
                   >
                     Assets
                     {meta && (
-                      <span className="ml-1 opacity-70">{meta.assetCount.toLocaleString()}</span>
+                      <span className="ml-1 opacity-70">
+                        {meta.assetCount.toLocaleString()}
+                      </span>
                     )}
                   </button>
                 )}
@@ -1430,11 +1562,14 @@ export const App = () => {
                         : "text-[var(--text-muted)]"
                     }`}
                     style={
-                      activeTab !== "submissions" ? { backgroundColor: "transparent" } : undefined
+                      activeTab !== "submissions"
+                        ? { backgroundColor: "transparent" }
+                        : undefined
                     }
                     onMouseEnter={(e) => {
                       if (activeTab !== "submissions")
-                        e.currentTarget.style.backgroundColor = "var(--thumb-bg)";
+                        e.currentTarget.style.backgroundColor =
+                          "var(--thumb-bg)";
                     }}
                     onMouseLeave={(e) => {
                       if (activeTab !== "submissions")
@@ -1453,11 +1588,14 @@ export const App = () => {
                         : "text-[var(--text-muted)]"
                     }`}
                     style={
-                      activeTab !== "settings" ? { backgroundColor: "transparent" } : undefined
+                      activeTab !== "settings"
+                        ? { backgroundColor: "transparent" }
+                        : undefined
                     }
                     onMouseEnter={(e) => {
                       if (activeTab !== "settings")
-                        e.currentTarget.style.backgroundColor = "var(--thumb-bg)";
+                        e.currentTarget.style.backgroundColor =
+                          "var(--thumb-bg)";
                     }}
                     onMouseLeave={(e) => {
                       if (activeTab !== "settings")
@@ -1471,7 +1609,8 @@ export const App = () => {
               </div>
               {gameMismatch && (
                 <span className="text-[10px] text-red-600 truncate px-2">
-                  Expected '{gameMismatch.expected}' but detected '{gameMismatch.detected}'
+                  Expected '{gameMismatch.expected}' but detected '
+                  {gameMismatch.detected}'
                 </span>
               )}
               <div className="flex items-center gap-3">
@@ -1505,7 +1644,8 @@ export const App = () => {
                             <span
                               className="px-1.5 py-0.5 rounded text-[10px] font-medium truncate max-w-[140px]"
                               style={{
-                                backgroundColor: flair.backgroundColor || "var(--accent)",
+                                backgroundColor:
+                                  flair.backgroundColor || "var(--accent)",
                                 color: flair.textColor || "#fff",
                               }}
                             >
@@ -1560,7 +1700,12 @@ export const App = () => {
                       void requestExpandedMode(e.nativeEvent, "app");
                     }}
                   >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
                       <path
                         strokeLinecap="round"
                         strokeLinejoin="round"
@@ -1579,7 +1724,9 @@ export const App = () => {
                       if (isInline) {
                         void handleWipe();
                       } else {
-                        void handleWipe().then(() => exitExpandedMode(e.nativeEvent));
+                        void handleWipe().then(() =>
+                          exitExpandedMode(e.nativeEvent),
+                        );
                       }
                     }}
                   >
@@ -1612,7 +1759,11 @@ export const App = () => {
               >
                 {wikiBreadcrumbs.map((crumb, i) => (
                   <Fragment key={crumb.page}>
-                    {i > 0 && <span className="text-[var(--text-muted)] mx-0.5">&gt;</span>}
+                    {i > 0 && (
+                      <span className="text-[var(--text-muted)] mx-0.5">
+                        &gt;
+                      </span>
+                    )}
                     <button
                       className={`px-1.5 py-0.5 rounded transition-colors cursor-pointer ${
                         i === wikiBreadcrumbs.length - 1
@@ -1623,9 +1774,13 @@ export const App = () => {
                       onContextMenu={(e) => {
                         e.preventDefault();
                         if (crumb.siblings.length > 0) {
-                          setOpenBreadcrumbDropdown(openBreadcrumbDropdown === i ? null : i);
+                          setOpenBreadcrumbDropdown(
+                            openBreadcrumbDropdown === i ? null : i,
+                          );
                         } else {
-                          handleCopyEchoLink(`echolink://r/${subredditName}/wiki/${crumb.page}`);
+                          handleCopyEchoLink(
+                            `echolink://r/${subredditName}/wiki/${crumb.page}`,
+                          );
                         }
                       }}
                     >
@@ -1637,12 +1792,16 @@ export const App = () => {
                           className="text-[var(--text-muted)] hover:text-[var(--text)] px-1.5 py-0.5 -my-0.5 cursor-pointer"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setOpenBreadcrumbDropdown(openBreadcrumbDropdown === i ? null : i);
+                            setOpenBreadcrumbDropdown(
+                              openBreadcrumbDropdown === i ? null : i,
+                            );
                           }}
                           onContextMenu={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
-                            setOpenBreadcrumbDropdown(openBreadcrumbDropdown === i ? null : i);
+                            setOpenBreadcrumbDropdown(
+                              openBreadcrumbDropdown === i ? null : i,
+                            );
                           }}
                         >
                           &#9662;
@@ -1665,10 +1824,12 @@ export const App = () => {
                                   className="w-full text-left text-xs px-3 py-1.5 cursor-pointer text-[var(--text)]"
                                   style={{ backgroundColor: "transparent" }}
                                   onMouseEnter={(e) =>
-                                    (e.currentTarget.style.backgroundColor = "var(--thumb-bg)")
+                                    (e.currentTarget.style.backgroundColor =
+                                      "var(--thumb-bg)")
                                   }
                                   onMouseLeave={(e) =>
-                                    (e.currentTarget.style.backgroundColor = "transparent")
+                                    (e.currentTarget.style.backgroundColor =
+                                      "transparent")
                                   }
                                   onClick={() => {
                                     setWikiCurrentPage(sib);
@@ -1676,7 +1837,9 @@ export const App = () => {
                                   }}
                                   onContextMenu={(e) => {
                                     e.preventDefault();
-                                    handleCopyEchoLink(`echolink://r/${subredditName}/wiki/${sib}`);
+                                    handleCopyEchoLink(
+                                      `echolink://r/${subredditName}/wiki/${sib}`,
+                                    );
                                   }}
                                 >
                                   {sibLabel}
@@ -1706,7 +1869,12 @@ export const App = () => {
                 onClick={() => setMappingUpdateInfo(null)}
                 className="ml-3 flex-shrink-0 text-green-600 hover:text-green-800 cursor-pointer"
               >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"
@@ -1718,7 +1886,14 @@ export const App = () => {
             </div>
           )}
 
-          {activeTab === "wiki" && (
+          {}
+          {/* WikiView stays mounted across tab switches (hidden, not unmounted)
+              so an in-progress edit is preserved when the user visits Assets or
+              another tab and returns. */}
+          <div
+            className="flex-1 flex flex-col overflow-hidden"
+            style={{ display: activeTab === "wiki" ? "flex" : "none" }}
+          >
             <WikiView
               subredditName={subredditName}
               wikiFontSize={style.wikiFontSize}
@@ -1732,7 +1907,9 @@ export const App = () => {
               onAnchorConsumed={handleAnchorConsumed}
               canSuggest={canSuggest}
               voteOnSaveAvailable={
-                isMod && (config?.collaborativeMode ?? false) && (config?.votingEnabled ?? false)
+                isMod &&
+                (config?.collaborativeMode ?? false) &&
+                (config?.votingEnabled ?? false)
               }
               suggestionToLoad={suggestionToLoad}
               onSuggestionLoaded={handleSuggestionLoaded}
@@ -1741,7 +1918,7 @@ export const App = () => {
               startInEditMode={pendingEditPage}
               onStartInEditModeConsumed={() => setPendingEditPage(null)}
             />
-          )}
+          </div>
 
           {activeTab === "assets" && (
             <>
@@ -1830,7 +2007,9 @@ export const App = () => {
                             <>
                               Load more
                               <span className="ml-1 opacity-70">
-                                {(filteredPaths.length - visibleCount).toLocaleString()}
+                                {(
+                                  filteredPaths.length - visibleCount
+                                ).toLocaleString()}
                               </span>
                             </>
                           )}
@@ -1843,14 +2022,15 @@ export const App = () => {
             </>
           )}
 
-          {activeTab === "submissions" && (isMod || config?.collaborativeMode) && (
-            <SubmissionsPanel
-              subredditName={subredditName}
-              isMod={isMod}
-              username={username}
-              wikiFontSize={style.wikiFontSize}
-            />
-          )}
+          {activeTab === "submissions" &&
+            (isMod || config?.collaborativeMode) && (
+              <SubmissionsPanel
+                subredditName={subredditName}
+                isMod={isMod}
+                username={username}
+                wikiFontSize={style.wikiFontSize}
+              />
+            )}
 
           {activeTab === "settings" && isAllMod && config && (
             <SettingsView

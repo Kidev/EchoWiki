@@ -33,7 +33,11 @@ function expand6(v: number): number {
 
 // Decode a 16-bit 5:6:5 color into [r,g,b].
 function rgb565(c: number): [number, number, number] {
-  return [expand5((c >> 11) & 0x1f), expand6((c >> 5) & 0x3f), expand5(c & 0x1f)];
+  return [
+    expand5((c >> 11) & 0x1f),
+    expand6((c >> 5) & 0x3f),
+    expand5(c & 0x1f),
+  ];
 }
 
 // BC1/BC2/BC3 color block (8 bytes) -> writes RGB(A) into out
@@ -85,7 +89,11 @@ function decodeColorBlock(
 }
 
 // BC3/BC4/BC5 single-channel block (8 bytes) -> 16 values 0..255
-function decodeAlphaBlock(view: DataView, blockOffset: number, dst: Uint8Array): void {
+function decodeAlphaBlock(
+  view: DataView,
+  blockOffset: number,
+  dst: Uint8Array,
+): void {
   const a0 = view.getUint8(blockOffset);
   const a1 = view.getUint8(blockOffset + 1);
   const a: number[] = [a0, a1, 0, 0, 0, 0, 0, 0];
@@ -99,9 +107,11 @@ function decodeAlphaBlock(view: DataView, blockOffset: number, dst: Uint8Array):
 
   // 16 three-bit indices packed into the trailing 6 bytes (little-endian).
   let lo = 0;
-  for (let i = 0; i < 3; i++) lo |= view.getUint8(blockOffset + 2 + i) << (8 * i);
+  for (let i = 0; i < 3; i++)
+    lo |= view.getUint8(blockOffset + 2 + i) << (8 * i);
   let hi = 0;
-  for (let i = 0; i < 3; i++) hi |= view.getUint8(blockOffset + 5 + i) << (8 * i);
+  for (let i = 0; i < 3; i++)
+    hi |= view.getUint8(blockOffset + 5 + i) << (8 * i);
 
   for (let i = 0; i < 8; i++) dst[i] = a[(lo >> (3 * i)) & 7]!;
   for (let i = 0; i < 8; i++) dst[8 + i] = a[(hi >> (3 * i)) & 7]!;
@@ -126,7 +136,12 @@ function writeChannelBlock(
   }
 }
 
-function decodeDXT(view: DataView, width: number, height: number, withAlpha: boolean): Uint8Array {
+function decodeDXT(
+  view: DataView,
+  width: number,
+  height: number,
+  withAlpha: boolean,
+): Uint8Array {
   const out = new Uint8Array(width * height * 4);
   const bw = Math.ceil(width / 4);
   const bh = Math.ceil(height / 4);
@@ -213,7 +228,8 @@ function decodeUncompressed(
   const out = new Uint8Array(width * height * 4);
   const px = width * height;
 
-  const need = (bytesPerPixel: number): boolean => view.byteLength >= px * bytesPerPixel;
+  const need = (bytesPerPixel: number): boolean =>
+    view.byteLength >= px * bytesPerPixel;
 
   switch (format) {
     case TextureFormat.RGBA32:
@@ -353,7 +369,10 @@ export function decodeTexture(
   const stride = width * 4;
   const flipped = new Uint8Array(rgba.length);
   for (let y = 0; y < height; y++) {
-    flipped.set(rgba.subarray(y * stride, y * stride + stride), (height - 1 - y) * stride);
+    flipped.set(
+      rgba.subarray(y * stride, y * stride + stride),
+      (height - 1 - y) * stride,
+    );
   }
   return flipped;
 }

@@ -1,6 +1,15 @@
-import type { FontFamily, StyleConfig, SubredditAppearance } from "../../shared/types/api";
+import type {
+  FontFamily,
+  StyleConfig,
+  SubredditAppearance,
+} from "../../shared/types/api";
 
-export type AppState = "loading" | "no-assets" | "importing" | "ready" | "server-unavailable";
+export type AppState =
+  | "loading"
+  | "no-assets"
+  | "importing"
+  | "ready"
+  | "server-unavailable";
 
 export type AppMode = "main" | "voting";
 
@@ -57,7 +66,10 @@ export const FONT_MAP: Record<Exclude<FontFamily, "subreddit">, string> = {
   mono: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
 };
 
-export function getFontFamily(fontFamily: FontFamily, subredditFont: string | null): string {
+export function getFontFamily(
+  fontFamily: FontFamily,
+  subredditFont: string | null,
+): string {
   if (fontFamily === "subreddit") {
     return subredditFont ?? FONT_MAP.system;
   }
@@ -65,9 +77,18 @@ export function getFontFamily(fontFamily: FontFamily, subredditFont: string | nu
 }
 
 export function darkenHex(hex: string, amount: number): string {
-  const r = Math.max(0, parseInt(hex.slice(1, 3), 16) - Math.round(255 * amount));
-  const g = Math.max(0, parseInt(hex.slice(3, 5), 16) - Math.round(255 * amount));
-  const b = Math.max(0, parseInt(hex.slice(5, 7), 16) - Math.round(255 * amount));
+  const r = Math.max(
+    0,
+    parseInt(hex.slice(1, 3), 16) - Math.round(255 * amount),
+  );
+  const g = Math.max(
+    0,
+    parseInt(hex.slice(3, 5), 16) - Math.round(255 * amount),
+  );
+  const b = Math.max(
+    0,
+    parseInt(hex.slice(5, 7), 16) - Math.round(255 * amount),
+  );
   return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
 }
 

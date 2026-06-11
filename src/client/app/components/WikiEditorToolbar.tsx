@@ -6,11 +6,22 @@ import {
   type MutableRefObject,
   type ReactNode,
 } from "react";
-import { getFileName, isImagePath, isAudioPath, isModelPath } from "../assetUtils";
+import {
+  getFileName,
+  isImagePath,
+  isAudioPath,
+  isModelPath,
+} from "../assetUtils";
 import { useEchoUrl, preloadPaths } from "../../lib/echo";
 import { listAssetPaths } from "../../lib/idb";
 
-function MiniAssetPickerItem({ path, onClick }: { path: string; onClick: () => void }) {
+function MiniAssetPickerItem({
+  path,
+  onClick,
+}: {
+  path: string;
+  onClick: () => void;
+}) {
   const isImg = isImagePath(path);
   const isModel = isModelPath(path);
   const { url } = useEchoUrl(isImg ? path : null);
@@ -79,7 +90,11 @@ function MiniAssetPicker({
   useEffect(() => {
     void listAssetPaths().then(async (all) => {
       const predicate =
-        type === "images" ? isImagePath : type === "models" ? isModelPath : isAudioPath;
+        type === "images"
+          ? isImagePath
+          : type === "models"
+            ? isModelPath
+            : isAudioPath;
       const filtered = all.filter(predicate);
       setAllPaths(filtered);
       setLoadingPaths(false);
@@ -90,7 +105,12 @@ function MiniAssetPicker({
   const visible = useMemo(() => {
     const q = search.toLowerCase();
     return allPaths
-      .filter((p) => !q || p.toLowerCase().includes(q) || getFileName(p).toLowerCase().includes(q))
+      .filter(
+        (p) =>
+          !q ||
+          p.toLowerCase().includes(q) ||
+          getFileName(p).toLowerCase().includes(q),
+      )
       .slice(0, 60);
   }, [allPaths, search]);
 
@@ -152,12 +172,19 @@ function InsertDialogShell({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 shrink-0">
-          <span className="text-sm font-semibold text-[var(--text)]">{title}</span>
+          <span className="text-sm font-semibold text-[var(--text)]">
+            {title}
+          </span>
           <button
             onClick={onDismiss}
             className="text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -194,7 +221,9 @@ function ImageInsertDialog({
     <InsertDialogShell title="Insert Image" onDismiss={onDismiss}>
       <div className="flex flex-col gap-4">
         <div>
-          <p className="text-xs font-medium text-[var(--text-muted)] mb-1">Select asset</p>
+          <p className="text-xs font-medium text-[var(--text-muted)] mb-1">
+            Select asset
+          </p>
           <MiniAssetPicker
             type="images"
             onSelect={(p) => {
@@ -234,8 +263,12 @@ function ImageInsertDialog({
               </div>
             </div>
             <div className="bg-[var(--thumb-bg)] rounded p-2">
-              <p className="text-[10px] text-[var(--text-muted)] mb-1">Preview markdown</p>
-              <code className="text-xs break-all text-[var(--text)]">{preview}</code>
+              <p className="text-[10px] text-[var(--text-muted)] mb-1">
+                Preview markdown
+              </p>
+              <code className="text-xs break-all text-[var(--text)]">
+                {preview}
+              </code>
             </div>
             <button
               onClick={() => {
@@ -271,17 +304,23 @@ function ModelInsertDialog({
   if (height.trim()) params.push(`height=${height.trim()}`);
   const tex = texture.trim();
   if (tex) {
-    const ref = tex.toLowerCase().startsWith("echo://") ? tex.slice("echo://".length) : tex;
+    const ref = tex.toLowerCase().startsWith("echo://")
+      ? tex.slice("echo://".length)
+      : tex;
     params.push(`texture=${ref}`);
   }
   const query = params.length > 0 ? `?${params.join("&")}` : "";
-  const preview = path ? `![${alt || getFileName(path)}](echo://${path}${query})` : "";
+  const preview = path
+    ? `![${alt || getFileName(path)}](echo://${path}${query})`
+    : "";
 
   return (
     <InsertDialogShell title="Insert 3D Model" onDismiss={onDismiss}>
       <div className="flex flex-col gap-4">
         <div>
-          <p className="text-xs font-medium text-[var(--text-muted)] mb-1">Select model</p>
+          <p className="text-xs font-medium text-[var(--text-muted)] mb-1">
+            Select model
+          </p>
           <MiniAssetPicker
             type="models"
             onSelect={(p) => {
@@ -290,8 +329,8 @@ function ModelInsertDialog({
             }}
           />
           <p className="text-[10px] text-[var(--text-muted)] mt-1">
-            Supports glTF/GLB, OBJ, STL, PLY, FBX, Collada (.dae) and 3MF. GLB is recommended
-            (self-contained). Drag to orbit.
+            Supports glTF/GLB, OBJ, STL, PLY, FBX, Collada (.dae) and 3MF. GLB
+            is recommended (self-contained). Drag to orbit.
           </p>
         </div>
         {path && (
@@ -340,13 +379,18 @@ function ModelInsertDialog({
                 className="w-full text-xs px-2 py-1.5 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none"
               />
               <p className="text-[10px] text-[var(--text-muted)] mt-1">
-                Path to an imported image to use as the model&apos;s texture. Useful for models that
-                load without one (e.g. OBJ with external materials).
+                Path to an imported image to use as the model&apos;s texture.
+                Useful for models that load without one (e.g. OBJ with external
+                materials).
               </p>
             </div>
             <div className="bg-[var(--thumb-bg)] rounded p-2">
-              <p className="text-[10px] text-[var(--text-muted)] mb-1">Preview markdown</p>
-              <code className="text-xs break-all text-[var(--text)]">{preview}</code>
+              <p className="text-[10px] text-[var(--text-muted)] mb-1">
+                Preview markdown
+              </p>
+              <code className="text-xs break-all text-[var(--text)]">
+                {preview}
+              </code>
             </div>
             <button
               onClick={() => {
@@ -380,15 +424,20 @@ function InfoboxInsertDialog({
   const [showPicker, setShowPicker] = useState(false);
 
   const addRow = () => setRows((r) => [...r, { key: "", value: "" }]);
-  const removeRow = (i: number) => setRows((r) => r.filter((_, idx) => idx !== i));
+  const removeRow = (i: number) =>
+    setRows((r) => r.filter((_, idx) => idx !== i));
   const updateRow = (i: number, field: keyof InfoboxRow, val: string) =>
-    setRows((r) => r.map((row, idx) => (idx === i ? { ...row, [field]: val } : row)));
+    setRows((r) =>
+      r.map((row, idx) => (idx === i ? { ...row, [field]: val } : row)),
+    );
 
   const generate = () => {
     const paramParts = [`title="${title}"`];
     if (imagePath) paramParts.push(`image=echo://${imagePath}`);
     if (align !== "right") paramParts.push(`align=${align}`);
-    const bodyLines = rows.filter((r) => r.key || r.value).map((r) => `${r.key} | ${r.value}`);
+    const bodyLines = rows
+      .filter((r) => r.key || r.value)
+      .map((r) => `${r.key} | ${r.value}`);
     return `:::infobox ${paramParts.join(" ")}\n${bodyLines.join("\n")}\n:::`;
   };
 
@@ -397,7 +446,9 @@ function InfoboxInsertDialog({
       <div className="flex flex-col gap-3">
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-xs font-medium text-[var(--text-muted)] block mb-1">Title</label>
+            <label className="text-xs font-medium text-[var(--text-muted)] block mb-1">
+              Title
+            </label>
             <input
               type="text"
               value={title}
@@ -461,7 +512,9 @@ function InfoboxInsertDialog({
         </div>
         <div>
           <div className="flex items-center justify-between mb-1">
-            <label className="text-xs font-medium text-[var(--text-muted)]">Key: Value rows</label>
+            <label className="text-xs font-medium text-[var(--text-muted)]">
+              Key: Value rows
+            </label>
             <button
               onClick={addRow}
               className="text-xs text-[var(--accent)] cursor-pointer hover:underline"
@@ -512,7 +565,11 @@ function InfoboxInsertDialog({
   );
 }
 
-type SceneLayer = { prefix: "bg" | "layer" | "fg"; path: string; extra: string };
+type SceneLayer = {
+  prefix: "bg" | "layer" | "fg";
+  path: string;
+  extra: string;
+};
 
 function SceneInsertDialog({
   onInsert,
@@ -523,19 +580,27 @@ function SceneInsertDialog({
 }) {
   const [width, setWidth] = useState("100%");
   const [height, setHeight] = useState("200px");
-  const [layers, setLayers] = useState<SceneLayer[]>([{ prefix: "bg", path: "", extra: "" }]);
+  const [layers, setLayers] = useState<SceneLayer[]>([
+    { prefix: "bg", path: "", extra: "" },
+  ]);
   const [pickerFor, setPickerFor] = useState<number | null>(null);
 
   const addLayer = (prefix: SceneLayer["prefix"]) =>
     setLayers((l) => [...l, { prefix, path: "", extra: "" }]);
-  const removeLayer = (i: number) => setLayers((l) => l.filter((_, idx) => idx !== i));
+  const removeLayer = (i: number) =>
+    setLayers((l) => l.filter((_, idx) => idx !== i));
   const updateLayer = (i: number, field: keyof SceneLayer, val: string) =>
-    setLayers((l) => l.map((layer, idx) => (idx === i ? { ...layer, [field]: val } : layer)));
+    setLayers((l) =>
+      l.map((layer, idx) => (idx === i ? { ...layer, [field]: val } : layer)),
+    );
 
   const generate = () => {
     const lines = layers
       .filter((l) => l.path)
-      .map((l) => `${l.prefix}: echo://${l.path}${l.extra ? " " + l.extra.trim() : ""}`);
+      .map(
+        (l) =>
+          `${l.prefix}: echo://${l.path}${l.extra ? " " + l.extra.trim() : ""}`,
+      );
     return `:::scene width=${width} height=${height}\n${lines.join("\n")}\n:::`;
   };
 
@@ -544,7 +609,9 @@ function SceneInsertDialog({
       <div className="flex flex-col gap-3">
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-xs font-medium text-[var(--text-muted)] block mb-1">Width</label>
+            <label className="text-xs font-medium text-[var(--text-muted)] block mb-1">
+              Width
+            </label>
             <input
               type="text"
               value={width}
@@ -568,7 +635,9 @@ function SceneInsertDialog({
         </div>
         <div>
           <div className="flex items-center justify-between mb-2">
-            <label className="text-xs font-medium text-[var(--text-muted)]">Layers</label>
+            <label className="text-xs font-medium text-[var(--text-muted)]">
+              Layers
+            </label>
             <div className="flex gap-1">
               {(["bg", "layer", "fg"] as const).map((p) => (
                 <button
@@ -583,7 +652,10 @@ function SceneInsertDialog({
           </div>
           <div className="flex flex-col gap-2 max-h-64 overflow-auto">
             {layers.map((layer, i) => (
-              <div key={i} className="border border-gray-200 rounded p-2 flex flex-col gap-1.5">
+              <div
+                key={i}
+                className="border border-gray-200 rounded p-2 flex flex-col gap-1.5"
+              >
                 <div className="flex items-center gap-2">
                   <span
                     className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-bold ${layer.prefix === "bg" ? "bg-blue-100 text-blue-600" : layer.prefix === "fg" ? "bg-purple-100 text-purple-600" : "bg-green-100 text-green-600"}`}
@@ -679,11 +751,16 @@ function FbfInsertDialog({
   };
 
   return (
-    <InsertDialogShell title="Insert Frame-by-Frame Animation" onDismiss={onDismiss}>
+    <InsertDialogShell
+      title="Insert Frame-by-Frame Animation"
+      onDismiss={onDismiss}
+    >
       <div className="flex flex-col gap-3">
         <div className="grid grid-cols-3 gap-2">
           <div>
-            <label className="text-xs font-medium text-[var(--text-muted)] block mb-1">FPS</label>
+            <label className="text-xs font-medium text-[var(--text-muted)] block mb-1">
+              FPS
+            </label>
             <input
               type="text"
               value={fps}
@@ -719,7 +796,9 @@ function FbfInsertDialog({
         </div>
         <div>
           <div className="flex items-center gap-2 mb-2">
-            <label className="text-xs font-medium text-[var(--text-muted)]">Add frames via</label>
+            <label className="text-xs font-medium text-[var(--text-muted)]">
+              Add frames via
+            </label>
             <div className="flex gap-1">
               {(["spritesheet", "individual"] as const).map((m) => (
                 <button
@@ -757,7 +836,9 @@ function FbfInsertDialog({
               )}
               <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <label className="text-[10px] text-[var(--text-muted)]">Cols</label>
+                  <label className="text-[10px] text-[var(--text-muted)]">
+                    Cols
+                  </label>
                   <input
                     type="text"
                     value={cols}
@@ -766,7 +847,9 @@ function FbfInsertDialog({
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-[var(--text-muted)]">Rows</label>
+                  <label className="text-[10px] text-[var(--text-muted)]">
+                    Rows
+                  </label>
                   <input
                     type="text"
                     value={rows}
@@ -775,7 +858,9 @@ function FbfInsertDialog({
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-[var(--text-muted)]">Index range</label>
+                  <label className="text-[10px] text-[var(--text-muted)]">
+                    Index range
+                  </label>
                   <input
                     type="text"
                     value={indexRange}
@@ -819,9 +904,13 @@ function FbfInsertDialog({
             <div className="bg-[var(--thumb-bg)] rounded p-2 max-h-28 overflow-auto">
               {frames.map((f, i) => (
                 <div key={i} className="flex items-center gap-1 mb-0.5">
-                  <code className="text-[9px] flex-1 break-all text-[var(--text)]">{f}</code>
+                  <code className="text-[9px] flex-1 break-all text-[var(--text)]">
+                    {f}
+                  </code>
                   <button
-                    onClick={() => setFrames((fr) => fr.filter((_, idx) => idx !== i))}
+                    onClick={() =>
+                      setFrames((fr) => fr.filter((_, idx) => idx !== i))
+                    }
                     className="text-red-400 cursor-pointer text-xs shrink-0"
                   >
                     ✕
@@ -917,7 +1006,9 @@ function AnimInsertDialog({
             <div className="flex flex-col gap-2">
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-[10px] text-[var(--text-muted)]">FPS</label>
+                  <label className="text-[10px] text-[var(--text-muted)]">
+                    FPS
+                  </label>
                   <input
                     type="text"
                     value={fps}
@@ -926,7 +1017,9 @@ function AnimInsertDialog({
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-[var(--text-muted)]">Sprite size (px)</label>
+                  <label className="text-[10px] text-[var(--text-muted)]">
+                    Sprite size (px)
+                  </label>
                   <input
                     type="text"
                     value={spriteSize}
@@ -951,7 +1044,8 @@ function AnimInsertDialog({
               )}
               {inlineFrames.length > 0 && (
                 <p className="text-[10px] text-[var(--text-muted)]">
-                  {inlineFrames.length} frame{inlineFrames.length !== 1 ? "s" : ""} added
+                  {inlineFrames.length} frame
+                  {inlineFrames.length !== 1 ? "s" : ""} added
                 </p>
               )}
             </div>
@@ -959,7 +1053,9 @@ function AnimInsertDialog({
         </div>
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <label className="text-[10px] text-[var(--text-muted)]">Duration</label>
+            <label className="text-[10px] text-[var(--text-muted)]">
+              Duration
+            </label>
             <input
               type="text"
               value={duration}
@@ -969,7 +1065,9 @@ function AnimInsertDialog({
             />
           </div>
           <div>
-            <label className="text-[10px] text-[var(--text-muted)]">Width</label>
+            <label className="text-[10px] text-[var(--text-muted)]">
+              Width
+            </label>
             <input
               type="text"
               value={width}
@@ -979,7 +1077,9 @@ function AnimInsertDialog({
             />
           </div>
           <div>
-            <label className="text-[10px] text-[var(--text-muted)]">Height</label>
+            <label className="text-[10px] text-[var(--text-muted)]">
+              Height
+            </label>
             <input
               type="text"
               value={height}
@@ -1054,7 +1154,9 @@ function AnimInsertDialog({
             onChange={(e) => setKeyframes(e.target.value)}
             rows={3}
             className="w-full text-xs px-2 py-1.5 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none font-mono resize-none"
-            placeholder={'0% left=8px bottom=24px\n100% left="calc(100% - 56px)" bottom=24px'}
+            placeholder={
+              '0% left=8px bottom=24px\n100% left="calc(100% - 56px)" bottom=24px'
+            }
           />
         </div>
         <button
@@ -1078,15 +1180,18 @@ function DefInsertDialog({
   onInsert: (text: string) => void;
   onDismiss: () => void;
 }) {
-  const [entries, setEntries] = useState<Array<{ name: string; path: string }>>([
-    { name: "", path: "" },
-  ]);
+  const [entries, setEntries] = useState<Array<{ name: string; path: string }>>(
+    [{ name: "", path: "" }],
+  );
   const [pickerFor, setPickerFor] = useState<number | null>(null);
 
   const addEntry = () => setEntries((e) => [...e, { name: "", path: "" }]);
-  const removeEntry = (i: number) => setEntries((e) => e.filter((_, idx) => idx !== i));
+  const removeEntry = (i: number) =>
+    setEntries((e) => e.filter((_, idx) => idx !== i));
   const updateEntry = (i: number, field: "name" | "path", val: string) =>
-    setEntries((e) => e.map((ent, idx) => (idx === i ? { ...ent, [field]: val } : ent)));
+    setEntries((e) =>
+      e.map((ent, idx) => (idx === i ? { ...ent, [field]: val } : ent)),
+    );
 
   const generate = () => {
     const lines = entries
@@ -1096,15 +1201,24 @@ function DefInsertDialog({
   };
 
   return (
-    <InsertDialogShell title="Define Path Aliases (:::def)" onDismiss={onDismiss}>
+    <InsertDialogShell
+      title="Define Path Aliases (:::def)"
+      onDismiss={onDismiss}
+    >
       <div className="flex flex-col gap-3">
         <p className="text-xs text-[var(--text-muted)]">
           Define short aliases for echo:// paths. Reference them anywhere as{" "}
-          <code className="bg-[var(--thumb-bg)] px-1 rounded">echo://~aliasname</code>.
+          <code className="bg-[var(--thumb-bg)] px-1 rounded">
+            echo://~aliasname
+          </code>
+          .
         </p>
         <div className="flex flex-col gap-2">
           {entries.map((entry, i) => (
-            <div key={i} className="border border-gray-200 rounded p-2 flex flex-col gap-2">
+            <div
+              key={i}
+              className="border border-gray-200 rounded p-2 flex flex-col gap-2"
+            >
               <div className="flex items-center gap-2">
                 <input
                   type="text"
@@ -1163,7 +1277,15 @@ function DefInsertDialog({
   );
 }
 
-export type ToolbarDialog = "image" | "model" | "infobox" | "scene" | "fbf" | "anim" | "def" | null;
+export type ToolbarDialog =
+  | "image"
+  | "model"
+  | "infobox"
+  | "scene"
+  | "fbf"
+  | "anim"
+  | "def"
+  | null;
 
 function ToolbarBtn({
   label,
@@ -1209,7 +1331,8 @@ function WikiToolbar({
       const needsNewlineBefore =
         start > 0 && current[start - 1] !== "\n" && toInsert.startsWith(":::");
       const prefix = needsNewlineBefore ? "\n" : "";
-      const newValue = current.slice(0, start) + prefix + toInsert + current.slice(end);
+      const newValue =
+        current.slice(0, start) + prefix + toInsert + current.slice(end);
       onInsert(newValue);
       const newCursor = start + prefix.length + toInsert.length;
       requestAnimationFrame(() => {
@@ -1226,7 +1349,10 @@ function WikiToolbar({
     <>
       <div
         className="shrink-0 border-b"
-        style={{ backgroundColor: "var(--thumb-bg)", borderColor: "var(--thumb-bg)" }}
+        style={{
+          backgroundColor: "var(--thumb-bg)",
+          borderColor: "var(--thumb-bg)",
+        }}
       >
         {}
         <button
@@ -1290,38 +1416,73 @@ function WikiToolbar({
               title="Wrap selection in >>>...<<<"
               onClick={() => quickInsert(">>>content<<<")}
             />
-            <ToolbarBtn label="Bold" title="Bold" onClick={() => quickInsert("**text**")} />
-            <ToolbarBtn label="Italic" title="Italic" onClick={() => quickInsert("*text*")} />
-            <ToolbarBtn label="Code" title="Inline code" onClick={() => quickInsert("`code`")} />
+            <ToolbarBtn
+              label="Bold"
+              title="Bold"
+              onClick={() => quickInsert("**text**")}
+            />
+            <ToolbarBtn
+              label="Italic"
+              title="Italic"
+              onClick={() => quickInsert("*text*")}
+            />
+            <ToolbarBtn
+              label="Code"
+              title="Inline code"
+              onClick={() => quickInsert("`code`")}
+            />
             <ToolbarBtn
               label="Table"
               title="Insert table template"
-              onClick={() => quickInsert("| Col A | Col B |\n|---|---|\n| val | val |")}
+              onClick={() =>
+                quickInsert("| Col A | Col B |\n|---|---|\n| val | val |")
+              }
             />
           </div>
         )}
       </div>
 
       {dialog === "image" && (
-        <ImageInsertDialog onInsert={insertAtCursor} onDismiss={() => setDialog(null)} />
+        <ImageInsertDialog
+          onInsert={insertAtCursor}
+          onDismiss={() => setDialog(null)}
+        />
       )}
       {dialog === "model" && (
-        <ModelInsertDialog onInsert={insertAtCursor} onDismiss={() => setDialog(null)} />
+        <ModelInsertDialog
+          onInsert={insertAtCursor}
+          onDismiss={() => setDialog(null)}
+        />
       )}
       {dialog === "infobox" && (
-        <InfoboxInsertDialog onInsert={insertAtCursor} onDismiss={() => setDialog(null)} />
+        <InfoboxInsertDialog
+          onInsert={insertAtCursor}
+          onDismiss={() => setDialog(null)}
+        />
       )}
       {dialog === "scene" && (
-        <SceneInsertDialog onInsert={insertAtCursor} onDismiss={() => setDialog(null)} />
+        <SceneInsertDialog
+          onInsert={insertAtCursor}
+          onDismiss={() => setDialog(null)}
+        />
       )}
       {dialog === "fbf" && (
-        <FbfInsertDialog onInsert={insertAtCursor} onDismiss={() => setDialog(null)} />
+        <FbfInsertDialog
+          onInsert={insertAtCursor}
+          onDismiss={() => setDialog(null)}
+        />
       )}
       {dialog === "anim" && (
-        <AnimInsertDialog onInsert={insertAtCursor} onDismiss={() => setDialog(null)} />
+        <AnimInsertDialog
+          onInsert={insertAtCursor}
+          onDismiss={() => setDialog(null)}
+        />
       )}
       {dialog === "def" && (
-        <DefInsertDialog onInsert={insertAtCursor} onDismiss={() => setDialog(null)} />
+        <DefInsertDialog
+          onInsert={insertAtCursor}
+          onDismiss={() => setDialog(null)}
+        />
       )}
     </>
   );

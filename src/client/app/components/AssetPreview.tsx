@@ -17,7 +17,13 @@ import {
   type Edition,
 } from "../../lib/editions";
 import { getAsset } from "../../lib/idb";
-import { getCategory, getFileName, isImagePath, isModelPath, toDisplayName } from "../assetUtils";
+import {
+  getCategory,
+  getFileName,
+  isImagePath,
+  isModelPath,
+  toDisplayName,
+} from "../assetUtils";
 
 const ModelViewer = lazy(() => import("./ModelViewer"));
 
@@ -93,14 +99,16 @@ function AudioPreview({
       const samples = waveformRef.current;
       if (samples) {
         const barW = Math.max(1, w / samples.length);
-        const playPos = audio.duration > 0 ? audio.currentTime / audio.duration : 0;
+        const playPos =
+          audio.duration > 0 ? audio.currentTime / audio.duration : 0;
         const playX = playPos * w;
 
         for (let i = 0; i < samples.length; i++) {
           const barH = samples[i]! * h * 0.9;
           const x = i * barW;
           const hue = (i / samples.length) * 30;
-          ctx.fillStyle = x < playX ? `hsl(${hue}, 90%, 55%)` : `hsl(${hue}, 40%, 30%)`;
+          ctx.fillStyle =
+            x < playX ? `hsl(${hue}, 90%, 55%)` : `hsl(${hue}, 40%, 30%)`;
           ctx.fillRect(x, (h - barH) / 2, barW - 0.5, barH || 1);
         }
 
@@ -117,15 +125,18 @@ function AudioPreview({
     };
   }, [url]);
 
-  const handleCanvasClick = useCallback((e: ReactMouseEvent<HTMLCanvasElement>) => {
-    const audio = audioRef.current;
-    const canvas = canvasRef.current;
-    if (!audio || !canvas || !audio.duration) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const ratio = x / rect.width;
-    audio.currentTime = ratio * audio.duration;
-  }, []);
+  const handleCanvasClick = useCallback(
+    (e: ReactMouseEvent<HTMLCanvasElement>) => {
+      const audio = audioRef.current;
+      const canvas = canvasRef.current;
+      if (!audio || !canvas || !audio.duration) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const ratio = x / rect.width;
+      audio.currentTime = ratio * audio.duration;
+    },
+    [],
+  );
 
   useEffect(() => {
     if (audioRef.current) {
@@ -166,7 +177,9 @@ export function AssetPreview({
   const displayName = toDisplayName(mappedPath ?? path);
   const echoPath = mappedPath ?? path;
 
-  const [editions, setEditions] = useState<Edition[]>(() => initialEditions ?? []);
+  const [editions, setEditions] = useState<Edition[]>(
+    () => initialEditions ?? [],
+  );
   const [editedUrl, setEditedUrl] = useState<string | null>(null);
   const initSprite = (initialEditions ?? []).find((e) => e.type === "sprite");
   const [spriteRows, setSpriteRows] = useState(() =>
@@ -192,7 +205,8 @@ export function AssetPreview({
 
   const hasCrop = editions.some((e) => e.type === "crop");
   const spriteEd = editions.find((e) => e.type === "sprite");
-  const selectedSpriteIndex = spriteEd?.type === "sprite" ? spriteEd.index : null;
+  const selectedSpriteIndex =
+    spriteEd?.type === "sprite" ? spriteEd.index : null;
 
   useEffect(() => {
     if (category !== "images" || !url) {
@@ -259,7 +273,9 @@ export function AssetPreview({
     if (audioParts.length > 0) {
       parts.push(audioParts.join(" at "));
     }
-    return parts.length > 0 ? `${displayName} ${parts.join(", ")}` : displayName;
+    return parts.length > 0
+      ? `${displayName} ${parts.join(", ")}`
+      : displayName;
   }, [displayName, editions]);
 
   const isModel = isModelPath(path);
@@ -268,29 +284,36 @@ export function AssetPreview({
   // Pasting a link copied from the asset browser (e.g. `![abc](echo://path)`
   // or a bare `echo://path`) should drop the markdown wrapper and commit the
   // echo path straight away, so the model retextures without an extra step.
-  const handleTexturePaste = useCallback((e: ReactClipboardEvent<HTMLInputElement>) => {
-    const pasted = e.clipboardData.getData("text");
-    if (!/echo:\/\//i.test(pasted)) return;
-    const linkMatch = pasted.match(/\]\(\s*(echo:\/\/[^)\s]+)\s*\)/i);
-    const echoPathFromPaste = (
-      linkMatch?.[1] ??
-      pasted.match(/echo:\/\/[^)\s]+/i)?.[0] ??
-      ""
-    ).trim();
-    if (!echoPathFromPaste) return;
-    e.preventDefault();
-    setTextureInput(echoPathFromPaste);
-    setTextureApplied(echoPathFromPaste);
-  }, []);
+  const handleTexturePaste = useCallback(
+    (e: ReactClipboardEvent<HTMLInputElement>) => {
+      const pasted = e.clipboardData.getData("text");
+      if (!/echo:\/\//i.test(pasted)) return;
+      const linkMatch = pasted.match(/\]\(\s*(echo:\/\/[^)\s]+)\s*\)/i);
+      const echoPathFromPaste = (
+        linkMatch?.[1] ??
+        pasted.match(/echo:\/\/[^)\s]+/i)?.[0] ??
+        ""
+      ).trim();
+      if (!echoPathFromPaste) return;
+      e.preventDefault();
+      setTextureInput(echoPathFromPaste);
+      setTextureApplied(echoPathFromPaste);
+    },
+    [],
+  );
 
   // For models, the committed texture (scheme stripped) rides the echo path as
   // a `?texture=` param: both for the live preview and the copied markdown.
   const textureRef = useMemo(() => {
     const t = textureApplied.trim();
     if (!t) return "";
-    return t.toLowerCase().startsWith("echo://") ? t.slice("echo://".length) : t;
+    return t.toLowerCase().startsWith("echo://")
+      ? t.slice("echo://".length)
+      : t;
   }, [textureApplied]);
-  const modelEchoPath = textureRef ? `${echoPath}?texture=${textureRef}` : echoPath;
+  const modelEchoPath = textureRef
+    ? `${echoPath}?texture=${textureRef}`
+    : echoPath;
   const exportPath = isModel ? modelEchoPath : fullEchoPath;
 
   const echoMarkdown = isEmbeddable
@@ -303,7 +326,8 @@ export function AssetPreview({
 
   const handleCopy = useCallback(
     (e?: ReactMouseEvent) => {
-      const text = e && (e.ctrlKey || e.metaKey) ? originalMarkdown : echoMarkdown;
+      const text =
+        e && (e.ctrlKey || e.metaKey) ? originalMarkdown : echoMarkdown;
       void navigator.clipboard.writeText(text).then(() => onCopied(path));
     },
     [echoMarkdown, originalMarkdown, onCopied, path],
@@ -336,7 +360,15 @@ export function AssetPreview({
       if (spriteRows <= 0 || spriteCols <= 0) return;
       setEditions((prev) => {
         const without = prev.filter((e) => e.type !== "sprite");
-        return [...without, { type: "sprite" as const, rows: spriteRows, cols: spriteCols, index }];
+        return [
+          ...without,
+          {
+            type: "sprite" as const,
+            rows: spriteRows,
+            cols: spriteCols,
+            index,
+          },
+        ];
       });
     },
     [spriteRows, spriteCols],
@@ -393,7 +425,10 @@ export function AssetPreview({
 
   const handleImgLoad = useCallback(() => {
     if (imgRef.current) {
-      setImgSize({ w: imgRef.current.naturalWidth, h: imgRef.current.naturalHeight });
+      setImgSize({
+        w: imgRef.current.naturalWidth,
+        h: imgRef.current.naturalHeight,
+      });
     }
   }, []);
 
@@ -425,7 +460,11 @@ export function AssetPreview({
             stroke="currentColor"
             strokeWidth={2.5}
           >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M6 18L18 6M6 6l12 12"
+            />
           </svg>
         </button>
         <div
@@ -440,7 +479,11 @@ export function AssetPreview({
           {loading ? (
             <div
               className="flex items-center justify-center m-1 mb-0 rounded"
-              style={{ backgroundColor: "var(--thumb-bg)", minWidth: 120, minHeight: 120 }}
+              style={{
+                backgroundColor: "var(--thumb-bg)",
+                minWidth: 120,
+                minHeight: 120,
+              }}
             >
               <div className="w-8 h-8 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
             </div>
@@ -475,7 +518,9 @@ export function AssetPreview({
                       className="border border-white/30 cursor-pointer transition-colors"
                       style={{
                         backgroundColor:
-                          spriteHover === i ? "rgba(255,255,255,0.25)" : "transparent",
+                          spriteHover === i
+                            ? "rgba(255,255,255,0.25)"
+                            : "transparent",
                       }}
                       onMouseEnter={() => setSpriteHover(i)}
                       onMouseLeave={() => setSpriteHover(null)}
@@ -490,7 +535,10 @@ export function AssetPreview({
               className="m-1 mb-0 p-3 overflow-hidden rounded"
               style={{ backgroundColor: "var(--thumb-bg)" }}
             >
-              <AudioPreview url={showUrl} playbackRate={audioEditionParams?.playbackRate} />
+              <AudioPreview
+                url={showUrl}
+                playbackRate={audioEditionParams?.playbackRate}
+              />
             </div>
           ) : category === "models" ? (
             <div
@@ -507,7 +555,11 @@ export function AssetPreview({
                   </div>
                 }
               >
-                <ModelViewer path={modelEchoPath} alt={displayName} variant="preview" />
+                <ModelViewer
+                  path={modelEchoPath}
+                  alt={displayName}
+                  variant="preview"
+                />
               </Suspense>
             </div>
           ) : (
@@ -520,7 +572,9 @@ export function AssetPreview({
             <div className="text-white text-xs truncate w-full text-left">
               {displayName}
               {editions.length > 0 && (
-                <span className="text-white/70 ml-1">{serializeEditions("", editions)}</span>
+                <span className="text-white/70 ml-1">
+                  {serializeEditions("", editions)}
+                </span>
               )}
             </div>
 
@@ -566,11 +620,15 @@ export function AssetPreview({
                             placeholder="C"
                             value={spriteCols || ""}
                             onChange={(e) =>
-                              setSpriteCols(Math.max(0, parseInt(e.target.value) || 0))
+                              setSpriteCols(
+                                Math.max(0, parseInt(e.target.value) || 0),
+                              )
                             }
                             className="w-8 text-[10px] text-center px-0.5 py-0.5 rounded bg-white/20 text-white border border-white/30 focus:outline-none"
                           />
-                          <span className="text-white/50 text-[10px]">&times;</span>
+                          <span className="text-white/50 text-[10px]">
+                            &times;
+                          </span>
                           <input
                             type="number"
                             min={0}
@@ -578,7 +636,9 @@ export function AssetPreview({
                             placeholder="R"
                             value={spriteRows || ""}
                             onChange={(e) =>
-                              setSpriteRows(Math.max(0, parseInt(e.target.value) || 0))
+                              setSpriteRows(
+                                Math.max(0, parseInt(e.target.value) || 0),
+                              )
                             }
                             className="w-8 text-[10px] text-center px-0.5 py-0.5 rounded bg-white/20 text-white border border-white/30 focus:outline-none"
                           />
@@ -599,7 +659,9 @@ export function AssetPreview({
                       max={4}
                       step={0.05}
                       value={speed}
-                      onChange={(e) => handleSpeedChange(parseFloat(e.target.value))}
+                      onChange={(e) =>
+                        handleSpeedChange(parseFloat(e.target.value))
+                      }
                       className="flex-1 min-w-0"
                     />
                     <span className="w-7 text-right font-mono flex-shrink-0">
@@ -615,7 +677,9 @@ export function AssetPreview({
                       max={12}
                       step={0.5}
                       value={pitch}
-                      onChange={(e) => handlePitchChange(parseFloat(e.target.value))}
+                      onChange={(e) =>
+                        handlePitchChange(parseFloat(e.target.value))
+                      }
                       className="flex-1 min-w-0"
                     />
                     <span className="w-7 text-right font-mono flex-shrink-0">
@@ -650,7 +714,12 @@ export function AssetPreview({
                 className="flex items-center gap-1 text-white text-[10px] font-medium cursor-pointer hover:opacity-80 transition-opacity flex-shrink-0 bg-white/20 px-2 py-0.5 rounded-full"
                 title="Copy echo link (Ctrl+click for original name)"
               >
-                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg
+                  className="w-3 h-3"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"

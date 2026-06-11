@@ -98,7 +98,9 @@ function isAssetFile(path: string): boolean {
   return ASSET_DIRS.has(parts[0]!);
 }
 
-export async function* processRm2k3Files(files: File[]): AsyncGenerator<ProcessedAsset> {
+export async function* processRm2k3Files(
+  files: File[],
+): AsyncGenerator<ProcessedAsset> {
   for (const file of files) {
     const rel = file.webkitRelativePath;
     const slashIdx = rel.indexOf("/");

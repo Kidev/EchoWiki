@@ -19,7 +19,8 @@ export function parseEchoLink(
   if (path.startsWith("wiki/")) {
     const pagePart = path.slice("wiki/".length);
     const hashIdx = pagePart.indexOf("#");
-    const pageWithoutAnchor = hashIdx === -1 ? pagePart : pagePart.slice(0, hashIdx);
+    const pageWithoutAnchor =
+      hashIdx === -1 ? pagePart : pagePart.slice(0, hashIdx);
     const anchor = hashIdx === -1 ? null : pagePart.slice(hashIdx + 1) || null;
     if (wikiPages.includes(pageWithoutAnchor)) {
       return { type: "wiki", page: pageWithoutAnchor, anchor };

@@ -20,7 +20,8 @@ function buildIndex(files: File[]): FileIndex {
   for (const file of files) {
     const rel = file.webkitRelativePath;
     const slashIdx = rel.indexOf("/");
-    const normalized = slashIdx >= 0 ? rel.slice(slashIdx + 1).toLowerCase() : rel.toLowerCase();
+    const normalized =
+      slashIdx >= 0 ? rel.slice(slashIdx + 1).toLowerCase() : rel.toLowerCase();
     paths.add(normalized);
     byName.set(normalized, file);
 
@@ -87,7 +88,10 @@ export function detectEngine(files: File[]): DetectionResult {
     return { engine: "rmvxace", dataRoot: "", hasEncryption: true };
   }
 
-  if (hasPathPrefix(idx, "www/") && (hasExt(idx, ".rpgmvp") || hasExt(idx, ".rpgmvo"))) {
+  if (
+    hasPathPrefix(idx, "www/") &&
+    (hasExt(idx, ".rpgmvp") || hasExt(idx, ".rpgmvo"))
+  ) {
     return { engine: "rmmv-encrypted", dataRoot: "www/", hasEncryption: true };
   }
 
@@ -107,7 +111,11 @@ export function detectEngine(files: File[]): DetectionResult {
     return { engine: "rm2k3", dataRoot: "", hasEncryption: false };
   }
 
-  if (hasPath(idx, "data.win") || hasPath(idx, "game.ios") || hasPath(idx, "game.unx")) {
+  if (
+    hasPath(idx, "data.win") ||
+    hasPath(idx, "game.ios") ||
+    hasPath(idx, "game.unx")
+  ) {
     return { engine: "generic", dataRoot: "", hasEncryption: false };
   }
 
@@ -176,7 +184,9 @@ export async function detectGameTitle(
   switch (engine) {
     case "rmmv":
     case "rmmv-encrypted": {
-      const systemFile = idx.byName.get(`${dataRoot}data/system.json`.toLowerCase());
+      const systemFile = idx.byName.get(
+        `${dataRoot}data/system.json`.toLowerCase(),
+      );
       if (systemFile) {
         try {
           const text = await systemFile.text();
@@ -221,12 +231,16 @@ export async function detectGameTitle(
   return "";
 }
 
-export function getFileByNormalizedPath(files: File[], path: string): File | undefined {
+export function getFileByNormalizedPath(
+  files: File[],
+  path: string,
+): File | undefined {
   const lower = path.toLowerCase();
   for (const file of files) {
     const rel = file.webkitRelativePath;
     const slashIdx = rel.indexOf("/");
-    const normalized = slashIdx >= 0 ? rel.slice(slashIdx + 1).toLowerCase() : rel.toLowerCase();
+    const normalized =
+      slashIdx >= 0 ? rel.slice(slashIdx + 1).toLowerCase() : rel.toLowerCase();
     if (normalized === lower) return file;
   }
   return undefined;

@@ -34,7 +34,9 @@ function SuggestionReviewModal({
   isActing: boolean;
   actError: string | null;
 }) {
-  const pageLabel = suggestion.page.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const pageLabel = suggestion.page
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
   const dateStr = new Date(suggestion.createdAt).toLocaleDateString(undefined, {
     year: "numeric",
     month: "short",
@@ -45,8 +47,11 @@ function SuggestionReviewModal({
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100 shrink-0">
         <div className="flex flex-col min-w-0">
           <span className="text-sm font-semibold text-[var(--text)] truncate">
-            Suggestion by <span className="text-[var(--accent)]">u/{suggestion.username}</span> on{" "}
-            <span className="italic">{pageLabel}</span>
+            Suggestion by{" "}
+            <span className="text-[var(--accent)]">
+              u/{suggestion.username}
+            </span>{" "}
+            on <span className="italic">{pageLabel}</span>
           </span>
           <span className="text-xs text-[var(--text-muted)] truncate">
             &ldquo;{suggestion.description}&rdquo; &middot; {dateStr}
@@ -74,7 +79,12 @@ function SuggestionReviewModal({
             className="text-xs px-2 py-1.5 rounded border border-gray-300 text-[var(--text-muted)] hover:bg-[var(--control-bg)] transition-colors cursor-pointer disabled:opacity-50"
             title="Close"
           >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg
+              className="w-3.5 h-3.5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -111,14 +121,20 @@ function SubmissionsPanel({
   username: string;
   wikiFontSize: WikiFontSize;
 }) {
-  const [suggestions, setSuggestions] = useState<WikiSuggestionWithVoting[]>([]);
+  const [suggestions, setSuggestions] = useState<WikiSuggestionWithVoting[]>(
+    [],
+  );
   const [loading, setLoading] = useState(false);
-  const [reviewSuggestion, setReviewSuggestion] = useState<WikiSuggestionWithVoting | null>(null);
-  const [reviewCurrentContent, setReviewCurrentContent] = useState<string | null>(null);
+  const [reviewSuggestion, setReviewSuggestion] =
+    useState<WikiSuggestionWithVoting | null>(null);
+  const [reviewCurrentContent, setReviewCurrentContent] = useState<
+    string | null
+  >(null);
   const [isActing, setIsActing] = useState(false);
   const [actError, setActError] = useState<string | null>(null);
 
-  const [editSuggestion, setEditSuggestion] = useState<WikiSuggestionWithVoting | null>(null);
+  const [editSuggestion, setEditSuggestion] =
+    useState<WikiSuggestionWithVoting | null>(null);
   const [editContent, setEditContent] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
@@ -142,28 +158,35 @@ function SubmissionsPanel({
     void loadSuggestions();
   }, [loadSuggestions]);
 
-  const handleReview = useCallback(async (suggestion: WikiSuggestionWithVoting) => {
-    setReviewSuggestion(suggestion);
-    setActError(null);
-    try {
-      const res = await fetch(`/api/wiki?page=${encodeURIComponent(suggestion.page)}`);
-      if (res.ok) {
-        const data: WikiResponse = await res.json();
-        setReviewCurrentContent(data.content);
-      } else {
+  const handleReview = useCallback(
+    async (suggestion: WikiSuggestionWithVoting) => {
+      setReviewSuggestion(suggestion);
+      setActError(null);
+      try {
+        const res = await fetch(
+          `/api/wiki?page=${encodeURIComponent(suggestion.page)}`,
+        );
+        if (res.ok) {
+          const data: WikiResponse = await res.json();
+          setReviewCurrentContent(data.content);
+        } else {
+          setReviewCurrentContent(null);
+        }
+      } catch {
         setReviewCurrentContent(null);
       }
-    } catch {
-      setReviewCurrentContent(null);
-    }
-  }, []);
+    },
+    [],
+  );
 
   const handleAccept = useCallback(async () => {
     if (!reviewSuggestion) return;
     setIsActing(true);
     setActError(null);
     try {
-      const body: WikiSuggestionActionRequest = { username: reviewSuggestion.username };
+      const body: WikiSuggestionActionRequest = {
+        username: reviewSuggestion.username,
+      };
       const res = await fetch("/api/wiki/suggestion/accept", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -175,7 +198,9 @@ function SubmissionsPanel({
         return;
       }
       setReviewSuggestion(null);
-      setSuggestions((prev) => prev.filter((s) => s.username !== reviewSuggestion.username));
+      setSuggestions((prev) =>
+        prev.filter((s) => s.username !== reviewSuggestion.username),
+      );
     } catch {
       setActError("Network error");
     } finally {
@@ -188,7 +213,9 @@ function SubmissionsPanel({
     setIsActing(true);
     setActError(null);
     try {
-      const body: WikiSuggestionActionRequest = { username: reviewSuggestion.username };
+      const body: WikiSuggestionActionRequest = {
+        username: reviewSuggestion.username,
+      };
       const res = await fetch("/api/wiki/suggestion/deny", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -200,7 +227,9 @@ function SubmissionsPanel({
         return;
       }
       setReviewSuggestion(null);
-      setSuggestions((prev) => prev.filter((s) => s.username !== reviewSuggestion.username));
+      setSuggestions((prev) =>
+        prev.filter((s) => s.username !== reviewSuggestion.username),
+      );
     } catch {
       setActError("Network error");
     } finally {
@@ -276,46 +305,67 @@ function SubmissionsPanel({
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
           <div
             className="flex flex-col w-full max-w-2xl max-h-[90vh] rounded-xl shadow-2xl overflow-hidden"
-            style={{ backgroundColor: "var(--bg)", border: "1px solid var(--thumb-bg)" }}
+            style={{
+              backgroundColor: "var(--bg)",
+              border: "1px solid var(--thumb-bg)",
+            }}
           >
             <div
               className="flex items-center justify-between px-4 py-3 border-b"
               style={{ borderColor: "var(--thumb-bg)" }}
             >
               <div className="flex flex-col min-w-0">
-                <span className="text-sm font-semibold text-[var(--text)]">Edit suggestion</span>
+                <span className="text-sm font-semibold text-[var(--text)]">
+                  Edit suggestion
+                </span>
                 <span className="text-xs text-[var(--text-muted)] truncate">
-                  {editSuggestion.page.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                  {editSuggestion.page
+                    .replace(/_/g, " ")
+                    .replace(/\b\w/g, (c) => c.toUpperCase())}
                 </span>
               </div>
               <button
                 onClick={() => setEditSuggestion(null)}
                 className="text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer"
               >
-                <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
+                <svg
+                  className="w-4 h-4"
+                  viewBox="0 0 16 16"
+                  fill="currentColor"
+                >
                   <path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z" />
                 </svg>
               </button>
             </div>
             <div className="flex flex-col gap-3 px-4 py-3 overflow-auto flex-1">
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-[var(--text-muted)]">Description</label>
+                <label className="text-xs font-medium text-[var(--text-muted)]">
+                  Description
+                </label>
                 <input
                   type="text"
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
                   placeholder="Describe your changes (min 10 characters)"
                   className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)]"
-                  style={{ backgroundColor: "var(--control-bg)", color: "var(--control-text)" }}
+                  style={{
+                    backgroundColor: "var(--control-bg)",
+                    color: "var(--control-text)",
+                  }}
                 />
               </div>
               <div className="flex flex-col gap-1 flex-1 min-h-0">
-                <label className="text-xs font-medium text-[var(--text-muted)]">Content</label>
+                <label className="text-xs font-medium text-[var(--text-muted)]">
+                  Content
+                </label>
                 <textarea
                   value={editContent}
                   onChange={(e) => setEditContent(e.target.value)}
                   className="text-sm px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)] resize-none flex-1 font-mono min-h-60"
-                  style={{ backgroundColor: "var(--control-bg)", color: "var(--control-text)" }}
+                  style={{
+                    backgroundColor: "var(--control-bg)",
+                    color: "var(--control-text)",
+                  }}
                 />
               </div>
               {editError && <p className="text-xs text-red-500">{editError}</p>}
@@ -362,7 +412,8 @@ function SubmissionsPanel({
       >
         <div className="flex items-center justify-between mb-3">
           <span className="text-sm font-medium text-[var(--text)]">
-            Pending submissions{suggestions.length > 0 ? ` (${suggestions.length})` : ""}
+            Pending submissions
+            {suggestions.length > 0 ? ` (${suggestions.length})` : ""}
           </span>
           <button
             onClick={() => void loadSuggestions()}
@@ -379,17 +430,24 @@ function SubmissionsPanel({
           </div>
         ) : suggestions.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 gap-2">
-            <span className="text-sm text-[var(--text-muted)]">No pending submissions.</span>
+            <span className="text-sm text-[var(--text-muted)]">
+              No pending submissions.
+            </span>
           </div>
         ) : (
           <div className="flex flex-col gap-2 max-w-2xl">
             {suggestions.map((p) => {
-              const pageLabel = p.page.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-              const dateStr = new Date(p.createdAt).toLocaleDateString(undefined, {
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-              });
+              const pageLabel = p.page
+                .replace(/_/g, " ")
+                .replace(/\b\w/g, (c) => c.toUpperCase());
+              const dateStr = new Date(p.createdAt).toLocaleDateString(
+                undefined,
+                {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                },
+              );
               return (
                 <div
                   key={p.username}
@@ -402,7 +460,9 @@ function SubmissionsPanel({
                         className="text-sm font-medium cursor-pointer hover:underline"
                         style={{ color: "var(--accent)" }}
                         onClick={() =>
-                          navigateTo({ url: `https://www.reddit.com/u/${p.username}` })
+                          navigateTo({
+                            url: `https://www.reddit.com/u/${p.username}`,
+                          })
                         }
                       >
                         u/{p.username}
@@ -410,10 +470,13 @@ function SubmissionsPanel({
                       <span className="text-xs text-[var(--text-muted)]">
                         &rarr; <em>{pageLabel}</em>
                       </span>
-                      <span className="text-xs text-[var(--text-muted)]">&middot; {dateStr}</span>
+                      <span className="text-xs text-[var(--text-muted)]">
+                        &middot; {dateStr}
+                      </span>
                       {p.voteStatus && (
                         <span className="text-xs px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-200">
-                          {p.voteStatus.acceptCount}✓ {p.voteStatus.rejectCount}✗ voting
+                          {p.voteStatus.acceptCount}✓ {p.voteStatus.rejectCount}
+                          ✗ voting
                         </span>
                       )}
                     </div>

@@ -53,16 +53,22 @@ export function preprocessCenterBlocks(md: string): string {
   });
 }
 
-export function withCodeProtected(md: string, transform: (s: string) => string): string {
+export function withCodeProtected(
+  md: string,
+  transform: (s: string) => string,
+): string {
   const slots: string[] = [];
 
   const OPEN = "EWCOPEN";
   const CLOSE = "EWCCLOSE";
-  const guarded = md.replace(/(```+[\s\S]*?```+|~~~+[\s\S]*?~~~+|`[^`\n]+`)/g, (match) => {
-    const id = `${OPEN}${slots.length}${CLOSE}`;
-    slots.push(match);
-    return id;
-  });
+  const guarded = md.replace(
+    /(```+[\s\S]*?```+|~~~+[\s\S]*?~~~+|`[^`\n]+`)/g,
+    (match) => {
+      const id = `${OPEN}${slots.length}${CLOSE}`;
+      slots.push(match);
+      return id;
+    },
+  );
   const out = transform(guarded);
   return out.replace(
     new RegExp(`${OPEN}(\\d+)${CLOSE}`, "g"),
@@ -70,7 +76,10 @@ export function withCodeProtected(md: string, transform: (s: string) => string):
   );
 }
 
-export function extractDisplayHints(echoPath: string): { hints: Set<string>; cleanPath: string } {
+export function extractDisplayHints(echoPath: string): {
+  hints: Set<string>;
+  cleanPath: string;
+} {
   const qIdx = echoPath.indexOf("?");
   if (qIdx === -1) return { hints: new Set(), cleanPath: echoPath };
   const base = echoPath.slice(0, qIdx);
@@ -81,7 +90,8 @@ export function extractDisplayHints(echoPath: string): { hints: Set<string>; cle
     if (key === "emoji" || key === "outline") hints.add(key);
     else remaining.push(seg);
   }
-  const cleanPath = remaining.length > 0 ? `${base}?${remaining.join("&")}` : base;
+  const cleanPath =
+    remaining.length > 0 ? `${base}?${remaining.join("&")}` : base;
   return { hints, cleanPath };
 }
 
@@ -163,7 +173,10 @@ export function parseFps(raw: string | undefined, fallback = 2.5): number {
 }
 
 /** Parse a boolean-ish param value. Absent/empty -> fallback; falsy strings -> false. */
-export function parseBoolParam(raw: string | undefined, fallback: boolean): boolean {
+export function parseBoolParam(
+  raw: string | undefined,
+  fallback: boolean,
+): boolean {
   if (raw === undefined) return fallback;
   const v = raw.trim().toLowerCase();
   if (v === "") return fallback;
@@ -240,7 +253,10 @@ export function renderFbfBlock(
   return `<style>${kf}</style><span style="position:relative;display:inline-block;max-width:100%;vertical-align:middle;">${sizeDriver}<span style="position:absolute;inset:0;">${overlayImgs}</span></span>`;
 }
 
-export function renderSceneBlock(params: Record<string, string>, lines: string[]): string {
+export function renderSceneBlock(
+  params: Record<string, string>,
+  lines: string[],
+): string {
   const width = params["width"] ?? "100%";
   const heightRaw = params["height"];
   let bgSrc = "";
@@ -259,7 +275,9 @@ export function renderSceneBlock(params: Record<string, string>, lines: string[]
       const pos = parseEchoBlockParams(posStr);
       let posStyle = "position:absolute;display:block;";
       for (const [k, v] of Object.entries(pos)) posStyle += `${k}:${v};`;
-      layerImgs.push(`<img class="echo-raw" src="${src}" style="${posStyle}" alt="">`);
+      layerImgs.push(
+        `<img class="echo-raw" src="${src}" style="${posStyle}" alt="">`,
+      );
     }
   }
   const fgHtml = fgSrc
@@ -320,7 +338,13 @@ export function renderAnimBlock(
 
   // `duration` wins; otherwise derive from `loops` whole cycles. When neither
   // is set, keep the historical 3s default (deriveWhenUnset=false).
-  const durationSecs = resolvePhaseDuration(params, frames.length, fps, 3, false);
+  const durationSecs = resolvePhaseDuration(
+    params,
+    frames.length,
+    fps,
+    3,
+    false,
+  );
   const duration = `${durationSecs.toFixed(3)}s`;
   const width = params["width"] ?? "50%";
   const heightRaw = params["height"];
@@ -401,23 +425,32 @@ export function renderAnimBlock(
   return `<style>${framekf} ${moveKf}</style><div style="${baseStyle}${hStyle}">${overlayDiv}</div>`;
 }
 
-export function renderCardBlock(params: Record<string, string>, body: string): string {
+export function renderCardBlock(
+  params: Record<string, string>,
+  body: string,
+): string {
   const image = params["image"] ?? "";
   const size = params["size"] ?? "120px";
   const align = params["align"] ?? "right";
   const floatStyle =
-    align === "left" ? "float:left;margin:0 1.5em 1em 0;" : "float:right;margin:0 0 1em 1.5em;";
+    align === "left"
+      ? "float:left;margin:0 1.5em 1em 0;"
+      : "float:right;margin:0 0 1em 1.5em;";
   const imgHtml = image
     ? `<img src="${image}" style="${floatStyle}width:${size};border-radius:6px;" alt="">`
     : "";
   return `<div style="overflow:hidden;padding:1em;background:var(--thumb-bg);border-radius:8px;margin:1em 0;">${imgHtml}\n\n${body.trim()}\n\n</div>`;
 }
 
-export function renderInfoboxBlock(params: Record<string, string>, body: string): string {
+export function renderInfoboxBlock(
+  params: Record<string, string>,
+  body: string,
+): string {
   const title = params["title"] ?? "";
   const image = params["image"] ?? "";
   const align = (params["align"] ?? "right") === "left" ? "left" : "right";
-  const floatMargin = align === "left" ? "margin:0 1.5em 1em 0;" : "margin:0 0 1em 1.5em;";
+  const floatMargin =
+    align === "left" ? "margin:0 1.5em 1em 0;" : "margin:0 0 1em 1.5em;";
 
   const rows = body
     .split("\n")
@@ -466,8 +499,19 @@ export function renderMultiPhaseAnimBlock(
     const fps = parseFps(curPhaseParams["fps"]);
     // Default to one walk cycle when no duration/loops given (deriveWhenUnset),
     // keeping the sprite animation in sync with the movement.
-    const d = resolvePhaseDuration(curPhaseParams, curFrames.length, fps, 2, true);
-    phases.push({ params: curPhaseParams, frames: curFrames, moveLines: curMove, duration: d });
+    const d = resolvePhaseDuration(
+      curPhaseParams,
+      curFrames.length,
+      fps,
+      2,
+      true,
+    );
+    phases.push({
+      params: curPhaseParams,
+      frames: curFrames,
+      moveLines: curMove,
+      duration: d,
+    });
   };
 
   for (const rawLine of body.split("\n")) {
@@ -576,7 +620,8 @@ export function renderMultiPhaseAnimBlock(
   }
   cssOut += `@keyframes ${uid}-move{${moveKfStops.join("")}}`;
 
-  const pSizeRaw = phases[0]!.params["spritesize"] ?? params["spritesize"] ?? "";
+  const pSizeRaw =
+    phases[0]!.params["spritesize"] ?? params["spritesize"] ?? "";
   const spriteNatural = !pSizeRaw || pSizeRaw.includes("%");
   let spriteDiv: string;
   if (spriteNatural) {
@@ -620,7 +665,8 @@ export function preprocessEchoBlocks(md: string): string {
 
   const stripped = expanded.replace(/^:::def[ \t]*\n[\s\S]*?^:::/gm, "");
 
-  const BLOCK_RE = () => /^:::(fbf|scene|anim|card|infobox)([ \t][^\n]*)?\n([\s\S]*?)^:::/gm;
+  const BLOCK_RE = () =>
+    /^:::(fbf|scene|anim|card|infobox)([ \t][^\n]*)?\n([\s\S]*?)^:::/gm;
 
   const aliases = new Map<string, EchoBlockDef>();
   const re1 = BLOCK_RE();
@@ -651,7 +697,9 @@ export function preprocessEchoBlocks(md: string): string {
       if (type === "fbf") return renderFbfBlock(uid, params, lines);
       if (type === "scene") return renderSceneBlock(params, lines);
       if (type === "anim") {
-        const hasPhases = (body as string).split("\n").some((l) => l.trim().startsWith("---"));
+        const hasPhases = (body as string)
+          .split("\n")
+          .some((l) => l.trim().startsWith("---"));
         return hasPhases
           ? renderMultiPhaseAnimBlock(uid, params, body as string, aliases)
           : renderAnimBlock(uid, params, body as string, aliases);

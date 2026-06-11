@@ -209,6 +209,30 @@ export type WikiSuggestionResponse = {
   suggestion: WikiSuggestion | null;
 };
 
+export type WikiDraftMode = "edit" | "suggest";
+
+export type WikiDraft = {
+  page: string;
+  content: string;
+  mode: WikiDraftMode;
+  updatedAt: number;
+};
+
+export type WikiDraftRequest = {
+  page: string;
+  content: string;
+  mode: WikiDraftMode;
+};
+
+export type WikiDraftResponse = {
+  type: "wiki-draft";
+  draft: WikiDraft | null;
+};
+
+export type WikiDraftActionResponse = {
+  type: "wiki-draft-action";
+};
+
 export type VoteValue = "accept" | "reject";
 
 export type VoteEntry = {

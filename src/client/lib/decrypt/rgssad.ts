@@ -28,7 +28,10 @@ function advanceKey(key: number): number {
   return Math.imul(key, 7) + 3;
 }
 
-function decryptInt(reader: BinaryReader, key: number): { value: number; nextKey: number } {
+function decryptInt(
+  reader: BinaryReader,
+  key: number,
+): { value: number; nextKey: number } {
   const encrypted = reader.readUint32LE();
   const value = (encrypted ^ key) >>> 0;
   const nextKey = advanceKey(key);
@@ -78,7 +81,10 @@ function readDirectory(reader: BinaryReader): ArchiveEntry[] {
   return entries;
 }
 
-function decryptFileData(reader: BinaryReader, entry: ArchiveEntry): Uint8Array {
+function decryptFileData(
+  reader: BinaryReader,
+  entry: ArchiveEntry,
+): Uint8Array {
   reader.seek(entry.offset);
   const encrypted = reader.readBytes(entry.size);
   const result = new Uint8Array(entry.size);
@@ -102,7 +108,9 @@ function decryptFileData(reader: BinaryReader, entry: ArchiveEntry): Uint8Array 
   return result;
 }
 
-export async function* processRgssadArchive(archiveFile: File): AsyncGenerator<ProcessedAsset> {
+export async function* processRgssadArchive(
+  archiveFile: File,
+): AsyncGenerator<ProcessedAsset> {
   const buffer = await archiveFile.arrayBuffer();
   const reader = new BinaryReader(buffer);
 
