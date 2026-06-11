@@ -25,6 +25,7 @@ import type {
   StyleResponse,
   SubredditAppearance,
   SuggestionFlairRequest,
+  VersionResponse,
   WikiBanRequest,
   WikiFontSize,
 } from "../../../shared/types/api";
@@ -983,6 +984,40 @@ function VotingSettingsPanel({
   );
 }
 
+// Shows the running app version at the bottom of the General tab, and, when
+// the developer portal reports a newer published version: an "update
+// available" hint. Fails silently (renders nothing) if the version endpoint is
+// unreachable, so it never blocks the rest of the settings.
+function VersionFooter() {
+  const [version, setVersion] = useState<VersionResponse | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/version")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: VersionResponse | null) => {
+        if (!cancelled && d) setVersion(d);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!version || !version.current) return null;
+
+  return (
+    <div className="mt-2 pt-3 border-t border-gray-100 text-[10px] text-[var(--text-muted)]">
+      EchoWiki v{version.current}
+      {version.updateAvailable && version.latest && (
+        <span className="ml-1.5 text-[var(--accent)]">
+          · Update available ({version.latest})
+        </span>
+      )}
+    </div>
+  );
+}
+
 export function SettingsView({
   mappingText,
   style,
@@ -1274,6 +1309,8 @@ export function SettingsView({
                 Displayed on the home screen below the title.
               </span>
             </div>
+
+            <VersionFooter />
           </div>
         )}
 

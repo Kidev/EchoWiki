@@ -23,6 +23,9 @@
     "redis": true,
     "reddit": {
       "scope": "moderator"
+    },
+    "http": {
+      "enable": true
     }
   },
   "media": {

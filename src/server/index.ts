@@ -54,6 +54,7 @@ import type {
   WikiDraftRequest,
   WikiDraftResponse,
   WikiDraftActionResponse,
+  VersionResponse,
 } from "../shared/types/api";
 import type { UiResponse } from "@devvit/web/shared";
 import type {
@@ -1439,6 +1440,73 @@ router.get<Record<string, never>, StyleResponse | ErrorResponse>(
     } catch {
       res.json({ type: "style", style: { ...DEFAULT_STYLE } });
     }
+  },
+);
+
+/**
+ * Compares two dotted numeric version strings (e.g. "0.0.42.1").
+ * Returns -1 if a < b, 1 if a > b, 0 if equal. Non-numeric / missing
+ * components are treated as 0, so "1.2" and "1.2.0" compare equal.
+ */
+function compareVersions(a: string, b: string): number {
+  const pa = a.split(".");
+  const pb = b.split(".");
+  const len = Math.max(pa.length, pb.length);
+  for (let i = 0; i < len; i++) {
+    const na = parseInt(pa[i] ?? "0", 10) || 0;
+    const nb = parseInt(pb[i] ?? "0", 10) || 0;
+    if (na !== nb) return na < nb ? -1 : 1;
+  }
+  return 0;
+}
+
+const LATEST_VERSION_CACHE_KEY = "appLatestVersion";
+const LATEST_VERSION_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+/**
+ * Fetches the app's developer-portal versions page and extracts the version
+ * tagged "(latest)". The page is a public listing of the form
+ * "0.0.42 (latest)"; we match the version token immediately preceding that
+ * marker. Result is cached in Redis to avoid hitting the portal on every load.
+ * Returns null when the page is unreachable or the marker is absent.
+ */
+async function fetchLatestVersion(slug: string): Promise<string | null> {
+  const cached = await redis.get(LATEST_VERSION_CACHE_KEY).catch(() => null);
+  if (cached) return cached;
+
+  try {
+    const res = await fetch(
+      `https://developers.reddit.com/apps/${slug}/app-versions`,
+      { headers: { accept: "text/html" } },
+    );
+    if (!res.ok) return null;
+    const html = await res.text();
+    const match = html.match(/([0-9]+(?:\.[0-9]+)+)\s*\(latest\)/i);
+    const latest = match?.[1] ?? null;
+    if (latest) {
+      await redis
+        .set(LATEST_VERSION_CACHE_KEY, latest, {
+          expiration: new Date(Date.now() + LATEST_VERSION_TTL_MS),
+        })
+        .catch(() => {});
+    }
+    return latest;
+  } catch {
+    return null;
+  }
+}
+
+router.get<Record<string, never>, VersionResponse>(
+  "/api/version",
+  async (_req, res): Promise<void> => {
+    const current = context.appVersion ?? "";
+    const slug = context.appSlug || context.appName || "echo-wiki";
+    const latest = await fetchLatestVersion(slug);
+    const updateAvailable =
+      latest != null &&
+      current.length > 0 &&
+      compareVersions(latest, current) > 0;
+    res.json({ type: "version", current, latest, updateAvailable });
   },
 );
 

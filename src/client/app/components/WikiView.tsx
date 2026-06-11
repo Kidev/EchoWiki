@@ -85,7 +85,6 @@ export const WikiView = memo(function WikiView({
   const lastPageRef = useRef(currentPage);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // --- Draft persistence ---------------------------------------------------
   // The user's single in-progress edit draft (persisted server-side, survives
   // app close/restart). `draftRef` is the always-current source of truth read
   // by the edit gate; `draft` state drives the proactive "Resume draft?" prompt.
@@ -382,7 +381,6 @@ export const WikiView = memo(function WikiView({
     gateBeforeEdit(() => void proceedSuggest());
   }, [gateBeforeEdit, proceedSuggest]);
 
-  // --- Draft prompt actions ------------------------------------------------
   const handleResumeDraft = useCallback(() => {
     const d = draftRef.current;
     setShowResumeDialog(false);

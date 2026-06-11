@@ -110,6 +110,19 @@ export type WikiResponse = {
   content: string | null;
 };
 
+export type VersionResponse = {
+  type: "version";
+  /** The version of the app currently running, from the Devvit context. */
+  current: string;
+  /**
+   * The latest published version parsed from the app's developer-portal
+   * versions page, or null when it could not be determined.
+   */
+  latest: string | null;
+  /** True when {@link latest} is strictly newer than {@link current}. */
+  updateAvailable: boolean;
+};
+
 export type WikiPagesResponse = {
   type: "wiki-pages";
   pages: string[];
