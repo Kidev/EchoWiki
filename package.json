@@ -24,9 +24,9 @@
   },
   "dependencies": {
     "@devvit/mcp": "0.0.26",
-    "@devvit/web": "0.13.2",
+    "@devvit/web": "^0.13.3",
     "clsx": "2.1.1",
-    "devvit": "0.13.2",
+    "devvit": "^0.13.3",
     "express": "5.1.0",
     "list": "^2.0.19",
     "react": "19.1.0",
