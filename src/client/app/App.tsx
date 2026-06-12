@@ -184,6 +184,17 @@ export const App = () => {
   const [wikiPages, setWikiPages] = useState<string[]>([]);
   const [wikiTargetAnchor, setWikiTargetAnchor] = useState<string | null>(null);
   const [pendingEditPage, setPendingEditPage] = useState<string | null>(null);
+  const [pendingSuggestPage, setPendingSuggestPage] = useState<string | null>(
+    null,
+  );
+  const [wikiIsEditing, setWikiIsEditing] = useState(false);
+  // Breadcrumb overflow handling: when the crumb trail can't fit, the start is
+  // clipped (showing the current page + Edit button on the right); `barCompact`
+  // collapses the Edit button to an icon when the bar itself is narrow.
+  const [crumbsTruncated, setCrumbsTruncated] = useState(false);
+  const [barCompact, setBarCompact] = useState(false);
+  const crumbsViewportRef = useRef<HTMLDivElement>(null);
+  const crumbsInnerRef = useRef<HTMLDivElement>(null);
   const [showEchoLinkDialog, setShowEchoLinkDialog] = useState(false);
   const [echoLinkInput, setEchoLinkInput] = useState("");
   const [echoLinkError, setEchoLinkError] = useState<string | null>(null);
@@ -344,6 +355,27 @@ export const App = () => {
     },
     [cancelBreadcrumbHide, scheduleBreadcrumbHide],
   );
+
+  // Measure whether the breadcrumb trail overflows its viewport (so we clip the
+  // start and keep the current page + Edit button visible) and whether the bar
+  // is narrow enough to collapse the Edit button to an icon. Re-runs whenever the
+  // trail changes or the bar resizes.
+  useEffect(() => {
+    if (activeTab !== "wiki") return;
+    const vp = crumbsViewportRef.current;
+    const inner = crumbsInnerRef.current;
+    const bar = breadcrumbBarRef.current;
+    if (!vp || !inner || !bar) return;
+    const measure = () => {
+      setCrumbsTruncated(inner.scrollWidth - vp.clientWidth > 1);
+      setBarCompact(bar.clientWidth < 360);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(vp);
+    ro.observe(inner);
+    return () => ro.disconnect();
+  }, [wikiBreadcrumbs, activeTab]);
 
   const colors: ColorTheme = isDark ? style.dark : style.light;
 
@@ -1164,6 +1196,53 @@ export const App = () => {
     } catch {}
   }, [isInline, postId, appState]);
 
+  // Suggest counterpart: a suggester opening the editor from the collapsed view
+  // stashes the page, pops out, and the expanded view resumes into propose mode.
+  useEffect(() => {
+    if (isInline || !postId || appState !== "ready") return;
+    try {
+      const pending = localStorage.getItem(`echowiki:suggestPage:${postId}`);
+      if (pending) {
+        localStorage.removeItem(`echowiki:suggestPage:${postId}`);
+        setWikiCurrentPage(pending);
+        setPendingSuggestPage(pending);
+        setActiveTab("wiki");
+      }
+    } catch {}
+  }, [isInline, postId, appState]);
+
+  // Breadcrumb Edit/Suggest entry points. In the expanded view they open the
+  // editor directly (via the pending* props consumed by WikiView); in the
+  // collapsed view they first pop out to the expanded view.
+  const handleBreadcrumbEdit = useCallback(
+    (e: ReactMouseEvent) => {
+      if (isInline) handleInlineEditRequest(e.nativeEvent);
+      else setPendingEditPage(wikiCurrentPage);
+    },
+    [isInline, handleInlineEditRequest, wikiCurrentPage],
+  );
+
+  const handleBreadcrumbSuggest = useCallback(
+    (e: ReactMouseEvent) => {
+      if (isInline) {
+        try {
+          localStorage.setItem(
+            `echowiki:suggestPage:${postId}`,
+            wikiCurrentPage,
+          );
+        } catch {}
+        if (getWebViewMode() !== "expanded") {
+          try {
+            requestExpandedMode(e.nativeEvent, "app");
+          } catch {}
+        }
+      } else {
+        setPendingSuggestPage(wikiCurrentPage);
+      }
+    },
+    [isInline, postId, wikiCurrentPage],
+  );
+
   return (
     <div
       className="flex flex-col h-screen"
@@ -1752,106 +1831,158 @@ export const App = () => {
             {activeTab === "wiki" && (
               <div
                 ref={breadcrumbBarRef}
-                className="absolute left-0 right-0 top-full flex items-center gap-1 px-4 py-1 text-xs border-b border-gray-100 overflow-visible"
+                className="absolute left-0 right-0 top-full flex items-center gap-2 px-4 py-1 text-xs border-b border-gray-100 overflow-visible"
                 style={{
                   backgroundColor: "var(--bg)",
                   opacity: showBreadcrumb ? 1 : 0,
+                  transform: showBreadcrumb
+                    ? "translateY(0)"
+                    : "translateY(-4px)",
                   pointerEvents: showBreadcrumb ? "auto" : "none",
-                  transition: "opacity 0.15s ease",
-                  borderBottomColor: showBreadcrumb ? undefined : "transparent",
+                  transition: "opacity 0.15s ease, transform 0.15s ease",
                 }}
                 onMouseEnter={cancelBreadcrumbHide}
                 onMouseLeave={handleBreadcrumbBarLeave}
               >
-                {wikiBreadcrumbs.map((crumb, i) => (
-                  <Fragment key={crumb.page}>
-                    {i > 0 && (
-                      <span className="text-[var(--text-muted)] mx-0.5">
-                        &gt;
-                      </span>
-                    )}
-                    <button
-                      className={`px-1.5 py-0.5 rounded transition-colors cursor-pointer ${
-                        i === wikiBreadcrumbs.length - 1
-                          ? "font-medium text-[var(--text)]"
-                          : "text-[var(--text-muted)] hover:text-[var(--text)]"
-                      }`}
-                      onClick={() => setWikiCurrentPage(crumb.page)}
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        handleCopyEchoLink(
-                          `echolink://r/${subredditName}/wiki/${crumb.page}`,
-                        );
-                      }}
-                    >
-                      {crumb.label}
-                    </button>
-                    {crumb.siblings.length > 0 && (
-                      <div className="relative">
+                {/* Crumb trail: when it overflows, the start is clipped (start
+                    elided via the fade mask) so the current page stays visible
+                    next to the Edit button. */}
+                <div
+                  ref={crumbsViewportRef}
+                  className="flex-1 min-w-0 flex"
+                  style={{
+                    overflowX: "clip",
+                    justifyContent: crumbsTruncated ? "flex-end" : "flex-start",
+                    WebkitMaskImage: crumbsTruncated
+                      ? "linear-gradient(to right, transparent 0, black 28px)"
+                      : undefined,
+                    maskImage: crumbsTruncated
+                      ? "linear-gradient(to right, transparent 0, black 28px)"
+                      : undefined,
+                  }}
+                >
+                  <div
+                    ref={crumbsInnerRef}
+                    className="inline-flex items-center whitespace-nowrap"
+                  >
+                    {wikiBreadcrumbs.map((crumb, i) => (
+                      <Fragment key={crumb.page}>
+                        {i > 0 && (
+                          <span className="text-[var(--text-muted)] mx-0.5">
+                            &gt;
+                          </span>
+                        )}
                         <button
-                          className="text-[var(--text-muted)] hover:text-[var(--text)] px-1.5 py-0.5 -my-0.5 cursor-pointer"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setOpenBreadcrumbDropdown(
-                              openBreadcrumbDropdown === i ? null : i,
-                            );
-                          }}
+                          className={`px-1.5 py-0.5 rounded transition-colors cursor-pointer ${
+                            i === wikiBreadcrumbs.length - 1
+                              ? "font-medium text-[var(--text)]"
+                              : "text-[var(--text-muted)] hover:text-[var(--text)]"
+                          }`}
+                          onClick={() => setWikiCurrentPage(crumb.page)}
                           onContextMenu={(e) => {
                             e.preventDefault();
-                            e.stopPropagation();
                             handleCopyEchoLink(
                               `echolink://r/${subredditName}/wiki/${crumb.page}`,
                             );
                           }}
                         >
-                          &#9662;
+                          {crumb.label}
                         </button>
-                        {openBreadcrumbDropdown === i && (
-                          <div
-                            className="absolute top-full left-0 z-50 mt-1 py-1 rounded-lg shadow-lg border border-gray-200 min-w-[140px]"
-                            style={{ backgroundColor: "var(--bg)" }}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            {crumb.siblings.map((sib) => {
-                              const sibLabel = sib
-                                .split("/")
-                                .pop()!
-                                .replace(/_/g, " ")
-                                .replace(/\b\w/g, (c) => c.toUpperCase());
-                              return (
-                                <button
-                                  key={sib}
-                                  className="w-full text-left text-xs px-3 py-1.5 cursor-pointer text-[var(--text)]"
-                                  style={{ backgroundColor: "transparent" }}
-                                  onMouseEnter={(e) =>
-                                    (e.currentTarget.style.backgroundColor =
-                                      "var(--thumb-bg)")
-                                  }
-                                  onMouseLeave={(e) =>
-                                    (e.currentTarget.style.backgroundColor =
-                                      "transparent")
-                                  }
-                                  onClick={() => {
-                                    setWikiCurrentPage(sib);
-                                    setOpenBreadcrumbDropdown(null);
-                                  }}
-                                  onContextMenu={(e) => {
-                                    e.preventDefault();
-                                    handleCopyEchoLink(
-                                      `echolink://r/${subredditName}/wiki/${sib}`,
-                                    );
-                                  }}
-                                >
-                                  {sibLabel}
-                                </button>
-                              );
-                            })}
+                        {crumb.siblings.length > 0 && (
+                          <div className="relative">
+                            <button
+                              className="text-[var(--text-muted)] hover:text-[var(--text)] px-1.5 py-0.5 -my-0.5 cursor-pointer"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpenBreadcrumbDropdown(
+                                  openBreadcrumbDropdown === i ? null : i,
+                                );
+                              }}
+                              onContextMenu={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleCopyEchoLink(
+                                  `echolink://r/${subredditName}/wiki/${crumb.page}`,
+                                );
+                              }}
+                            >
+                              &#9662;
+                            </button>
+                            {openBreadcrumbDropdown === i && (
+                              <div
+                                className="absolute top-full right-0 z-50 mt-1 py-1 rounded-lg shadow-lg border border-gray-200 min-w-[140px]"
+                                style={{ backgroundColor: "var(--bg)" }}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {crumb.siblings.map((sib) => {
+                                  const sibLabel = sib
+                                    .split("/")
+                                    .pop()!
+                                    .replace(/_/g, " ")
+                                    .replace(/\b\w/g, (c) => c.toUpperCase());
+                                  return (
+                                    <button
+                                      key={sib}
+                                      className="w-full text-left text-xs px-3 py-1.5 cursor-pointer text-[var(--text)]"
+                                      style={{ backgroundColor: "transparent" }}
+                                      onMouseEnter={(e) =>
+                                        (e.currentTarget.style.backgroundColor =
+                                          "var(--thumb-bg)")
+                                      }
+                                      onMouseLeave={(e) =>
+                                        (e.currentTarget.style.backgroundColor =
+                                          "transparent")
+                                      }
+                                      onClick={() => {
+                                        setWikiCurrentPage(sib);
+                                        setOpenBreadcrumbDropdown(null);
+                                      }}
+                                      onContextMenu={(e) => {
+                                        e.preventDefault();
+                                        handleCopyEchoLink(
+                                          `echolink://r/${subredditName}/wiki/${sib}`,
+                                        );
+                                      }}
+                                    >
+                                      {sibLabel}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
                         )}
-                      </div>
+                      </Fragment>
+                    ))}
+                  </div>
+                </div>
+                {(isMod || canSuggest) && !wikiIsEditing && (
+                  <button
+                    onClick={
+                      isMod ? handleBreadcrumbEdit : handleBreadcrumbSuggest
+                    }
+                    title={isMod ? "Edit page" : "Suggest change"}
+                    className={`shrink-0 flex items-center gap-1.5 rounded-md transition-colors cursor-pointer ${
+                      barCompact ? "p-1" : "px-2.5 py-1"
+                    } ${
+                      isMod
+                        ? "bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
+                        : "bg-[var(--thumb-bg)] text-[var(--text)] border border-gray-200 hover:bg-[var(--control-bg)]"
+                    }`}
+                  >
+                    <svg
+                      className="w-3.5 h-3.5 shrink-0"
+                      viewBox="0 0 16 16"
+                      fill="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61Zm.176 4.823L9.75 4.81l-6.286 6.287a.253.253 0 0 0-.064.108l-.558 1.953 1.953-.558a.253.253 0 0 0 .108-.064Zm1.238-3.763a.25.25 0 0 0-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 0 0 0-.354Z" />
+                    </svg>
+                    {!barCompact && (
+                      <span>{isMod ? "Edit page" : "Suggest"}</span>
                     )}
-                  </Fragment>
-                ))}
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -1914,9 +2045,11 @@ export const App = () => {
               suggestionToLoad={suggestionToLoad}
               onSuggestionLoaded={handleSuggestionLoaded}
               onNavigateToSuggestion={handleNavigateToSuggestion}
-              onInlineEditRequest={handleInlineEditRequest}
               startInEditMode={pendingEditPage}
               onStartInEditModeConsumed={() => setPendingEditPage(null)}
+              startInSuggestMode={pendingSuggestPage}
+              onStartInSuggestModeConsumed={() => setPendingSuggestPage(null)}
+              onEditingChange={setWikiIsEditing}
             />
           </div>
 

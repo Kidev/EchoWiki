@@ -54,9 +54,11 @@ export const WikiView = memo(function WikiView({
   suggestionToLoad,
   onSuggestionLoaded,
   onNavigateToSuggestion,
-  onInlineEditRequest,
   startInEditMode,
   onStartInEditModeConsumed,
+  startInSuggestMode,
+  onStartInSuggestModeConsumed,
+  onEditingChange,
 }: {
   subredditName: string;
   wikiFontSize: WikiFontSize;
@@ -75,9 +77,11 @@ export const WikiView = memo(function WikiView({
   onNavigateToSuggestion?:
     | ((page: string, content: string) => void)
     | undefined;
-  onInlineEditRequest?: ((e: MouseEvent) => void) | undefined;
   startInEditMode?: string | null | undefined;
   onStartInEditModeConsumed?: (() => void) | undefined;
+  startInSuggestMode?: string | null | undefined;
+  onStartInSuggestModeConsumed?: (() => void) | undefined;
+  onEditingChange?: ((editing: boolean) => void) | undefined;
 }) {
   const [content, setContent] = useState<string | null | undefined>(undefined);
   const [loading, setLoading] = useState(true);
@@ -373,14 +377,6 @@ export const WikiView = memo(function WikiView({
     setIsProposeMode(true);
   }, [currentPage, content]);
 
-  const handleEditClick = useCallback(() => {
-    gateBeforeEdit(proceedEdit);
-  }, [gateBeforeEdit, proceedEdit]);
-
-  const handleSuggestClick = useCallback(() => {
-    gateBeforeEdit(() => void proceedSuggest());
-  }, [gateBeforeEdit, proceedSuggest]);
-
   const handleResumeDraft = useCallback(() => {
     const d = draftRef.current;
     setShowResumeDialog(false);
@@ -434,9 +430,11 @@ export const WikiView = memo(function WikiView({
     pendingProceedRef.current = null;
   }, []);
 
-  // Inline "edit" button (in the collapsed view) opens the page in the expanded
-  // view already pointed at this page; open the editor once it has loaded, gated
-  // by the single-draft rule like any other edit entry point.
+  // The Edit affordance now lives on the breadcrumb line (App.tsx). It opens the
+  // editor by setting `startInEditMode` to this page; we open the editor once the
+  // page has loaded, gated by the single-draft rule like any other edit entry
+  // point. The collapsed (inline) view routes through the same prop after first
+  // popping out to the expanded view.
   useEffect(() => {
     if (
       !startInEditMode ||
@@ -460,6 +458,38 @@ export const WikiView = memo(function WikiView({
     gateBeforeEdit,
     proceedEdit,
   ]);
+
+  // Suggest counterpart of the above: the breadcrumb "Suggest" button sets
+  // `startInSuggestMode`, opening the propose-mode editor (gated) once loaded.
+  useEffect(() => {
+    if (
+      !startInSuggestMode ||
+      startInSuggestMode !== currentPage ||
+      loading ||
+      content === undefined ||
+      !canSuggest ||
+      !isExpanded
+    )
+      return;
+    onStartInSuggestModeConsumed?.();
+    gateBeforeEdit(() => void proceedSuggest());
+  }, [
+    startInSuggestMode,
+    currentPage,
+    loading,
+    content,
+    canSuggest,
+    isExpanded,
+    onStartInSuggestModeConsumed,
+    gateBeforeEdit,
+    proceedSuggest,
+  ]);
+
+  // Report editing state up so the breadcrumb can hide its Edit button while an
+  // editor is already open on this page.
+  useEffect(() => {
+    onEditingChange?.(isEditing);
+  }, [isEditing, onEditingChange]);
 
   const handleCancelConfirm = useCallback(() => {
     setIsEditing(false);
@@ -605,65 +635,8 @@ export const WikiView = memo(function WikiView({
     }
   }, [content]);
 
-  const canEdit = isMod && isExpanded && !loading;
-  const canSuggestHere = canSuggest && isExpanded && !loading;
-  const canInlineEdit =
-    isMod && !isExpanded && !loading && content !== undefined;
-
   return (
     <div className="relative flex-1 flex flex-col overflow-hidden">
-      {canInlineEdit && (
-        <button
-          onClick={(e) => onInlineEditRequest?.(e.nativeEvent)}
-          title="Edit page (opens expanded)"
-          className="absolute top-2 right-2 z-10 p-1 rounded text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--thumb-bg)] transition-colors cursor-pointer"
-        >
-          <svg
-            className="w-3.5 h-3.5"
-            viewBox="0 0 16 16"
-            fill="currentColor"
-            aria-hidden="true"
-          >
-            <path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61Zm.176 4.823L9.75 4.81l-6.286 6.287a.253.253 0 0 0-.064.108l-.558 1.953 1.953-.558a.253.253 0 0 0 .108-.064Zm1.238-3.763a.25.25 0 0 0-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 0 0 0-.354Z" />
-          </svg>
-        </button>
-      )}
-      {canEdit && !isEditing && (
-        <button
-          onClick={handleEditClick}
-          title="Edit page"
-          className="absolute top-2 right-6 z-10 flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md bg-[var(--accent)] text-white hover:opacity-90 shadow-sm transition-opacity cursor-pointer"
-        >
-          <svg
-            className="w-3.5 h-3.5 shrink-0"
-            viewBox="0 0 16 16"
-            fill="currentColor"
-            aria-hidden="true"
-          >
-            <path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61Zm.176 4.823L9.75 4.81l-6.286 6.287a.253.253 0 0 0-.064.108l-.558 1.953 1.953-.558a.253.253 0 0 0 .108-.064Zm1.238-3.763a.25.25 0 0 0-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 0 0 0-.354Z" />
-          </svg>
-          Edit page
-        </button>
-      )}
-
-      {canSuggestHere && !isEditing && (
-        <button
-          onClick={handleSuggestClick}
-          title="Suggest change"
-          className="absolute top-2 right-6 z-10 flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md bg-[var(--thumb-bg)] text-[var(--text)] hover:opacity-80 shadow-sm transition-opacity cursor-pointer border border-gray-200"
-        >
-          <svg
-            className="w-3.5 h-3.5 shrink-0"
-            viewBox="0 0 16 16"
-            fill="currentColor"
-            aria-hidden="true"
-          >
-            <path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61Zm.176 4.823L9.75 4.81l-6.286 6.287a.253.253 0 0 0-.064.108l-.558 1.953 1.953-.558a.253.253 0 0 0 .108-.064Zm1.238-3.763a.25.25 0 0 0-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 0 0 0-.354Z" />
-          </svg>
-          Suggest change
-        </button>
-      )}
-
       {loading ? (
         <div className="flex justify-center items-center min-h-64">
           <div className="w-10 h-10 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />

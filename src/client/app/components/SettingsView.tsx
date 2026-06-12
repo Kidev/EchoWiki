@@ -29,6 +29,7 @@ import type {
   WikiBanRequest,
   WikiFontSize,
 } from "../../../shared/types/api";
+import { navigateTo } from "@devvit/web/client";
 import { darkenHex } from "../appTypes";
 import { ColorPickerRow, MappingPanel } from "./MappingPanel";
 import { parseMappingText } from "../mappingUtils";
@@ -1345,6 +1346,30 @@ export function SettingsView({
                 Displayed on the home screen below the title.
               </span>
             </div>
+
+            <button
+              onClick={() => {
+                const url = `https://www.reddit.com/mod/${subredditName}/wiki/index`;
+                try {
+                  navigateTo({ url });
+                } catch {
+                  window.open(url, "_blank");
+                }
+              }}
+              className="flex items-center gap-2 self-start text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-[var(--text)] hover:bg-[var(--thumb-bg)] transition-colors cursor-pointer"
+              title={`Open r/${subredditName}'s Wiki moderation page on Reddit`}
+            >
+              <svg
+                className="w-3.5 h-3.5 shrink-0 text-[var(--text-muted)]"
+                viewBox="0 0 16 16"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path d="M10.5 1.75a.75.75 0 0 1 .75-.75h3a.75.75 0 0 1 .75.75v3a.75.75 0 0 1-1.5 0V3.56L8.78 7.78a.75.75 0 0 1-1.06-1.06L11.94 2.5h-1.44a.75.75 0 0 1-.75-.75Z" />
+                <path d="M2.5 3.75A1.75 1.75 0 0 1 4.25 2h3a.75.75 0 0 1 0 1.5h-3a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-3a.75.75 0 0 1 1.5 0v3A1.75 1.75 0 0 1 11.75 13h-7.5A1.75 1.75 0 0 1 2.5 11.25Z" />
+              </svg>
+              Reddit Wiki moderation page
+            </button>
 
             <VersionFooter />
           </div>
