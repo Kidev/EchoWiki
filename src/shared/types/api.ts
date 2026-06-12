@@ -128,6 +128,56 @@ export type WikiPagesResponse = {
   pages: string[];
 };
 
+/** Full wiki page list (including orphaned/unlisted pages); moderators only. */
+export type WikiAllPagesResponse = {
+  type: "wiki-all-pages";
+  pages: string[];
+};
+
+export type WikiCreateRequest = {
+  /** The page the new page is created as a child of. */
+  parentPage: string;
+  /** Human title; the slug is derived from it. */
+  title: string;
+};
+
+export type WikiCreateResponse = {
+  type: "wiki-created";
+  /** Full path of the created page (e.g. "characters/alice"). */
+  page: string;
+  title: string;
+};
+
+export type WikiRevisionInfo = {
+  id: string;
+  author: string;
+  /** Revision timestamp in epoch milliseconds. */
+  timestamp: number;
+  reason: string;
+  hidden: boolean;
+};
+
+export type WikiHistoryResponse = {
+  type: "wiki-history";
+  page: string;
+  revisions: WikiRevisionInfo[];
+};
+
+/** Page content at a specific revision (or null if it couldn't be read). */
+export type WikiRevisionContentResponse = {
+  type: "wiki-revision-content";
+  content: string | null;
+};
+
+export type WikiDeleteRequest = {
+  page: string;
+};
+
+export type WikiDeleteResponse = {
+  type: "wiki-deleted";
+  page: string;
+};
+
 export type MappingResponse = {
   type: "mapping";
   mapping: Record<string, string> | null;

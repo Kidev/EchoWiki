@@ -37,6 +37,14 @@ import type {
   VotingInitResponse,
   WikiFontSize,
   WikiPagesResponse,
+  WikiAllPagesResponse,
+  WikiCreateRequest,
+  WikiCreateResponse,
+  WikiHistoryResponse,
+  WikiRevisionInfo,
+  WikiRevisionContentResponse,
+  WikiDeleteRequest,
+  WikiDeleteResponse,
   WikiSuggestion,
   WikiSuggestionActionRequest,
   WikiSuggestionActionResponse,
@@ -1689,6 +1697,306 @@ router.post<
     const message =
       error instanceof Error
         ? `Failed to update wiki: ${error.message}`
+        : "Unknown error";
+    res.status(400).json({ status: "error", message });
+  }
+});
+
+// Append a markdown bullet linking a freshly-created page from the wiki index so
+// it doesn't start life orphaned. No-ops if the index already links the page.
+async function addPageToIndex(
+  subreddit: string,
+  page: string,
+  title: string,
+  username: string,
+): Promise<void> {
+  let indexContent = "";
+  try {
+    const idx = await reddit.getWikiPage(subreddit, "index");
+    indexContent = idx.content ?? "";
+  } catch {}
+  if (indexContent.includes(`/wiki/${page})`)) return;
+  const link = `- [${title}](/r/${subreddit}/wiki/${page})`;
+  const newContent =
+    (indexContent.trim() ? `${indexContent.trimEnd()}\n` : "") + `${link}\n`;
+  await reddit.updateWikiPage({
+    subredditName: subreddit,
+    page: "index",
+    content: newContent,
+    reason: `${username}: linked ${page} via EchoWiki`,
+  });
+}
+
+// Drop any index list line whose link targets `page` (our created-page link
+// format). Used when a page is deleted so it disappears from navigation.
+async function removePageFromIndex(
+  subreddit: string,
+  page: string,
+  username: string,
+): Promise<void> {
+  let indexContent = "";
+  try {
+    const idx = await reddit.getWikiPage(subreddit, "index");
+    indexContent = idx.content ?? "";
+  } catch {
+    return;
+  }
+  if (!indexContent.includes(`/wiki/${page})`)) return;
+  const lines = indexContent.split("\n");
+  const kept = lines.filter((l) => !l.includes(`/wiki/${page})`));
+  if (kept.length === lines.length) return;
+  await reddit.updateWikiPage({
+    subredditName: subreddit,
+    page: "index",
+    content: kept.join("\n"),
+    reason: `${username}: unlinked ${page} via EchoWiki`,
+  });
+}
+
+// Full wiki page list (including orphaned/unlisted pages) for the "all pages"
+// dropdown. Unlike /api/wiki/pages this skips the existence probe and 50-item
+// cap so everyone can reach every page.
+router.get<Record<string, never>, WikiAllPagesResponse | ErrorResponse>(
+  "/api/wiki/all-pages",
+  async (_req, res): Promise<void> => {
+    try {
+      const subreddit = context.subredditName;
+      if (!subreddit) {
+        res.status(400).json({
+          status: "error",
+          message: "Subreddit context not available",
+        });
+        return;
+      }
+      const allPages = await reddit.getWikiPages(subreddit);
+      const pages = allPages.filter((p) => !p.startsWith("config/")).sort();
+      res.json({ type: "wiki-all-pages", pages });
+    } catch {
+      res.json({ type: "wiki-all-pages", pages: [] });
+    }
+  },
+);
+
+// Create a child page of `parentPage` and link it from the index. Moderators
+// only. The slug is derived from the title; index children become top-level.
+router.post<
+  Record<string, never>,
+  WikiCreateResponse | ErrorResponse,
+  WikiCreateRequest
+>("/api/wiki/create", async (req, res): Promise<void> => {
+  try {
+    const username = await getCurrentUsername();
+    if (!username) {
+      res.status(401).json({ status: "error", message: "Not logged in" });
+      return;
+    }
+    if (!(await checkIsMod(username))) {
+      res.status(403).json({ status: "error", message: "Not authorized" });
+      return;
+    }
+    const subreddit = context.subredditName;
+    if (!subreddit) {
+      res.status(400).json({
+        status: "error",
+        message: "Subreddit context not available",
+      });
+      return;
+    }
+    const body = req.body as WikiCreateRequest;
+    const title = (body.title ?? "").trim();
+    if (!title) {
+      res.status(400).json({ status: "error", message: "Title is required" });
+      return;
+    }
+    const slug = title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+    if (!slug) {
+      res.status(400).json({
+        status: "error",
+        message: "Title must contain letters or numbers.",
+      });
+      return;
+    }
+    const parent = (body.parentPage ?? "")
+      .trim()
+      .replace(/^\/+|\/+$/g, "")
+      .toLowerCase();
+    const parentPrefix = parent && parent !== "index" ? `${parent}/` : "";
+    const page = `${parentPrefix}${slug}`;
+
+    let exists = false;
+    try {
+      await reddit.getWikiPage(subreddit, page);
+      exists = true;
+    } catch {}
+    if (exists) {
+      res.status(409).json({
+        status: "error",
+        message: `A page already exists at "${page}".`,
+      });
+      return;
+    }
+
+    await reddit.createWikiPage({
+      subredditName: subreddit,
+      page,
+      content: `# ${title}\n`,
+      reason: `${username}: created via EchoWiki`,
+    });
+    await addPageToIndex(subreddit, page, title, username);
+    res.json({ type: "wiki-created", page, title });
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? `Failed to create page: ${error.message}`
+        : "Unknown error";
+    res.status(400).json({ status: "error", message });
+  }
+});
+
+// Revision history for a page (moderators only).
+router.get<Record<string, never>, WikiHistoryResponse | ErrorResponse>(
+  "/api/wiki/history",
+  async (req, res): Promise<void> => {
+    try {
+      const username = await getCurrentUsername();
+      if (!username || !(await checkIsMod(username))) {
+        res.status(403).json({ status: "error", message: "Not authorized" });
+        return;
+      }
+      const subreddit = context.subredditName;
+      if (!subreddit) {
+        res.status(400).json({
+          status: "error",
+          message: "Subreddit context not available",
+        });
+        return;
+      }
+      const page = (req.query["page"] as string) || "index";
+      const listing = reddit.getWikiPageRevisions({
+        subredditName: subreddit,
+        page,
+        limit: 25,
+      });
+      const revs = await listing.get(25);
+      const revisions: WikiRevisionInfo[] = revs.map((r) => {
+        let author = "[unknown]";
+        try {
+          author = r.author?.username ?? "[unknown]";
+        } catch {}
+        return {
+          id: r.id,
+          author,
+          timestamp: r.date instanceof Date ? r.date.getTime() : 0,
+          reason: r.reason ?? "",
+          hidden: r.hidden,
+        };
+      });
+      res.json({ type: "wiki-history", page, revisions });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? `Failed to load history: ${error.message}`
+          : "Unknown error";
+      res.status(400).json({ status: "error", message });
+    }
+  },
+);
+
+// Page content at a specific revision (for the history diff view). Moderators
+// only, matching /api/wiki/history. An empty `id` returns null so the caller can
+// diff a page's first revision against an empty baseline.
+router.get<Record<string, never>, WikiRevisionContentResponse | ErrorResponse>(
+  "/api/wiki/revision",
+  async (req, res): Promise<void> => {
+    try {
+      const username = await getCurrentUsername();
+      if (!username || !(await checkIsMod(username))) {
+        res.status(403).json({ status: "error", message: "Not authorized" });
+        return;
+      }
+      const subreddit = context.subredditName;
+      if (!subreddit) {
+        res.status(400).json({
+          status: "error",
+          message: "Subreddit context not available",
+        });
+        return;
+      }
+      const page = (req.query["page"] as string) || "index";
+      const id = (req.query["id"] as string) || "";
+      if (!id) {
+        res.json({ type: "wiki-revision-content", content: null });
+        return;
+      }
+      const wp = await reddit.getWikiPage(
+        subreddit,
+        page,
+        id as `${string}-${string}-${string}-${string}-${string}`,
+      );
+      res.json({ type: "wiki-revision-content", content: wp.content });
+    } catch {
+      res.json({ type: "wiki-revision-content", content: null });
+    }
+  },
+);
+
+// "Delete" a page: Reddit has no hard delete, so we tombstone the content,
+// unlist it, and remove its index link. Moderators only; the index is protected.
+router.post<
+  Record<string, never>,
+  WikiDeleteResponse | ErrorResponse,
+  WikiDeleteRequest
+>("/api/wiki/delete", async (req, res): Promise<void> => {
+  try {
+    const username = await getCurrentUsername();
+    if (!username) {
+      res.status(401).json({ status: "error", message: "Not logged in" });
+      return;
+    }
+    if (!(await checkIsMod(username))) {
+      res.status(403).json({ status: "error", message: "Not authorized" });
+      return;
+    }
+    const subreddit = context.subredditName;
+    if (!subreddit) {
+      res.status(400).json({
+        status: "error",
+        message: "Subreddit context not available",
+      });
+      return;
+    }
+    const body = req.body as WikiDeleteRequest;
+    const page = (body.page ?? "").trim().replace(/^\/+|\/+$/g, "");
+    if (!page || page === "index") {
+      res
+        .status(400)
+        .json({ status: "error", message: "This page cannot be deleted." });
+      return;
+    }
+    await reddit.updateWikiPage({
+      subredditName: subreddit,
+      page,
+      content: "_This page has been deleted._",
+      reason: `${username}: deleted via EchoWiki`,
+    });
+    try {
+      const settings = await reddit.getWikiPageSettings(subreddit, page);
+      await reddit.updateWikiPageSettings({
+        subredditName: subreddit,
+        page,
+        listed: false,
+        permLevel: settings.permLevel,
+      });
+    } catch {}
+    await removePageFromIndex(subreddit, page, username);
+    res.json({ type: "wiki-deleted", page });
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? `Failed to delete page: ${error.message}`
         : "Unknown error";
     res.status(400).json({ status: "error", message });
   }

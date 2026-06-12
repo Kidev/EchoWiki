@@ -32,7 +32,14 @@ import type {
   SubredditAppearance,
   VotingInitResponse,
   WikiPagesResponse,
+  WikiAllPagesResponse,
+  WikiCreateRequest,
+  WikiCreateResponse,
+  WikiHistoryResponse,
+  WikiRevisionInfo,
+  WikiRevisionContentResponse,
   WikiResponse,
+  ErrorResponse,
 } from "../../shared/types/api";
 import {
   hasAssets,
@@ -87,6 +94,7 @@ function matchesFilter(p: string, f: FilterType): boolean {
 }
 import { extractEchoPathsFromMarkdown } from "./echoRender";
 import { EchoLinkDialog } from "./components/EchoLinkDialog";
+import { SideBySideDiffView } from "./components/DiffView";
 import { parseEchoLink } from "./wikiLinks";
 import { WikiView } from "./components/WikiView";
 import {
@@ -208,6 +216,26 @@ export const App = () => {
   const [openBreadcrumbDropdown, setOpenBreadcrumbDropdown] = useState<
     number | null
   >(null);
+  // Mod page-management state (Index "all pages" dropdown, ⋯ menu, add-page and
+  // history dialogs). All gated to moderators.
+  const [allPages, setAllPages] = useState<string[] | null>(null);
+  const [allPagesLoading, setAllPagesLoading] = useState(false);
+  const [showModMenu, setShowModMenu] = useState(false);
+  const modMenuRef = useRef<HTMLDivElement>(null);
+  const [showAddPageDialog, setShowAddPageDialog] = useState(false);
+  const [addPageTitle, setAddPageTitle] = useState("");
+  const [addPageError, setAddPageError] = useState<string | null>(null);
+  const [addPageBusy, setAddPageBusy] = useState(false);
+  const [historyPage, setHistoryPage] = useState<string | null>(null);
+  const [historyRevisions, setHistoryRevisions] = useState<
+    WikiRevisionInfo[] | null
+  >(null);
+  // Per-revision diff view inside the history modal. `diffRev` is the revision
+  // being inspected; the diff is `previous revision -> diffRev`.
+  const [diffRev, setDiffRev] = useState<WikiRevisionInfo | null>(null);
+  const [diffOriginal, setDiffOriginal] = useState<string | null>(null);
+  const [diffProposed, setDiffProposed] = useState<string | null>(null);
+  const [diffLoading, setDiffLoading] = useState(false);
   const breadcrumbBarRef = useRef<HTMLDivElement>(null);
   const topBarRef = useRef<HTMLDivElement>(null);
   const breadcrumbHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -1243,6 +1271,164 @@ export const App = () => {
     [isInline, postId, wikiCurrentPage],
   );
 
+  const refreshWikiPages = useCallback(async () => {
+    try {
+      const res = await fetch("/api/wiki/pages");
+      if (res.ok) {
+        const data: WikiPagesResponse = await res.json();
+        setWikiPages(data.pages);
+      }
+    } catch {}
+  }, []);
+
+  // Lazily load the full page list (incl. orphans) the first time a mod opens
+  // the Index "all pages" dropdown.
+  const loadAllPages = useCallback(async () => {
+    setAllPagesLoading(true);
+    try {
+      const res = await fetch("/api/wiki/all-pages");
+      if (res.ok) {
+        const data: WikiAllPagesResponse = await res.json();
+        setAllPages(data.pages);
+      } else {
+        setAllPages([]);
+      }
+    } catch {
+      setAllPages([]);
+    } finally {
+      setAllPagesLoading(false);
+    }
+  }, []);
+
+  const handleCreatePage = useCallback(async () => {
+    const title = addPageTitle.trim();
+    if (!title) {
+      setAddPageError("Enter a title.");
+      return;
+    }
+    setAddPageBusy(true);
+    setAddPageError(null);
+    try {
+      const body: WikiCreateRequest = {
+        parentPage: wikiCurrentPage,
+        title,
+      };
+      const res = await fetch("/api/wiki/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = (await res.json()) as ErrorResponse;
+        setAddPageError(err.message ?? "Failed to create page.");
+        return;
+      }
+      const data = (await res.json()) as WikiCreateResponse;
+      setShowAddPageDialog(false);
+      setAddPageTitle("");
+      setAllPages(null); // invalidate cached list
+      await refreshWikiPages();
+      setWikiCurrentPage(data.page);
+      setActiveTab("wiki");
+      showToast("Page created");
+    } catch {
+      setAddPageError("Network error. Please try again.");
+    } finally {
+      setAddPageBusy(false);
+    }
+  }, [addPageTitle, wikiCurrentPage, refreshWikiPages]);
+
+  // Open the history dialog for the current page and fetch its revisions.
+  const handleShowHistory = useCallback(async () => {
+    setShowModMenu(false);
+    setHistoryPage(wikiCurrentPage);
+    setHistoryRevisions(null);
+    try {
+      const res = await fetch(
+        `/api/wiki/history?page=${encodeURIComponent(wikiCurrentPage)}`,
+      );
+      if (res.ok) {
+        const data: WikiHistoryResponse = await res.json();
+        setHistoryRevisions(data.revisions);
+      } else {
+        setHistoryRevisions([]);
+      }
+    } catch {
+      setHistoryRevisions([]);
+    }
+  }, [wikiCurrentPage]);
+
+  const closeHistory = useCallback(() => {
+    setHistoryPage(null);
+    setHistoryRevisions(null);
+    setDiffRev(null);
+    setDiffOriginal(null);
+    setDiffProposed(null);
+  }, []);
+
+  // Load and show the diff for a revision: previous revision (older) -> this one.
+  const handleShowRevisionDiff = useCallback(
+    async (rev: WikiRevisionInfo, prevRev: WikiRevisionInfo | undefined) => {
+      if (!historyPage) return;
+      setDiffRev(rev);
+      setDiffLoading(true);
+      setDiffOriginal(null);
+      setDiffProposed(null);
+      const fetchRev = async (id: string): Promise<string> => {
+        try {
+          const res = await fetch(
+            `/api/wiki/revision?page=${encodeURIComponent(historyPage)}&id=${encodeURIComponent(id)}`,
+          );
+          if (!res.ok) return "";
+          const data: WikiRevisionContentResponse = await res.json();
+          return data.content ?? "";
+        } catch {
+          return "";
+        }
+      };
+      try {
+        const [thisContent, prevContent] = await Promise.all([
+          fetchRev(rev.id),
+          prevRev ? fetchRev(prevRev.id) : Promise.resolve(""),
+        ]);
+        setDiffOriginal(prevContent);
+        setDiffProposed(thisContent);
+      } finally {
+        setDiffLoading(false);
+      }
+    },
+    [historyPage],
+  );
+
+  // When a page is deleted from the editor, drop it from caches and return to
+  // the parent (or index).
+  const handlePageDeleted = useCallback(
+    (page: string) => {
+      setAllPages(null);
+      void refreshWikiPages();
+      const parent = page.includes("/")
+        ? page.slice(0, page.lastIndexOf("/"))
+        : "index";
+      setWikiCurrentPage(parent);
+    },
+    [refreshWikiPages],
+  );
+
+  // Close the mod ⋯ menu on outside click.
+  useEffect(() => {
+    if (!showModMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (
+        modMenuRef.current &&
+        !modMenuRef.current.contains(e.target as Node)
+      ) {
+        setShowModMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showModMenu]);
+
   return (
     <div
       className="flex flex-col h-screen"
@@ -1285,6 +1471,200 @@ export const App = () => {
           }
           onCopyLink={handleCopyEchoLink}
         />
+      )}
+
+      {showAddPageDialog && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={() => {
+            if (!addPageBusy) setShowAddPageDialog(false);
+          }}
+        >
+          <div
+            className="bg-[var(--bg)] rounded-lg shadow-2xl p-6 max-w-sm w-full mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="font-semibold text-[var(--text)] mb-1">
+              Add child page
+            </h3>
+            <p className="text-sm text-[var(--text-muted)] mb-4">
+              Creates a page under{" "}
+              <span className="font-mono text-xs">{wikiCurrentPage}</span> and
+              links it from the index.
+            </p>
+            <input
+              type="text"
+              value={addPageTitle}
+              onChange={(e) => {
+                setAddPageTitle(e.target.value);
+                setAddPageError(null);
+              }}
+              placeholder="Page title"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void handleCreatePage();
+                if (e.key === "Escape" && !addPageBusy)
+                  setShowAddPageDialog(false);
+              }}
+              className="w-full text-sm px-3 py-2 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)] mb-3"
+            />
+            {addPageError && (
+              <p className="text-xs text-red-500 mb-3">{addPageError}</p>
+            )}
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowAddPageDialog(false)}
+                disabled={addPageBusy}
+                className="text-sm px-3 py-1.5 rounded border border-gray-300 text-[var(--text-muted)] hover:bg-[var(--control-bg)] transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void handleCreatePage()}
+                disabled={addPageBusy || !addPageTitle.trim()}
+                className="text-sm px-3 py-1.5 rounded bg-[var(--accent)] text-white hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50"
+              >
+                {addPageBusy ? "Creating..." : "Create"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {historyPage !== null && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={closeHistory}
+        >
+          <div
+            className={`bg-[var(--bg)] rounded-lg shadow-2xl w-full mx-4 max-h-[85vh] flex flex-col ${
+              diffRev ? "max-w-3xl" : "max-w-md"
+            }`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between gap-2">
+              {diffRev ? (
+                <button
+                  onClick={() => {
+                    setDiffRev(null);
+                    setDiffOriginal(null);
+                    setDiffProposed(null);
+                  }}
+                  className="shrink-0 flex items-center gap-1 text-sm text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    viewBox="0 0 16 16"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path d="M9.78 4.22a.75.75 0 0 1 0 1.06L7.06 8l2.72 2.72a.75.75 0 1 1-1.06 1.06L5.47 8.53a.75.75 0 0 1 0-1.06l3.25-3.25a.75.75 0 0 1 1.06 0Z" />
+                  </svg>
+                  History
+                </button>
+              ) : (
+                <h3 className="font-semibold text-[var(--text)] shrink-0">
+                  History
+                </h3>
+              )}
+              <span className="text-xs font-mono text-[var(--text-muted)] truncate">
+                {historyPage}
+              </span>
+            </div>
+
+            {diffRev ? (
+              <div className="flex-1 min-h-0 flex flex-col">
+                <div className="px-5 py-2 border-b border-gray-100 text-[11px] text-[var(--text-muted)]">
+                  <span className="font-medium text-[var(--text)]">
+                    u/{diffRev.author}
+                  </span>
+                  {diffRev.timestamp
+                    ? ` · ${new Date(diffRev.timestamp).toLocaleString()}`
+                    : ""}
+                  {diffRev.reason ? ` · ${diffRev.reason}` : ""}
+                </div>
+                <div className="flex-1 min-h-0">
+                  {diffLoading ||
+                  diffOriginal === null ||
+                  diffProposed === null ? (
+                    <div className="flex justify-center py-10">
+                      <div className="w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  ) : (
+                    <SideBySideDiffView
+                      original={diffOriginal}
+                      proposed={diffProposed}
+                    />
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="overflow-auto p-2">
+                {historyRevisions === null ? (
+                  <div className="flex justify-center py-8">
+                    <div className="w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+                  </div>
+                ) : historyRevisions.length === 0 ? (
+                  <p className="text-sm text-[var(--text-muted)] text-center py-8">
+                    No revisions found.
+                  </p>
+                ) : (
+                  <ul className="flex flex-col">
+                    {historyRevisions.map((r, idx) => (
+                      <li
+                        key={r.id}
+                        className="px-3 py-2 rounded hover:bg-[var(--thumb-bg)] transition-colors flex items-start justify-between gap-2"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium text-[var(--text)]">
+                              u/{r.author}
+                              {r.hidden && (
+                                <span className="ml-1.5 text-[10px] text-[var(--text-muted)]">
+                                  (hidden)
+                                </span>
+                              )}
+                            </span>
+                            <span className="text-[10px] text-[var(--text-muted)]">
+                              {r.timestamp
+                                ? new Date(r.timestamp).toLocaleString()
+                                : ""}
+                            </span>
+                          </div>
+                          {r.reason && (
+                            <p className="text-[11px] text-[var(--text-muted)] mt-0.5 break-words">
+                              {r.reason}
+                            </p>
+                          )}
+                        </div>
+                        <button
+                          onClick={() =>
+                            void handleShowRevisionDiff(
+                              r,
+                              historyRevisions[idx + 1],
+                            )
+                          }
+                          className="shrink-0 text-[11px] px-2 py-0.5 rounded border border-gray-300 text-[var(--text-muted)] hover:bg-[var(--control-bg)] hover:text-[var(--text)] transition-colors cursor-pointer"
+                        >
+                          Diff
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+
+            <div className="px-5 py-3 border-t border-gray-100 flex justify-end">
+              <button
+                onClick={closeHistory}
+                className="text-sm px-3 py-1.5 rounded border border-gray-300 text-[var(--text-muted)] hover:bg-[var(--control-bg)] transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {previewPath && (
@@ -1888,15 +2268,22 @@ export const App = () => {
                         >
                           {crumb.label}
                         </button>
-                        {crumb.siblings.length > 0 && (
+                        {(crumb.siblings.length > 0 || i === 0) && (
                           <div className="relative">
                             <button
                               className="text-[var(--text-muted)] hover:text-[var(--text)] px-1.5 py-0.5 -my-0.5 cursor-pointer"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setOpenBreadcrumbDropdown(
-                                  openBreadcrumbDropdown === i ? null : i,
-                                );
+                                const opening = openBreadcrumbDropdown !== i;
+                                setOpenBreadcrumbDropdown(opening ? i : null);
+                                if (
+                                  opening &&
+                                  i === 0 &&
+                                  allPages === null &&
+                                  !allPagesLoading
+                                ) {
+                                  void loadAllPages();
+                                }
                               }}
                               onContextMenu={(e) => {
                                 e.preventDefault();
@@ -1908,54 +2295,171 @@ export const App = () => {
                             >
                               &#9662;
                             </button>
-                            {openBreadcrumbDropdown === i && (
-                              <div
-                                className="absolute top-full right-0 z-50 mt-1 py-1 rounded-lg shadow-lg border border-gray-200 min-w-[140px]"
-                                style={{ backgroundColor: "var(--bg)" }}
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                {crumb.siblings.map((sib) => {
-                                  const sibLabel = sib
-                                    .split("/")
-                                    .pop()!
-                                    .replace(/_/g, " ")
-                                    .replace(/\b\w/g, (c) => c.toUpperCase());
-                                  return (
-                                    <button
-                                      key={sib}
-                                      className="w-full text-left text-xs px-3 py-1.5 cursor-pointer text-[var(--text)]"
-                                      style={{ backgroundColor: "transparent" }}
-                                      onMouseEnter={(e) =>
-                                        (e.currentTarget.style.backgroundColor =
-                                          "var(--thumb-bg)")
-                                      }
-                                      onMouseLeave={(e) =>
-                                        (e.currentTarget.style.backgroundColor =
-                                          "transparent")
-                                      }
-                                      onClick={() => {
-                                        setWikiCurrentPage(sib);
-                                        setOpenBreadcrumbDropdown(null);
-                                      }}
-                                      onContextMenu={(e) => {
-                                        e.preventDefault();
-                                        handleCopyEchoLink(
-                                          `echolink://r/${subredditName}/wiki/${sib}`,
+                            {openBreadcrumbDropdown === i &&
+                              (i === 0 ? (
+                                <div
+                                  className="absolute top-full left-0 z-50 mt-1 py-1 rounded-lg shadow-lg border border-gray-200 min-w-[160px] max-w-[260px] max-h-64 overflow-y-auto overflow-x-hidden whitespace-normal"
+                                  style={{ backgroundColor: "var(--bg)" }}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {allPagesLoading || allPages === null ? (
+                                    <div className="px-3 py-1.5 text-xs text-[var(--text-muted)]">
+                                      Loading...
+                                    </div>
+                                  ) : allPages.length === 0 ? (
+                                    <div className="px-3 py-1.5 text-xs text-[var(--text-muted)]">
+                                      No pages
+                                    </div>
+                                  ) : (
+                                    allPages.map((p) => {
+                                      const label = p
+                                        .replace(/_/g, " ")
+                                        .replace(/\//g, " / ")
+                                        .replace(/\b\w/g, (c) =>
+                                          c.toUpperCase(),
                                         );
-                                      }}
-                                    >
-                                      {sibLabel}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            )}
+                                      return (
+                                        <button
+                                          key={p}
+                                          title={p}
+                                          className="block w-full text-left text-xs px-3 py-1 cursor-pointer text-[var(--text)] truncate"
+                                          style={{
+                                            backgroundColor:
+                                              p === wikiCurrentPage
+                                                ? "var(--thumb-bg)"
+                                                : "transparent",
+                                          }}
+                                          onMouseEnter={(e) =>
+                                            (e.currentTarget.style.backgroundColor =
+                                              "var(--thumb-bg)")
+                                          }
+                                          onMouseLeave={(e) =>
+                                            (e.currentTarget.style.backgroundColor =
+                                              p === wikiCurrentPage
+                                                ? "var(--thumb-bg)"
+                                                : "transparent")
+                                          }
+                                          onClick={() => {
+                                            setWikiCurrentPage(p);
+                                            setOpenBreadcrumbDropdown(null);
+                                          }}
+                                          onContextMenu={(e) => {
+                                            e.preventDefault();
+                                            handleCopyEchoLink(
+                                              `echolink://r/${subredditName}/wiki/${p}`,
+                                            );
+                                          }}
+                                        >
+                                          {label}
+                                        </button>
+                                      );
+                                    })
+                                  )}
+                                </div>
+                              ) : (
+                                <div
+                                  className={`absolute top-full ${i === 0 ? "left-0" : "right-0"} z-50 mt-1 py-1 rounded-lg shadow-lg border border-gray-200 min-w-[140px] whitespace-normal`}
+                                  style={{ backgroundColor: "var(--bg)" }}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {crumb.siblings.map((sib) => {
+                                    const sibLabel = sib
+                                      .split("/")
+                                      .pop()!
+                                      .replace(/_/g, " ")
+                                      .replace(/\b\w/g, (c) => c.toUpperCase());
+                                    return (
+                                      <button
+                                        key={sib}
+                                        className="w-full text-left text-xs px-3 py-1.5 cursor-pointer text-[var(--text)]"
+                                        style={{
+                                          backgroundColor: "transparent",
+                                        }}
+                                        onMouseEnter={(e) =>
+                                          (e.currentTarget.style.backgroundColor =
+                                            "var(--thumb-bg)")
+                                        }
+                                        onMouseLeave={(e) =>
+                                          (e.currentTarget.style.backgroundColor =
+                                            "transparent")
+                                        }
+                                        onClick={() => {
+                                          setWikiCurrentPage(sib);
+                                          setOpenBreadcrumbDropdown(null);
+                                        }}
+                                        onContextMenu={(e) => {
+                                          e.preventDefault();
+                                          handleCopyEchoLink(
+                                            `echolink://r/${subredditName}/wiki/${sib}`,
+                                          );
+                                        }}
+                                      >
+                                        {sibLabel}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              ))}
                           </div>
                         )}
                       </Fragment>
                     ))}
                   </div>
                 </div>
+                {isMod && (
+                  <div ref={modMenuRef} className="relative shrink-0">
+                    <button
+                      onClick={() => setShowModMenu((v) => !v)}
+                      title="Page actions"
+                      className="flex items-center rounded-md px-1.5 py-1 text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--thumb-bg)] transition-colors cursor-pointer"
+                    >
+                      <svg
+                        className="w-4 h-4"
+                        viewBox="0 0 16 16"
+                        fill="currentColor"
+                        aria-hidden="true"
+                      >
+                        <path d="M4 8a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm5.5 0a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM14 9.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" />
+                      </svg>
+                    </button>
+                    {showModMenu && (
+                      <div
+                        className="absolute top-full right-0 z-50 mt-1 py-1 rounded-lg shadow-lg border border-gray-200 min-w-[170px]"
+                        style={{ backgroundColor: "var(--bg)" }}
+                      >
+                        <button
+                          className="w-full text-left text-xs px-3 py-1.5 cursor-pointer text-[var(--text)] hover:bg-[var(--thumb-bg)] transition-colors flex items-center gap-2"
+                          onClick={() => {
+                            setShowModMenu(false);
+                            setAddPageTitle("");
+                            setAddPageError(null);
+                            setShowAddPageDialog(true);
+                          }}
+                        >
+                          <span className="text-[var(--accent)] font-bold">
+                            +
+                          </span>
+                          Add child page
+                        </button>
+                        <button
+                          className="w-full text-left text-xs px-3 py-1.5 cursor-pointer text-[var(--text)] hover:bg-[var(--thumb-bg)] transition-colors flex items-center gap-2"
+                          onClick={() => void handleShowHistory()}
+                        >
+                          <svg
+                            className="w-3.5 h-3.5 text-[var(--text-muted)]"
+                            viewBox="0 0 16 16"
+                            fill="currentColor"
+                            aria-hidden="true"
+                          >
+                            <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0ZM1.5 8a6.5 6.5 0 1 1 13 0 6.5 6.5 0 0 1-13 0Z" />
+                            <path d="M8 3.75a.75.75 0 0 1 .75.75v3.19l2.03 1.17a.75.75 0 1 1-.75 1.3l-2.4-1.39A.75.75 0 0 1 7.25 8V4.5A.75.75 0 0 1 8 3.75Z" />
+                          </svg>
+                          History
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {(isMod || canSuggest) && !wikiIsEditing && (
                   <button
                     onClick={
@@ -2050,6 +2554,7 @@ export const App = () => {
               startInSuggestMode={pendingSuggestPage}
               onStartInSuggestModeConsumed={() => setPendingSuggestPage(null)}
               onEditingChange={setWikiIsEditing}
+              onPageDeleted={handlePageDeleted}
             />
           </div>
 

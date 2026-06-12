@@ -21,6 +21,8 @@ import type {
   WikiDraft,
   WikiDraftRequest,
   WikiDraftResponse,
+  WikiDeleteRequest,
+  WikiDeleteResponse,
   ErrorResponse,
 } from "../../../shared/types/api";
 import { preloadPaths } from "../../lib/echo";
@@ -59,6 +61,7 @@ export const WikiView = memo(function WikiView({
   startInSuggestMode,
   onStartInSuggestModeConsumed,
   onEditingChange,
+  onPageDeleted,
 }: {
   subredditName: string;
   wikiFontSize: WikiFontSize;
@@ -82,6 +85,7 @@ export const WikiView = memo(function WikiView({
   startInSuggestMode?: string | null | undefined;
   onStartInSuggestModeConsumed?: (() => void) | undefined;
   onEditingChange?: ((editing: boolean) => void) | undefined;
+  onPageDeleted?: ((page: string) => void) | undefined;
 }) {
   const [content, setContent] = useState<string | null | undefined>(undefined);
   const [loading, setLoading] = useState(true);
@@ -133,6 +137,17 @@ export const WikiView = memo(function WikiView({
     null | "left" | "right"
   >(null);
   const [createVotePost, setCreateVotePost] = useState(true);
+
+  // Delete-page flow (mods, direct-edit mode only). Requires typing the page
+  // path to confirm, since Reddit can't truly undo a wiki deletion.
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  // Press-and-hold (3s) on the editor's Delete button before the confirm popup
+  // opens. `deleteHolding` drives the fill animation; the timer fires the popup.
+  const [deleteHolding, setDeleteHolding] = useState(false);
+  const deleteHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (proposeViewMode === "diff") setProposeHiddenPane(null);
@@ -504,6 +519,68 @@ export const WikiView = memo(function WikiView({
     void deleteDraft();
   }, [deleteDraft]);
 
+  const startDeleteHold = useCallback(() => {
+    if (deleteHoldTimerRef.current) clearTimeout(deleteHoldTimerRef.current);
+    setDeleteHolding(true);
+    deleteHoldTimerRef.current = setTimeout(() => {
+      deleteHoldTimerRef.current = null;
+      setDeleteHolding(false);
+      setDeleteConfirmText("");
+      setDeleteError(null);
+      setShowDeleteDialog(true);
+    }, 3000);
+  }, []);
+
+  const cancelDeleteHold = useCallback(() => {
+    if (deleteHoldTimerRef.current) {
+      clearTimeout(deleteHoldTimerRef.current);
+      deleteHoldTimerRef.current = null;
+    }
+    setDeleteHolding(false);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (deleteHoldTimerRef.current) clearTimeout(deleteHoldTimerRef.current);
+    },
+    [],
+  );
+
+  const handleDeleteConfirm = useCallback(async () => {
+    if (deleteConfirmText.trim() !== currentPage) {
+      setDeleteError("The text doesn't match the page path.");
+      return;
+    }
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      const body: WikiDeleteRequest = { page: currentPage };
+      const res = await fetch("/api/wiki/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = (await res.json()) as ErrorResponse;
+        setDeleteError(err.message ?? "Failed to delete page.");
+        return;
+      }
+      (await res.json()) as WikiDeleteResponse;
+      setShowDeleteDialog(false);
+      setDeleteConfirmText("");
+      setIsEditing(false);
+      setIsProposeMode(false);
+      setEditContent("");
+      void deleteDraft();
+      showToast("Page deleted");
+      onPageDeleted?.(currentPage);
+    } catch {
+      setDeleteError("Network error. Please try again.");
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [deleteConfirmText, currentPage, deleteDraft, onPageDeleted]);
+
   const handleSaveConfirm = useCallback(async () => {
     if (saveReason.trim().length < 10) {
       setSaveError("Description must be at least 10 characters.");
@@ -737,10 +814,34 @@ export const WikiView = memo(function WikiView({
               className="flex flex-col"
             >
               <div className="px-3 py-1.5 text-xs bg-[var(--thumb-bg)] border-b border-gray-100 shrink-0 select-none flex items-center justify-between sticky top-0 z-10">
-                <span className="font-mono text-[var(--text-muted)]">
+                <span className="font-mono text-[var(--text-muted)] min-w-0 truncate">
                   {isProposeMode ? "Suggesting changes" : "Source"}
                 </span>
                 <div className="flex items-center gap-1.5">
+                  {isMod && !isProposeMode && currentPage !== "index" && (
+                    <button
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        startDeleteHold();
+                      }}
+                      onPointerUp={cancelDeleteHold}
+                      onPointerLeave={cancelDeleteHold}
+                      onPointerCancel={cancelDeleteHold}
+                      title="Hold to delete this page"
+                      className="relative overflow-hidden px-2 py-0.5 rounded border border-red-300 text-red-600 hover:bg-red-50 transition-colors cursor-pointer select-none touch-none"
+                    >
+                      <span
+                        className="absolute top-0 left-0 h-full bg-red-500/30 pointer-events-none"
+                        style={{
+                          width: deleteHolding ? "100%" : "0%",
+                          transition: deleteHolding
+                            ? "width 3s linear"
+                            : "width 0.15s ease",
+                        }}
+                      />
+                      <span className="relative">Delete page</span>
+                    </button>
+                  )}
                   <button
                     onClick={() => setShowCancelDialog(true)}
                     className="px-2 py-0.5 rounded border border-gray-300 text-[var(--text-muted)] hover:bg-[var(--control-bg)] transition-colors cursor-pointer"
@@ -988,6 +1089,67 @@ export const WikiView = memo(function WikiView({
           onCancel={handleCancelElsewhereDraft}
           isDiscarding={isDiscardingDraft}
         />
+      )}
+
+      {showDeleteDialog && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={() => {
+            if (!isDeleting) setShowDeleteDialog(false);
+          }}
+        >
+          <div
+            className="bg-[var(--bg)] rounded-lg shadow-2xl p-6 max-w-sm w-full mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="font-semibold text-red-600 mb-1">Delete page</h3>
+            <p className="text-sm text-[var(--text-muted)] mb-3">
+              This empties the page, unlists it, and removes it from the index.
+              Reddit keeps the revision history, but this can&apos;t be undone
+              from here. To confirm, type the page path:
+            </p>
+            <p className="font-mono text-xs text-[var(--text)] bg-[var(--thumb-bg)] rounded px-2 py-1 mb-3 break-all select-all">
+              {currentPage}
+            </p>
+            <input
+              type="text"
+              value={deleteConfirmText}
+              onChange={(e) => {
+                setDeleteConfirmText(e.target.value);
+                setDeleteError(null);
+              }}
+              placeholder={currentPage}
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void handleDeleteConfirm();
+                if (e.key === "Escape" && !isDeleting)
+                  setShowDeleteDialog(false);
+              }}
+              className="w-full text-sm px-3 py-2 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] placeholder:text-[var(--text-muted)] outline-none focus:border-red-400 mb-3 font-mono"
+            />
+            {deleteError && (
+              <p className="text-xs text-red-500 mb-3">{deleteError}</p>
+            )}
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowDeleteDialog(false)}
+                disabled={isDeleting}
+                className="text-sm px-3 py-1.5 rounded border border-gray-300 text-[var(--text-muted)] hover:bg-[var(--control-bg)] transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void handleDeleteConfirm()}
+                disabled={
+                  isDeleting || deleteConfirmText.trim() !== currentPage
+                }
+                className="text-sm px-3 py-1.5 rounded bg-red-600 text-white hover:bg-red-700 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {isDeleting ? "Deleting..." : "Delete page"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
