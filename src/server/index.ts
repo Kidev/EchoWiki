@@ -458,7 +458,7 @@ async function getVoteStatus(
 
   const statusData: VoteStatusData = statusRaw
     ? (JSON.parse(statusRaw) as VoteStatusData)
-    : { status: "active", decidedAt: null, reason: null };
+    : { status: "active", decidedAt: null, deadlineAt: null, reason: null };
 
   const votes = votesRaw ?? {};
   let acceptCount = 0;
@@ -714,7 +714,7 @@ async function cleanupVotingPost(
   const decidedAt = Date.now();
   await redis.set(
     `voteStatus:${username}`,
-    JSON.stringify({ status: outcome, decidedAt, reason }),
+    JSON.stringify({ status: outcome, decidedAt, deadlineAt: null, reason }),
   );
 
   const existingRaw = await redis
@@ -831,6 +831,96 @@ async function finalizeVote(
     concludedAcceptCount,
     concludedRejectCount,
   );
+}
+
+// Tally the current votes and conclude a time-based vote ("voting deadline
+// reached"). Shared by the scheduler job and the read-time deadline fallback so
+// both apply the identical accept/reject rules.
+async function finalizeVoteByDeadline(
+  username: string,
+  config: GameConfig,
+  votingPostId: string,
+  subredditName: string,
+): Promise<void> {
+  const votesRaw = await redis.hGetAll(`votes:${username}`).catch(() => null);
+  let acceptCount = 0;
+  let rejectCount = 0;
+  for (const raw of Object.values(votesRaw ?? {})) {
+    const colonIdx = raw.indexOf(":");
+    if (colonIdx < 0) continue;
+    const voteType = raw.slice(0, colonIdx);
+    if (voteType === "accept") acceptCount++;
+    else if (voteType === "reject") rejectCount++;
+  }
+  const totalVoters = acceptCount + rejectCount;
+
+  let outcome: "accepted" | "rejected";
+  if (
+    config.votingMinVotersForTiming > 0 &&
+    totalVoters < config.votingMinVotersForTiming
+  ) {
+    outcome = "rejected";
+  } else if (config.votingPercentThreshold > 0) {
+    outcome =
+      totalVoters > 0 &&
+      (acceptCount / totalVoters) * 100 >= config.votingPercentThreshold
+        ? "accepted"
+        : "rejected";
+  } else {
+    outcome = acceptCount > rejectCount ? "accepted" : "rejected";
+  }
+
+  await finalizeVote(
+    username,
+    outcome,
+    "percent_time",
+    votingPostId,
+    subredditName,
+  );
+}
+
+// Read-time fallback: the Devvit scheduler one-off job is the primary driver of
+// time-based conclusion, but it can be delayed or fail to fire, leaving a vote
+// shown as "deadline passed" yet still active. Whenever a voting post is loaded
+// we re-check the deadline here and conclude it on the spot if it has elapsed,
+// so the UI is self-healing regardless of scheduler reliability.
+async function maybeFinalizeExpiredVote(
+  username: string,
+  config: GameConfig,
+  votingPostId: string,
+  subredditName: string,
+): Promise<boolean> {
+  const statusRaw = await redis.get(`voteStatus:${username}`).catch(() => null);
+  if (!statusRaw) return false;
+  let statusData: VoteStatusData;
+  try {
+    statusData = JSON.parse(statusRaw) as VoteStatusData;
+  } catch {
+    return false;
+  }
+  if (statusData.status !== "active") return false;
+
+  let deadlineAt = statusData.deadlineAt ?? null;
+  if (deadlineAt == null) {
+    // Legacy votes stored before deadlineAt existed: derive it from the
+    // suggestion creation time, matching the historical client countdown.
+    if (config.votingDurationDays <= 0) return false;
+    const suggestionRaw = await redis
+      .get(`suggestion:${username}`)
+      .catch(() => null);
+    if (!suggestionRaw) return false;
+    try {
+      const suggestion = JSON.parse(suggestionRaw) as WikiSuggestion;
+      deadlineAt =
+        suggestion.createdAt + config.votingDurationDays * 86400 * 1000;
+    } catch {
+      return false;
+    }
+  }
+  if (Date.now() < deadlineAt) return false;
+
+  await finalizeVoteByDeadline(username, config, votingPostId, subredditName);
+  return true;
 }
 
 async function checkAndMaybeFinalize(
@@ -1090,6 +1180,15 @@ router.get<
       }
 
       const suggestion = JSON.parse(raw) as WikiSuggestion;
+
+      // Self-heal an expired-but-undecided vote before reading its status, so a
+      // simple reload concludes it even if the scheduler job never fired.
+      await maybeFinalizeExpiredVote(
+        suggestionUsername,
+        config,
+        postId,
+        subreddit,
+      ).catch(() => {});
 
       let currentContent = "";
       try {
@@ -2323,7 +2422,15 @@ router.post<
           redis.del(`votes:${username}`),
           redis.set(
             `voteStatus:${username}`,
-            JSON.stringify({ status: "active", decidedAt: null, reason: null }),
+            JSON.stringify({
+              status: "active",
+              decidedAt: null,
+              deadlineAt:
+                config.votingDurationDays > 0
+                  ? now + config.votingDurationDays * 86400 * 1000
+                  : null,
+              reason: null,
+            }),
           ),
         ]);
         const updateDateStr = new Date().toLocaleDateString("en-US", {
@@ -2348,9 +2455,7 @@ router.post<
             id: `vote-deadline-${username}-${Date.now()}`,
             name: "vote-deadline",
             data: { username, postId: existingVotingPostId },
-            runAt: new Date(
-              Date.now() + config.votingDurationDays * 86400 * 1000,
-            ),
+            runAt: new Date(now + config.votingDurationDays * 86400 * 1000),
           } as ScheduledJob);
           await redis.set(`voteJobId:${username}`, jobId);
         }
@@ -2420,6 +2525,10 @@ router.post<
               JSON.stringify({
                 status: "active",
                 decidedAt: null,
+                deadlineAt:
+                  config.votingDurationDays > 0
+                    ? now + config.votingDurationDays * 86400 * 1000
+                    : null,
                 reason: null,
               }),
             ),
@@ -2441,9 +2550,7 @@ router.post<
               id: `vote-deadline-${username}-${Date.now()}`,
               name: "vote-deadline",
               data: { username, postId: newPostId },
-              runAt: new Date(
-                Date.now() + config.votingDurationDays * 86400 * 1000,
-              ),
+              runAt: new Date(now + config.votingDurationDays * 86400 * 1000),
             } as ScheduledJob);
             await redis.set(`voteJobId:${username}`, jobId);
           }
@@ -3566,12 +3673,22 @@ router.get<Record<string, never>, CastVoteResponse | ErrorResponse>(
         res.status(404).json({ status: "error", message: "Not a voting post" });
         return;
       }
-      const { username: suggestionUsername } = JSON.parse(votingPostRaw) as {
+      const { username: suggestionUsername, subredditName } = JSON.parse(
+        votingPostRaw,
+      ) as {
         username: string;
         subredditName: string;
       };
       const voterUsername = await getCurrentUsername();
       const config = await getConfig();
+      // Polling the status is the natural place to self-heal an expired vote
+      // that the scheduler failed to conclude.
+      await maybeFinalizeExpiredVote(
+        suggestionUsername,
+        config,
+        postId,
+        subredditName || (context.subredditName ?? ""),
+      ).catch(() => {});
       const isMod = voterUsername ? await checkIsMod(voterUsername) : false;
       const voteStatus = await getVoteStatus(
         suggestionUsername,
@@ -4183,78 +4300,7 @@ router.post<
     const config = await getConfig();
     const subreddit = context.subredditName ?? "";
 
-    const votesRaw = await redis.hGetAll(`votes:${username}`).catch(() => null);
-    const votes = votesRaw ?? {};
-    let acceptCount = 0;
-    let rejectCount = 0;
-    for (const raw of Object.values(votes)) {
-      const colonIdx = raw.indexOf(":");
-      if (colonIdx < 0) continue;
-      const voteType = raw.slice(0, colonIdx);
-      if (voteType === "accept") acceptCount++;
-      else if (voteType === "reject") rejectCount++;
-    }
-    const totalVoters = acceptCount + rejectCount;
-
-    if (
-      config.votingMinVotersForTiming > 0 &&
-      totalVoters < config.votingMinVotersForTiming
-    ) {
-      await finalizeVote(
-        username,
-        "rejected",
-        "percent_time",
-        postId,
-        subreddit,
-      );
-    } else if (config.votingPercentThreshold > 0) {
-      if (totalVoters > 0) {
-        const acceptPct = (acceptCount / totalVoters) * 100;
-        if (acceptPct >= config.votingPercentThreshold) {
-          await finalizeVote(
-            username,
-            "accepted",
-            "percent_time",
-            postId,
-            subreddit,
-          );
-        } else {
-          await finalizeVote(
-            username,
-            "rejected",
-            "percent_time",
-            postId,
-            subreddit,
-          );
-        }
-      } else {
-        await finalizeVote(
-          username,
-          "rejected",
-          "percent_time",
-          postId,
-          subreddit,
-        );
-      }
-    } else {
-      if (acceptCount > rejectCount) {
-        await finalizeVote(
-          username,
-          "accepted",
-          "percent_time",
-          postId,
-          subreddit,
-        );
-      } else {
-        await finalizeVote(
-          username,
-          "rejected",
-          "percent_time",
-          postId,
-          subreddit,
-        );
-      }
-    }
+    await finalizeVoteByDeadline(username, config, postId, subreddit);
 
     res.status(200).json({ status: "ok" });
   } catch (err) {

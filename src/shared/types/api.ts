@@ -307,6 +307,10 @@ export type VoteEntry = {
 export type VoteStatusData = {
   status: "active" | "accepted" | "rejected" | "cancelled";
   decidedAt: number | null;
+  // Epoch ms at which a time-based vote concludes, or null when the vote has no
+  // duration (threshold-only). Set when the vote starts/restarts so the client
+  // countdown and the server-side deadline fallback agree on a single instant.
+  deadlineAt?: number | null;
   reason:
     | "threshold_accept"
     | "threshold_reject"
@@ -369,7 +373,6 @@ export type CastVoteResponse = {
 export type WikiSuggestionActionRequest = {
   username: string;
 };
-
 
 export type WikiHistoryState =
   | "submitted"

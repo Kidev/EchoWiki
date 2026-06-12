@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type {
   VotingInitResponse,
   CastVoteRequest,
@@ -75,12 +75,48 @@ function VotingView({
   const [mode, setMode] = useState<"normal" | "source" | "diff">("normal");
   const [now, setNow] = useState(Date.now());
 
+  // Single source of truth for the deadline: the server stamps `deadlineAt` when
+  // the vote starts/restarts. Fall back to the createdAt-derived value for votes
+  // that predate that field so legacy in-flight votes still show a countdown.
+  const deadlineMs =
+    voteStatus.deadlineAt ??
+    (config.votingDurationDays > 0
+      ? suggestion.createdAt + config.votingDurationDays * 86400000
+      : null);
+  const isActive = voteStatus.status === "active";
+
   useEffect(() => {
-    if (voteStatus.status !== "active" || config.votingDurationDays <= 0)
-      return;
+    if (!isActive || deadlineMs == null) return;
     const interval = setInterval(() => setNow(Date.now()), 60000);
     return () => clearInterval(interval);
-  }, [voteStatus.status, config.votingDurationDays]);
+  }, [isActive, deadlineMs]);
+
+  // When the deadline elapses the server concludes the vote (via the scheduler
+  // job, or lazily on the next read). Poll once after it passes so the result
+  // appears without the viewer having to reload.
+  const refreshedAfterDeadline = useRef(false);
+  useEffect(() => {
+    if (!isActive || deadlineMs == null || now < deadlineMs) return;
+    if (refreshedAfterDeadline.current) return;
+    refreshedAfterDeadline.current = true;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/vote");
+        if (!res.ok) return;
+        const data = (await res.json()) as CastVoteResponse;
+        if (!cancelled) {
+          setVoteStatus(data.voteStatus);
+          setMyVote(data.myVote);
+        }
+      } catch {
+        // Leave the flag set; a manual reload will still resolve it.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isActive, deadlineMs, now]);
 
   const pageLabel = suggestion.page
     ? suggestion.page
@@ -94,8 +130,6 @@ function VotingView({
         day: "numeric",
       })
     : "";
-
-  const isActive = voteStatus.status === "active";
 
   const handleVote = useCallback(
     async (vote: VoteValue) => {
@@ -295,16 +329,12 @@ function VotingView({
             )}
           </div>
           {}
-          {isActive && config.votingDurationDays > 0 && (
+          {isActive && deadlineMs != null && (
             <span
               className="text-[10px]"
               style={{ color: "var(--text-muted)" }}
             >
-              {formatTimeRemaining(
-                suggestion.createdAt +
-                  config.votingDurationDays * 86400000 -
-                  now,
-              )}
+              {formatTimeRemaining(deadlineMs - now)}
             </span>
           )}
           {isInline && (

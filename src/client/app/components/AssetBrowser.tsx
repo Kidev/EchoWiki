@@ -8,6 +8,7 @@ import {
   useCallback,
 } from "react";
 import { useEchoUrl, modelHasEchoTexture } from "../../lib/echo";
+import { copyText } from "../../lib/clipboard";
 import {
   getFileName,
   isImagePath,
@@ -115,7 +116,9 @@ export function AssetCard({
     (e: ReactMouseEvent) => {
       e.stopPropagation();
       const text = e.ctrlKey || e.metaKey ? originalMarkdown : echoMarkdown;
-      void navigator.clipboard.writeText(text).then(() => onCopied(path));
+      void copyText(text).then((ok) => {
+        if (ok) onCopied(path);
+      });
     },
     [echoMarkdown, originalMarkdown, onCopied, path],
   );

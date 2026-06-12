@@ -10,6 +10,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { useEchoUrl } from "../../lib/echo";
+import { copyText } from "../../lib/clipboard";
 import {
   serializeEditions,
   applyImageEditions,
@@ -328,7 +329,9 @@ export function AssetPreview({
     (e?: ReactMouseEvent) => {
       const text =
         e && (e.ctrlKey || e.metaKey) ? originalMarkdown : echoMarkdown;
-      void navigator.clipboard.writeText(text).then(() => onCopied(path));
+      void copyText(text).then((ok) => {
+        if (ok) onCopied(path);
+      });
     },
     [echoMarkdown, originalMarkdown, onCopied, path],
   );

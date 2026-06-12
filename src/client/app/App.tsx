@@ -58,6 +58,7 @@ import {
   planPreload,
   areCached,
 } from "../lib/echo";
+import { copyText } from "../lib/clipboard";
 import { parseEditions } from "../lib/editions";
 import type { Edition } from "../lib/editions";
 import type { EchoMeta } from "../lib/idb";
@@ -930,10 +931,10 @@ export const App = () => {
         if (container.scrollTop === 0) container.scrollTop = savedTop;
       });
     }
-    void navigator.clipboard.writeText(link).then(() => {
+    void copyText(link).then((ok) => {
       if (container && container.scrollTop === 0 && savedTop > 0)
         container.scrollTop = savedTop;
-      showToast("Copied echo link");
+      if (ok) showToast("Copied echo link");
     });
   }, []);
 
@@ -1286,7 +1287,6 @@ export const App = () => {
     },
     [isInline, postId, wikiCurrentPage],
   );
-
 
   const refreshWikiPages = useCallback(async () => {
     try {

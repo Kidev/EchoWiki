@@ -446,10 +446,14 @@ export function WikiMarkdownContent({
                   href={externalUrl}
                   onClick={(e) => {
                     e.preventDefault();
+                    // Route through Devvit's navigateTo, which the Reddit host
+                    // shell handles. We deliberately avoid a window.open(_blank)
+                    // fallback: that raw hand-off triggers the browser's "access
+                    // other apps and services on this device" prompt.
                     try {
                       navigateTo({ url: externalUrl });
                     } catch {
-                      window.open(externalUrl, "_blank");
+                      // navigateTo unavailable (non-Devvit context): no-op.
                     }
                   }}
                   className="text-[var(--link-color)] hover:underline cursor-pointer"

@@ -690,9 +690,7 @@ function SubmissionsPanel({
                   ? "bg-[var(--accent)] text-white"
                   : "text-[var(--text-muted)]"
               }`}
-              style={
-                tab !== t ? { backgroundColor: "transparent" } : undefined
-              }
+              style={tab !== t ? { backgroundColor: "transparent" } : undefined}
               onMouseEnter={(e) => {
                 if (tab !== t)
                   e.currentTarget.style.backgroundColor = "var(--thumb-bg)";
