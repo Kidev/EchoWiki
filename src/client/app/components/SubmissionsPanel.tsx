@@ -9,6 +9,11 @@ import type {
   WikiResponse,
   ErrorResponse,
   WikiFontSize,
+  WikiContribHistoryResponse,
+  WikiHistoryEntry,
+  WikiHistoryEvent,
+  WikiHistoryActionRequest,
+  WikiHistoryActionResponse,
 } from "../../../shared/types/api";
 import { navigateTo, showToast } from "@devvit/web/client";
 import { CompareView } from "./DiffView";
@@ -110,16 +115,276 @@ function SuggestionReviewModal({
   );
 }
 
+function pageLabelOf(page: string): string {
+  return page
+    .replace(/_/g, " ")
+    .replace(/\//g, " / ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function historyEventLine(e: WikiHistoryEvent): string {
+  const label =
+    e.state === "submitted"
+      ? "Submitted"
+      : e.state === "approved"
+        ? "Approved"
+        : e.state === "denied"
+          ? "Denied"
+          : e.state === "approved-postmortem"
+            ? "Approved (post-mortem)"
+            : e.state === "reverted"
+              ? "Reverted"
+              : "Vote restarted";
+  const who = e.by
+    ? `u/${e.by}`
+    : e.viaVote
+      ? "community vote"
+      : e.state === "submitted"
+        ? ""
+        : "a moderator";
+  const date = new Date(e.at).toLocaleString();
+  return `${label}${who ? ` · ${who}` : ""} · ${date}${e.note ? ` · ${e.note}` : ""}`;
+}
+
+const STATUS_STYLE: Record<WikiHistoryEntry["status"], string> = {
+  approved: "bg-green-50 text-green-700 border-green-200",
+  denied: "bg-red-50 text-red-600 border-red-200",
+  pending: "bg-amber-50 text-amber-700 border-amber-200",
+};
+
+// Contributions > History: the audit trail. Mods see everything with full
+// detail and revert/restart actions; users see only their own decided
+// suggestions (moderator identities redacted server-side).
+function ContribHistoryView() {
+  const [entries, setEntries] = useState<WikiHistoryEntry[] | null>(null);
+  const [isMod, setIsMod] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [actingId, setActingId] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<{
+    id: string;
+    action: WikiHistoryActionRequest["action"];
+  } | null>(null);
+
+  const load = useCallback(async () => {
+    setEntries(null);
+    try {
+      const res = await fetch("/api/wiki/contrib-history");
+      if (res.ok) {
+        const data: WikiContribHistoryResponse = await res.json();
+        setEntries(data.entries);
+        setIsMod(data.isMod);
+        setHasMore(data.hasMore);
+      } else {
+        setEntries([]);
+      }
+    } catch {
+      setEntries([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const act = useCallback(
+    async (
+      id: string,
+      action: WikiHistoryActionRequest["action"],
+      force?: boolean,
+    ) => {
+      setActingId(id);
+      try {
+        const body: WikiHistoryActionRequest = {
+          id,
+          action,
+          ...(force ? { force: true } : {}),
+        };
+        const res = await fetch("/api/wiki/contrib-history/action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const err = (await res.json()) as ErrorResponse;
+          showToast(err.message ?? "Action failed");
+          return;
+        }
+        const data = (await res.json()) as WikiHistoryActionResponse;
+        if (data.conflict && !force) {
+          setConfirm({ id, action });
+          return;
+        }
+        showToast(data.merged ? "Applied (auto-merged)" : "Done");
+        setConfirm(null);
+        await load();
+      } catch {
+        showToast("Network error");
+      } finally {
+        setActingId(null);
+      }
+    },
+    [load],
+  );
+
+  return (
+    <div className="flex flex-col gap-2 max-w-2xl">
+      {entries === null ? (
+        <div className="flex items-center gap-2 text-sm text-[var(--text-muted)] py-4">
+          <div className="w-3.5 h-3.5 border border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+          Loading...
+        </div>
+      ) : entries.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 gap-2">
+          <span className="text-sm text-[var(--text-muted)]">
+            {isMod
+              ? "No decided contributions yet."
+              : "None of your contributions have been decided yet."}
+          </span>
+        </div>
+      ) : (
+        <>
+          {entries.map((e) => (
+            <div
+              key={e.id}
+              className="flex flex-col gap-1.5 p-3 rounded-lg border border-gray-200"
+              style={{ backgroundColor: "var(--control-bg)" }}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <button
+                      className="text-sm font-medium cursor-pointer hover:underline"
+                      style={{ color: "var(--accent)" }}
+                      onClick={() =>
+                        navigateTo({
+                          url: `https://www.reddit.com/u/${e.author}`,
+                        })
+                      }
+                    >
+                      u/{e.author}
+                    </button>
+                    <span className="text-xs text-[var(--text-muted)]">
+                      &rarr; <em>{pageLabelOf(e.page)}</em>
+                    </span>
+                    <span
+                      className={`text-[10px] px-1.5 py-0.5 rounded border ${STATUS_STYLE[e.status]}`}
+                    >
+                      {e.status}
+                    </span>
+                  </div>
+                  {e.description && (
+                    <p className="text-xs text-[var(--text-muted)] mt-0.5 line-clamp-2">
+                      {e.description}
+                    </p>
+                  )}
+                </div>
+                {isMod && (
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {e.status === "denied" && e.canRevert && (
+                      <button
+                        disabled={actingId === e.id}
+                        onClick={() => void act(e.id, "approve-postmortem")}
+                        className="text-xs px-2 py-1 rounded bg-[var(--accent)] text-white hover:opacity-90 cursor-pointer disabled:opacity-50"
+                      >
+                        Approve
+                      </button>
+                    )}
+                    {e.status === "approved" && e.canRevert && (
+                      <button
+                        disabled={actingId === e.id}
+                        onClick={() => void act(e.id, "revert")}
+                        className="text-xs px-2 py-1 rounded border border-red-300 text-red-600 hover:bg-red-50 cursor-pointer disabled:opacity-50"
+                      >
+                        Revert
+                      </button>
+                    )}
+                    {e.canRestartVote && (
+                      <button
+                        disabled={actingId === e.id}
+                        onClick={() => void act(e.id, "restart-vote")}
+                        className="text-xs px-2 py-1 rounded border border-gray-300 text-[var(--text)] hover:bg-[var(--thumb-bg)] cursor-pointer disabled:opacity-50"
+                      >
+                        Restart vote
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+              <ul className="flex flex-col gap-0.5 border-t border-gray-100 pt-1.5">
+                {e.events.map((ev, i) => (
+                  <li
+                    key={i}
+                    className="text-[11px] text-[var(--text-muted)] flex items-center gap-1.5"
+                  >
+                    <span className="w-1 h-1 rounded-full bg-[var(--text-muted)] shrink-0" />
+                    {historyEventLine(ev)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+          {hasMore && (
+            <p className="text-[11px] text-[var(--text-muted)] text-center py-1">
+              Showing the 10 most recent.
+            </p>
+          )}
+        </>
+      )}
+
+      {confirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={() => setConfirm(null)}
+        >
+          <div
+            className="bg-[var(--bg)] rounded-lg shadow-2xl p-6 max-w-sm w-full mx-4"
+            onClick={(ev) => ev.stopPropagation()}
+          >
+            <h3 className="font-semibold text-amber-600 mb-1">
+              The page changed since
+            </h3>
+            <p className="text-sm text-[var(--text-muted)] mb-4">
+              This page was edited after that decision. Applying will auto-merge
+              the change and may leave Git-style conflict markers (
+              <span className="font-mono text-xs">
+                &lt;&lt;&lt;&lt;&lt;&lt;&lt;
+              </span>
+              ) you&apos;ll need to resolve by editing the page. Proceed?
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setConfirm(null)}
+                className="text-sm px-3 py-1.5 rounded border border-gray-300 text-[var(--text-muted)] hover:bg-[var(--control-bg)] transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void act(confirm.id, confirm.action, true)}
+                disabled={actingId === confirm.id}
+                className="text-sm px-3 py-1.5 rounded bg-amber-600 text-white hover:bg-amber-700 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Apply with merge
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SubmissionsPanel({
   subredditName,
   isMod,
   username,
   wikiFontSize,
+  onPendingCountChange,
 }: {
   subredditName: string;
   isMod: boolean;
   username: string;
   wikiFontSize: WikiFontSize;
+  onPendingCountChange?: (count: number) => void;
 }) {
   const [suggestions, setSuggestions] = useState<WikiSuggestionWithVoting[]>(
     [],
@@ -140,19 +405,28 @@ function SubmissionsPanel({
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
-  const loadSuggestions = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/wiki/suggestions");
-      if (res.ok) {
-        const data: WikiSuggestionsResponse = await res.json();
-        setSuggestions(data.suggestions);
+  const [tab, setTab] = useState<"pending" | "history">("pending");
+
+  // `report` is only set when the user explicitly refreshes: the Contributions
+  // tab badge is otherwise a snapshot taken at app load, so it stays stable when
+  // the panel is opened (which triggers this mount load without reporting).
+  const loadSuggestions = useCallback(
+    async (report = false) => {
+      setLoading(true);
+      try {
+        const res = await fetch("/api/wiki/suggestions");
+        if (res.ok) {
+          const data: WikiSuggestionsResponse = await res.json();
+          setSuggestions(data.suggestions);
+          if (report) onPendingCountChange?.(data.suggestions.length);
+        }
+      } catch {
+      } finally {
+        setLoading(false);
       }
-    } catch {
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    },
+    [onPendingCountChange],
+  );
 
   useEffect(() => {
     void loadSuggestions();
@@ -406,24 +680,54 @@ function SubmissionsPanel({
         />
       )}
 
+      <div className="flex flex-wrap items-center gap-2 px-3 sm:px-4 py-2 border-b border-gray-100">
+        <div className="flex flex-wrap gap-1 min-w-0">
+          {(["pending", "history"] as const).map((t) => (
+            <button
+              key={t}
+              className={`text-xs px-[10px] py-[4px] rounded-full transition-colors cursor-pointer ${
+                tab === t
+                  ? "bg-[var(--accent)] text-white"
+                  : "text-[var(--text-muted)]"
+              }`}
+              style={
+                tab !== t ? { backgroundColor: "transparent" } : undefined
+              }
+              onMouseEnter={(e) => {
+                if (tab !== t)
+                  e.currentTarget.style.backgroundColor = "var(--thumb-bg)";
+              }}
+              onMouseLeave={(e) => {
+                if (tab !== t)
+                  e.currentTarget.style.backgroundColor = "transparent";
+              }}
+              onClick={() => setTab(t)}
+            >
+              {t === "pending" ? "Pending" : "History"}
+              {t === "pending" && suggestions.length > 0
+                ? ` (${suggestions.length})`
+                : ""}
+            </button>
+          ))}
+        </div>
+        {tab === "pending" && (
+          <button
+            onClick={() => void loadSuggestions(true)}
+            disabled={loading}
+            className="shrink-0 ml-auto text-xs px-[10px] py-[4px] rounded-full bg-[var(--accent)] text-white transition-colors cursor-pointer disabled:opacity-30"
+          >
+            {loading ? "Refreshing..." : "Refresh"}
+          </button>
+        )}
+      </div>
+
       <div
         className="flex-1 overflow-auto px-4 py-4"
         style={{ scrollbarGutter: "stable both-edges" }}
       >
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-sm font-medium text-[var(--text)]">
-            Pending submissions
-            {suggestions.length > 0 ? ` (${suggestions.length})` : ""}
-          </span>
-          <button
-            onClick={() => void loadSuggestions()}
-            className="text-xs text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
-          >
-            Refresh
-          </button>
-        </div>
-
-        {loading ? (
+        {tab === "history" ? (
+          <ContribHistoryView />
+        ) : loading ? (
           <div className="flex items-center gap-2 text-sm text-[var(--text-muted)] py-4">
             <div className="w-3.5 h-3.5 border border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
             Loading...

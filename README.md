@@ -8,11 +8,14 @@ EchoWiki turns a subreddit wiki into a proper editing and reading environment. M
 
 - [Wiki](#wiki)
   - [Live Editor](#live-editor)
+  - [Page Management](#page-management)
+  - [Breadcrumb Navigation](#breadcrumb-navigation)
   - [Section Links](#section-links)
 - [Collaborative Editing](#collaborative-editing)
   - [Suggestions](#suggestions)
   - [Voting](#voting)
   - [Moderator Review](#moderator-review)
+  - [Contribution History](#contribution-history)
   - [Flair Rewards](#flair-rewards)
 - [Echo Links](#echo-links)
   - [Asset Editions](#asset-editions)
@@ -37,7 +40,7 @@ EchoWiki turns a subreddit wiki into a proper editing and reading environment. M
 
 EchoWiki is a renderer on top of your subreddit's **own** native Reddit wiki, not a separate store. Every page is fetched live from the subreddit wiki (`reddit.com/r/<subreddit>/wiki`) via the Reddit API and rendered inside the app with a full Markdown engine. Saving a page from the app writes straight back to that same wiki, so the two stay in sync.
 
-Because the data lives in the real wiki, you keep everything Reddit already gives you for it: the **full revision history** of every page (with author and reason for each edit) is visible at `reddit.com/r/<subreddit>/wiki/revisions`, and **new pages are created the normal Reddit way**: visit the page's wiki URL on Reddit and create it (or link to it from an existing EchoWiki page), and it shows up in the app. EchoWiki never hides or replaces the underlying wiki; it just gives it a richer reading and editing surface.
+Because the data lives in the real wiki, you keep everything Reddit already gives you for it: the **full revision history** of every page (with author and reason for each edit) is visible at `reddit.com/r/<subreddit>/wiki/revisions` (and now also from inside the app, see [Page Management](#page-management)). New pages can be created in-app by moderators with the **+ Add page** action, or the normal Reddit way (visit the page's wiki URL on Reddit and create it, or link to it from an existing EchoWiki page) and they show up in the app. EchoWiki never hides or replaces the underlying wiki; it just gives it a richer reading and editing surface.
 
 Easy and powerful custom formatting based on Markdown:
 
@@ -49,7 +52,7 @@ Easy and powerful custom formatting based on Markdown:
 - External links opening in the browser
 - Raw HTML for custom layouts (floating infoboxes, multi-column grids, inline styles...)
 
-Navigation uses a breadcrumb bar that slides down from the top when hovering the Wiki tab. Each segment in the breadcrumb has a dropdown showing sibling pages at that level.
+Navigation uses a breadcrumb bar that slides down from the top when hovering the Wiki tab (see [Breadcrumb Navigation](#breadcrumb-navigation)), with sibling-page dropdowns, a full page index, the edit/suggest action, and moderator page tools all anchored to it.
 
 **For more details, [watch the demo video](https://youtu.be/OOgn59yKN_I "EchoWiki features demo video")**
 
@@ -63,7 +66,7 @@ Create and set up the wiki for your subreddit from the moderator menu: it create
 
 ![editor](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/editor.png)
 
-Moderators can edit wiki pages directly inside the app. An edit button appears in the top-right corner of the wiki view when in expanded mode. Clicking it opens the editor, where the Markdown source sits next to a live preview that updates as you type.
+Moderators can edit wiki pages directly inside the app. The **Edit page** button lives on the [breadcrumb bar](#breadcrumb-navigation) (right side); it collapses to a pen icon when space is tight and follows the breadcrumb's visibility. Clicking it opens the editor, where the Markdown source sits next to a live preview that updates as you type. From the collapsed inline view the same button pops the app out to the expanded editor.
 
 An **Insert** toolbar above the editor builds the trickier syntax for you: dialogs for inserting an image (with an asset picker and an inline emoji-size mode), an interactive 3D model, an infobox, a layered scene, a frame-by-frame or moving animation, and `:::def` path aliases, plus quick buttons for centered text, bold, italic, inline code, and a table template.
 
@@ -71,9 +74,27 @@ Saving requires a short description of the change (at least 10 characters). When
 
 When saving directly, the reason is prefixed with the moderator's username and stored in the Reddit wiki revision history. Navigating away while editing prompts for confirmation before discarding changes.
 
-### Section Links
+Inside the editor, a **Delete page** button (moderators, direct-edit mode, never the index) is a press-and-hold control: hold it for three seconds, watching it fill, and a confirmation dialog opens that requires typing the page's path to proceed. Reddit has no true wiki delete, so "delete" tombstones the page content, unlists it, and removes its link from the index; the Reddit revision history is preserved.
 
-Every heading has a copy-link button that appears on hover. Clicking it copies an `echolink://` URL pointing to that specific section. These links can be shared with other users of the same subreddit's EchoWiki. To open one, use the link icon in the top bar to open the EchoLink dialog, then paste the URL. The dialog also accepts `echo://` asset paths to jump directly to a file in the asset browser.
+### Page Management
+
+Several page-level tools live on the [breadcrumb bar](#breadcrumb-navigation):
+
+- **Index dropdown (everyone)**: the first breadcrumb crumb opens a scrollable list of every wiki page, including orphaned and unlisted ones, for quick navigation. Right-click any entry to copy its `echolink://`.
+- **+ Add page (moderators)**: from the moderator actions menu, creates a child page of the current page from a title, seeds it with a heading, links it from the index so it is not orphaned, and opens it.
+- **History (moderators)**: opens the page's Reddit revision history (author, timestamp, and reason for each of the most recent revisions). Each revision has a **Diff** button that shows a side-by-side comparison of that revision against the previous one (the oldest revision is compared against an empty page).
+- **Delete page**: see the [Live Editor](#live-editor) above.
+
+### Breadcrumb Navigation
+
+The breadcrumb bar slides down (and fades) from the top when hovering the Wiki tab, showing the path to the current page. It packs a lot into one line:
+
+- Each segment navigates to that ancestor page; **right-clicking any segment copies its `echolink://`** to the clipboard.
+- Segments with siblings show a caret dropdown listing the sibling pages at that level; the first (index) crumb's dropdown lists every page (see [Page Management](#page-management)).
+- The **Edit page** / **Suggest change** action and the moderator **page actions menu** (+ Add page, History) sit on the right of the bar.
+- When the trail is too long to fit alongside the buttons, the **start of the path is elided** (faded) so the current page and the action buttons always stay visible.
+
+Every heading has a copy-link button that appears on hover. Clicking it copies an `echolink://` URL pointing to that specific section. These links can be shared with other users of the same subreddit's EchoWiki. To open one, use the link icon in the top bar to open the EchoLink dialog, then paste the URL. When opened from a wiki page, the dialog also shows the **current page's `echolink://`** with a one-click copy button. It also accepts `echo://` asset paths to jump directly to a file in the asset browser.
 
 ## Collaborative Editing
 
@@ -91,7 +112,7 @@ Suggesting a change opens the same editor as the moderator editor, with three wa
 
 Submitting requires a description of what changed (at least 10 characters). The suggestion is then queued for moderator review or community voting, depending on configuration.
 
-A user can update their pending suggestion from the Submissions tab. Each update resets any votes already cast on the suggestion. The maximum number of updates and the minimum time between updates are both configurable in moderator settings.
+A user can update their pending suggestion from the Contributions tab. Each update resets any votes already cast on the suggestion. The maximum number of updates and the minimum time between updates are both configurable in moderator settings.
 
 ### Voting
 
@@ -113,11 +134,28 @@ The voting post includes a pinned bot comment that records vote events: when the
 
 ![Suggestions moderator](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/suggestions-mod.png)
 
-Moderators with "wiki" or "config" permissions see a Submissions tab listing all pending suggestions, each with the contributor, target page, description, and vote status if voting is enabled. Clicking Review opens a full-screen modal comparing the current page (left) and the suggestion (right), with the same Normal / Source / Diff modes as the editor; either column can be collapsed by clicking its label.
+Moderators with "wiki" or "config" permissions see a **Contributions** tab (formerly "Submissions"). Its **Pending** sub-tab lists all pending suggestions, each with the contributor, target page, description, and vote status if voting is enabled. Clicking Review opens a full-screen modal comparing the current page (left) and the suggestion (right), with the same Normal / Source / Diff modes as the editor; either column can be collapsed by clicking its label.
 
 Moderators can Accept or Deny from the review modal, or Deny a suggestion straight from the list, at any time and regardless of the vote result. When a voting post exists, a link to it is shown. Accepting writes the suggested content to the Reddit wiki with the contributor's username in the revision reason.
 
-Contributors also see the Submissions tab, where they can edit their own pending suggestion's content and description. A suggestion can be withdrawn entirely from the suggest dialog (which offers to delete the current one when you start another).
+Contributors also see the Contributions tab's Pending sub-tab, where they can edit their own pending suggestion's content and description. A suggestion can be withdrawn entirely from the suggest dialog (which offers to delete the current one when you start another).
+
+### Contribution History
+
+The Contributions tab's **History** sub-tab is an audit trail of decided suggestions. Every decision (accepted or denied, whether by a moderator or by a community vote) is recorded with its full state log: who submitted it, who decided it, and any later moderator actions.
+
+Visibility depends on the role:
+
+- **Contributors** see only their own decided suggestions, and only _that_ a moderator acted, not which one (moderator identities are redacted).
+- **Moderators** see every decision in full detail, including which moderator approved or denied each one and which were decided by community vote.
+
+Moderators can act on a past decision from the History list, without erasing it: the entry stays and instead moves to the top, logging each new state (e.g. "denied by X", then "approved post-mortem by Y"):
+
+- **Approve** a previously denied suggestion (post-mortem), applying it to the page now.
+- **Revert** a previously approved suggestion, restoring the page to its pre-suggestion state.
+- **Restart vote** to re-open a decided suggestion as a fresh pending submission.
+
+Because the page may have changed since the original decision, the Approve and Revert actions perform a **Git-style three-way auto-merge** of the change against the live page. A clean merge is applied silently; if it conflicts, EchoWiki warns first and, on confirmation, applies the merged content with standard conflict markers (`<<<<<<<`) for the moderator to resolve by editing the page. The list shows the ten most recent entries.
 
 ### Flair Rewards
 
@@ -223,7 +261,7 @@ Weapon | Echo Blade
 :::
 ```
 
-**`:::scene`** stacks images at absolute positions inside a fixed-size container. `bg:` is the background layer, `layer:` places a sprite at custom CSS coordinates (append `bottom=`, `left=`, `height=`, etc.), and `fg:` is a foreground overlay with `pointer-events: none`.
+**`:::scene`** stacks images at absolute positions over a background. `bg:` is the background layer, `layer:` places a sprite at custom CSS coordinates (append `bottom=`, `left=`, `height=`, etc.), and `fg:` is a foreground overlay with `pointer-events: none`. The background is composed at its natural size and scaled to fit `width`/`height` without ever being cropped, so the whole image is always visible; size layers in `%` so they scale with it. Like `:::fbf` and `:::anim`, a scene can be centered by wrapping it in `>>> ... <<<`.
 
 ![Scene](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/scene.png)
 
@@ -235,17 +273,17 @@ Weapon | Echo Blade
 
 ![Scene](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/animate.gif)
 
-| Param              | Default | Description                                                                                                                                                                                                               |
-| ------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ref`              |         | Alias of an `:::fbf` block to use as the sprite                                                                                                                                                                           |
-| `fps`              | `2.5`   | Frames per second. Treated as a target: see `hold`. Ignored when `ref` is set                                                                                                                                             |
-| `spritesize`       | natural | Sprite size: a pixel value (e.g. `48`) fixes the size; omit it (or use a `%`) to render the sprite at its natural size. Ignored when `ref` is set                                                                         |
-| `loops`            | `1`     | Number of whole walk cycles per movement; movement time is derived as `loops × frames ÷ fps`. Ignored when `duration` is set                                                                                              |
-| `duration`         | `3s`    | Explicit time for one full movement. Overrides `loops`                                                                                                                                                                    |
-| `hold`             | `true`  | Locks the walk to the movement: the cycle is snapped so a whole number of cycles exactly fills the movement, so the sprite never switches direction mid-stride. `hold=false` keeps the raw `fps` and lets the cycle drift |
-| `pingpong`         | `false` | `true` reverses direction at the end of each cycle instead of jumping back to start (sprite does not flip)                                                                                                                |
-| `width` / `height` | `50%`   | Scene container size (use `%` height with a background)                                                                                                                                                                   |
-| `bg` / `bgopacity` |         | Background image path and opacity (`0`-`1`)                                                                                                                                                                               |
+| Param              | Default | Description                                                                                                                                                                                                                                                                                           |
+| ------------------ | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ref`              |         | Alias of an `:::fbf` block to use as the sprite                                                                                                                                                                                                                                                       |
+| `fps`              | `2.5`   | Frames per second. Treated as a target: see `hold`. Ignored when `ref` is set                                                                                                                                                                                                                         |
+| `spritesize`       | natural | Sprite size: a pixel value (e.g. `48`) fixes the size; omit it (or use a `%`) to render the sprite at its natural size. Ignored when `ref` is set                                                                                                                                                     |
+| `loops`            | `1`     | Number of whole walk cycles per movement; movement time is derived as `loops × frames ÷ fps`. Ignored when `duration` is set                                                                                                                                                                          |
+| `duration`         | `3s`    | Explicit time for one full movement. Overrides `loops`                                                                                                                                                                                                                                                |
+| `hold`             | `true`  | Locks the walk to the movement: the cycle is snapped so a whole number of cycles exactly fills the movement, so the sprite never switches direction mid-stride. `hold=false` keeps the raw `fps` and lets the cycle drift                                                                             |
+| `pingpong`         | `false` | `true` reverses direction at the end of each cycle instead of jumping back to start (sprite does not flip)                                                                                                                                                                                            |
+| `width` / `height` | `50%`   | Block size. `width` is the share of the container; `height` is taken relative to `width`. Equal (or `height` omitted) keeps the natural aspect ratio; an unequal `height` stretches the block vertically. The background is **scaled, never cropped** (given only `height`, `width` defaults to 100%) |
+| `bg` / `bgopacity` |         | Background image path and opacity (`0`-`1`)                                                                                                                                                                                                                                                           |
 
 ```
 :::fbf alias=hero fps=11 size=48
@@ -371,10 +409,13 @@ Config is a superset of Wiki: a config moderator can do everything a wiki modera
 | Capability                                               | Required level    |
 | -------------------------------------------------------- | ----------------- |
 | Read the wiki and resolve echo links                     | Anyone            |
+| Browse the full page index and view contribution history | Anyone            |
 | Suggest changes and vote (when collaborative mode is on) | Any eligible user |
 | Edit wiki pages directly in the live editor              | Wiki              |
 | Save directly to the wiki / bypass the public vote       | Wiki              |
-| Review, accept, or deny suggestions (Submissions tab)    | Wiki              |
+| Add, delete, or view the revision history of a wiki page | Wiki              |
+| Review, accept, or deny suggestions (Contributions tab)  | Wiki              |
+| Revert / restart / post-mortem-approve past decisions    | Wiki              |
 | Create or delete EchoWiki posts (mod menu)               | Config            |
 | Open the Settings tab                                    | Config            |
 | Game, engine, and asset-import configuration             | Config            |
@@ -384,7 +425,7 @@ Config is a superset of Wiki: a config moderator can do everything a wiki modera
 
 ## Moderator Settings
 
-The Settings tab is visible only to **config**-level moderators (see [Moderator Permissions](#moderator-permissions)). **Wiki**-level moderators can edit wiki pages directly and use the Submissions tab, but not the Settings tab.
+The Settings tab is visible only to **config**-level moderators (see [Moderator Permissions](#moderator-permissions)). **Wiki**-level moderators can edit, add, and delete wiki pages and use the Contributions tab, but not the Settings tab.
 
 ### General
 
@@ -392,6 +433,7 @@ The Settings tab is visible only to **config**-level moderators (see [Moderator 
 
 - **Wiki Title**: Displayed on the home screen below the logo. Leave empty for default.
 - **Wiki Description**: Short text shown below the title.
+- **Reddit Wiki moderation page**: A shortcut that opens the subreddit's underlying Reddit wiki moderation page (`reddit.com/mod/<subreddit>/wiki`), for revision management and settings that live on Reddit itself. The running app version is shown beneath it.
 
 ### Game
 
@@ -513,7 +555,7 @@ EchoWiki takes a different approach. No asset is ever uploaded, hosted, or distr
 
 ## Privacy
 
-All game files are processed locally in the browser using IndexedDB. No assets are uploaded anywhere. Server-side storage (Redis) holds only moderator configuration (game title, style settings, filename mappings, collaborative and voting settings) plus the text of pending suggestions and vote records. See [PRIVACY_POLICY.md](https://raw.githubusercontent.com/Kidev/EchoWiki/refs/heads/main/PRIVACY_POLICY.md) and [TERMS_AND_CONDITIONS.md](https://raw.githubusercontent.com/Kidev/EchoWiki/refs/heads/main/TERMS_AND_CONDITIONS.md).
+All game files are processed locally in the browser using IndexedDB. No assets are uploaded anywhere. Server-side storage (Redis) holds only moderator configuration (game title, style settings, filename mappings, collaborative and voting settings) plus the text of pending suggestions, vote records, and a capped history of decided suggestions (the contribution audit trail). See [PRIVACY_POLICY.md](https://raw.githubusercontent.com/Kidev/EchoWiki/refs/heads/main/PRIVACY_POLICY.md) and [TERMS_AND_CONDITIONS.md](https://raw.githubusercontent.com/Kidev/EchoWiki/refs/heads/main/TERMS_AND_CONDITIONS.md).
 
 [EchoWiki is available on GitHub](https://github.com/Kidev/EchoWiki)
 

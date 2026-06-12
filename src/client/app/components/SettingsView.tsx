@@ -1348,14 +1348,11 @@ export function SettingsView({
             </div>
 
             <button
-              onClick={() => {
-                const url = `https://www.reddit.com/mod/${subredditName}/wiki/index`;
-                try {
-                  navigateTo({ url });
-                } catch {
-                  window.open(url, "_blank");
-                }
-              }}
+              onClick={() =>
+                navigateTo({
+                  url: `https://www.reddit.com/mod/${subredditName}/wiki/index`,
+                })
+              }
               className="flex items-center gap-2 self-start text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-[var(--text)] hover:bg-[var(--thumb-bg)] transition-colors cursor-pointer"
               title={`Open r/${subredditName}'s Wiki moderation page on Reddit`}
             >

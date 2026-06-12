@@ -39,6 +39,7 @@ import type {
   WikiRevisionInfo,
   WikiRevisionContentResponse,
   WikiResponse,
+  WikiSuggestionsResponse,
   ErrorResponse,
 } from "../../shared/types/api";
 import {
@@ -130,6 +131,7 @@ export const App = () => {
   const [postId, setPostId] = useState("");
   const [suggestionToLoad, setSuggestionToLoad] = useState<string | null>(null);
   const [meta, setMeta] = useState<EchoMeta | null>(null);
+  const [pendingCount, setPendingCount] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -545,6 +547,20 @@ export const App = () => {
         } catch {}
         setAppearance(initData.appearance);
         initConfig = initData.config;
+        // Cache the pending-contributions count during page load so the
+        // Contributions tab badge is populated before the user ever opens the
+        // panel. Suggestions only exist under collaborative mode. Refreshed on
+        // full page reload or via the panel's Refresh button.
+        if (initData.config.collaborativeMode) {
+          void fetch("/api/wiki/suggestions")
+            .then((r) =>
+              r.ok ? (r.json() as Promise<WikiSuggestionsResponse>) : null,
+            )
+            .then((d) => {
+              if (d) setPendingCount(d.suggestions.length);
+            })
+            .catch(() => {});
+        }
       } catch (e) {
         if (e instanceof TypeError) {
           setInitResolved(true);
@@ -1270,6 +1286,7 @@ export const App = () => {
     },
     [isInline, postId, wikiCurrentPage],
   );
+
 
   const refreshWikiPages = useCallback(async () => {
     try {
@@ -2043,6 +2060,11 @@ export const App = () => {
                     onClick={() => setActiveTab("submissions")}
                   >
                     Contributions
+                    {pendingCount !== null && (
+                      <span className="ml-1 opacity-70">
+                        {pendingCount.toLocaleString()}
+                      </span>
+                    )}
                   </button>
                 )}
                 {isAllMod && (
@@ -2667,6 +2689,7 @@ export const App = () => {
                 isMod={isMod}
                 username={username}
                 wikiFontSize={style.wikiFontSize}
+                onPendingCountChange={setPendingCount}
               />
             )}
 

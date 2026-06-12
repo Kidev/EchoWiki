@@ -43,6 +43,11 @@ import type {
   WikiHistoryResponse,
   WikiRevisionInfo,
   WikiRevisionContentResponse,
+  WikiHistoryEntry,
+  WikiHistoryEvent,
+  WikiContribHistoryResponse,
+  WikiHistoryActionRequest,
+  WikiHistoryActionResponse,
   WikiDeleteRequest,
   WikiDeleteResponse,
   WikiSuggestion,
@@ -79,6 +84,7 @@ import {
   scheduler,
 } from "@devvit/web/server";
 import { createPost } from "./core/post";
+import { threeWayMerge } from "./merge";
 
 const app = express();
 
@@ -501,6 +507,145 @@ function getVoteReasonText(reason: VoteStatusData["reason"]): string {
   }
 }
 
+//
+// Reddit deletes nothing here: we persist a record of every decided suggestion
+// so the Contributions > History tab can show it (and mods can later revert /
+// approve-post-mortem). `proposedContent` is the suggestion; `baseContent` is
+// the page snapshot at decision time (the merge base for later revert actions).
+
+type StoredHistoryEntry = WikiHistoryEntry & {
+  proposedContent: string;
+  baseContent: string;
+};
+
+const HISTORY_GLOBAL_KEY = "history:all";
+const HISTORY_GLOBAL_CAP = 200;
+const HISTORY_USER_CAP = 50;
+
+async function loadHistoryEntry(
+  id: string,
+): Promise<StoredHistoryEntry | null> {
+  try {
+    const raw = await redis.get(`history:entry:${id}`);
+    return raw ? (JSON.parse(raw) as StoredHistoryEntry) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Persist an entry and (re-)index it in the global and per-user history zsets,
+// bumping it to the top (score = updatedAt). Trims old entries past the caps.
+async function saveHistoryEntry(entry: StoredHistoryEntry): Promise<void> {
+  const userKey = `history:user:${entry.author}`;
+  await Promise.all([
+    redis.set(`history:entry:${entry.id}`, JSON.stringify(entry)),
+    redis.zAdd(HISTORY_GLOBAL_KEY, {
+      member: entry.id,
+      score: entry.updatedAt,
+    }),
+    redis.zAdd(userKey, { member: entry.id, score: entry.updatedAt }),
+  ]);
+  // Best-effort trim of the lowest-scored (oldest) entries beyond the caps.
+  await trimHistoryZset(HISTORY_GLOBAL_KEY, HISTORY_GLOBAL_CAP, true).catch(
+    () => {},
+  );
+  await trimHistoryZset(userKey, HISTORY_USER_CAP, false).catch(() => {});
+}
+
+async function trimHistoryZset(
+  key: string,
+  cap: number,
+  deleteEntries: boolean,
+): Promise<void> {
+  const count = await redis.zCard(key);
+  if (count <= cap) return;
+  const removeCount = count - cap;
+  const oldest = await redis.zRange(key, 0, removeCount - 1);
+  const ids = oldest.map((o) => o.member);
+  if (ids.length === 0) return;
+  await redis.zRem(key, ids);
+  if (deleteEntries) {
+    // Only delete the underlying record when evicting from the GLOBAL index, so
+    // it disappears for everyone. (Per-user trimming just unlists it.)
+    await Promise.all(ids.map((id) => redis.del(`history:entry:${id}`)));
+  }
+}
+
+function historyEntryId(author: string, createdAt: number): string {
+  return `${author}:${createdAt}`;
+}
+
+// Record a decision (approve/deny, by a mod or by community vote) in the audit
+// trail. `baseContent` is the page content captured at decision time.
+async function recordDecision(
+  suggestion: WikiSuggestion,
+  baseContent: string,
+  outcome: "approved" | "denied",
+  by: string | null,
+  viaVote: boolean,
+): Promise<void> {
+  const now = Date.now();
+  const id = historyEntryId(suggestion.username, suggestion.createdAt);
+  const decisionEvent: WikiHistoryEvent = {
+    state: outcome,
+    by: viaVote ? null : by,
+    at: now,
+    ...(viaVote ? { viaVote: true } : {}),
+  };
+  // If this suggestion already has a history entry (e.g. it was re-opened via
+  // "restart vote"), append the new decision so the full state log accumulates
+  // instead of resetting; otherwise start a fresh entry.
+  const existing = await loadHistoryEntry(id);
+  let entry: StoredHistoryEntry;
+  if (existing) {
+    existing.events.push(decisionEvent);
+    existing.status = outcome;
+    existing.updatedAt = now;
+    existing.proposedContent = suggestion.content;
+    existing.baseContent = baseContent;
+    existing.canRevert = true;
+    existing.canRestartVote = true;
+    entry = existing;
+  } else {
+    entry = {
+      id,
+      author: suggestion.username,
+      page: suggestion.page,
+      description: suggestion.description,
+      status: outcome,
+      events: [
+        {
+          state: "submitted",
+          by: suggestion.username,
+          at: suggestion.createdAt,
+        },
+        decisionEvent,
+      ],
+      updatedAt: now,
+      canRevert: true,
+      canRestartVote: true,
+      proposedContent: suggestion.content,
+      baseContent,
+    };
+  }
+  await saveHistoryEntry(entry).catch((err) =>
+    console.warn("recordDecision: failed to save history entry", err),
+  );
+}
+
+// Read the current content of a wiki page (empty string if unreadable).
+async function readPageContent(
+  subredditName: string,
+  page: string,
+): Promise<string> {
+  try {
+    const wp = await reddit.getWikiPage(subredditName, page);
+    return wp.content ?? "";
+  } catch {
+    return "";
+  }
+}
+
 async function performAcceptCore(
   username: string,
   subredditName: string,
@@ -509,12 +654,21 @@ async function performAcceptCore(
   const raw = await redis.get(`suggestion:${username}`);
   if (!raw) return;
   const suggestion = JSON.parse(raw) as WikiSuggestion;
+  // Snapshot the pre-apply page content as the merge base for any later revert.
+  const baseContent = await readPageContent(subredditName, suggestion.page);
   await reddit.updateWikiPage({
     subredditName,
     page: suggestion.page,
     content: suggestion.content,
     reason: `${actorLabel} accepted suggestion by ${suggestion.username}: ${suggestion.description}`,
   });
+  await recordDecision(
+    suggestion,
+    baseContent,
+    "approved",
+    actorLabel === "vote" ? null : actorLabel,
+    actorLabel === "vote",
+  );
   const [, , newCount, basicFlairId, advCountRaw, advFlairId] =
     await Promise.all([
       redis.del(`suggestion:${username}`),
@@ -656,6 +810,13 @@ async function finalizeVote(
   if (outcome === "accepted") {
     await performAcceptCore(username, subredditName, "vote");
   } else {
+    if (concludedSuggestion) {
+      const base = await readPageContent(
+        subredditName,
+        concludedSuggestion.page,
+      );
+      await recordDecision(concludedSuggestion, base, "denied", null, true);
+    }
     await Promise.all([
       redis.del(`suggestion:${username}`),
       redis.zRem("suggestions", [username]),
@@ -2614,12 +2775,20 @@ router.post<
       return;
     }
     const suggestion = JSON.parse(raw) as WikiSuggestion;
+    const acceptBaseContent = await readPageContent(subreddit, suggestion.page);
     await reddit.updateWikiPage({
       subredditName: subreddit,
       page: suggestion.page,
       content: suggestion.content,
       reason: `${modUsername} accepted suggestion by ${suggestion.username}: ${suggestion.description}`,
     });
+    await recordDecision(
+      suggestion,
+      acceptBaseContent,
+      "approved",
+      modUsername,
+      false,
+    );
     const [, , newCount, basicFlairId, advCountRaw, advFlairId] =
       await Promise.all([
         redis.del(`suggestion:${body.username}`),
@@ -2709,6 +2878,13 @@ router.post<
       res.status(403).json({ status: "error", message: "Not authorized" });
       return;
     }
+    const subreddit = context.subredditName;
+    if (!subreddit) {
+      res
+        .status(400)
+        .json({ status: "error", message: "Subreddit context not available" });
+      return;
+    }
     const body = req.body as WikiSuggestionActionRequest;
 
     const denyVotingPostId = await redis
@@ -2731,6 +2907,17 @@ router.post<
       const voteType = v.slice(0, colonIdx);
       if (voteType === "accept") denyAcceptCount++;
       else if (voteType === "reject") denyRejectCount++;
+    }
+
+    if (deniedSuggestion) {
+      const base = await readPageContent(subreddit, deniedSuggestion.page);
+      await recordDecision(
+        deniedSuggestion,
+        base,
+        "denied",
+        modUsername,
+        false,
+      );
     }
 
     await Promise.all([
@@ -2756,6 +2943,223 @@ router.post<
     const message =
       error instanceof Error
         ? `Failed to deny suggestion: ${error.message}`
+        : "Unknown error";
+    res.status(400).json({ status: "error", message });
+  }
+});
+
+// Strip server-only fields and (for non-mods) redact moderator identity.
+function toClientHistoryEntry(
+  entry: StoredHistoryEntry,
+  isMod: boolean,
+  votingEnabled: boolean,
+): WikiHistoryEntry {
+  const events: WikiHistoryEvent[] = entry.events.map((e) =>
+    isMod ? e : { ...e, by: null },
+  );
+  return {
+    id: entry.id,
+    author: entry.author,
+    page: entry.page,
+    description: entry.description,
+    status: entry.status,
+    events,
+    updatedAt: entry.updatedAt,
+    canRevert: isMod && entry.status !== "pending",
+    canRestartVote: isMod && votingEnabled && entry.status !== "pending",
+  };
+}
+
+// Contributions > History. Mods see every entry with full detail; a regular user
+// sees only their own decided suggestions, with moderator identities redacted
+// ("a moderator acted"). Capped at the 10 most recent (newest first).
+router.get<Record<string, never>, WikiContribHistoryResponse | ErrorResponse>(
+  "/api/wiki/contrib-history",
+  async (_req, res): Promise<void> => {
+    try {
+      const username = await getCurrentUsername();
+      if (!username) {
+        res.json({
+          type: "wiki-contrib-history",
+          entries: [],
+          isMod: false,
+          hasMore: false,
+        });
+        return;
+      }
+      const [isMod, config] = await Promise.all([
+        checkIsMod(username),
+        getConfig(),
+      ]);
+      const key = isMod ? HISTORY_GLOBAL_KEY : `history:user:${username}`;
+      const all = await redis.zRange(key, 0, -1).catch(() => []);
+      // zRange is ascending by score; newest (highest score) first.
+      const idsNewestFirst = all.map((m) => m.member).reverse();
+      const top = idsNewestFirst.slice(0, 10);
+      const loaded = await Promise.all(top.map((id) => loadHistoryEntry(id)));
+      const entries = loaded
+        .filter((e): e is StoredHistoryEntry => e !== null)
+        .map((e) =>
+          toClientHistoryEntry(e, isMod, config.votingEnabled ?? false),
+        );
+      res.json({
+        type: "wiki-contrib-history",
+        entries,
+        isMod,
+        hasMore: idsNewestFirst.length > top.length,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? `Failed to load history: ${error.message}`
+          : "Unknown error";
+      res.status(400).json({ status: "error", message });
+    }
+  },
+);
+
+// Moderator actions on a history entry: post-mortem approve a denied suggestion,
+// revert an approved one, or restart its vote. Page-content actions auto-merge
+// (git-style) against the live page; a conflict is reported (unless `force`) so
+// the client can warn before applying the marked merge.
+router.post<
+  Record<string, never>,
+  WikiHistoryActionResponse | ErrorResponse,
+  WikiHistoryActionRequest
+>("/api/wiki/contrib-history/action", async (req, res): Promise<void> => {
+  try {
+    const modUsername = await getCurrentUsername();
+    if (!modUsername || !(await checkIsMod(modUsername))) {
+      res.status(403).json({ status: "error", message: "Not authorized" });
+      return;
+    }
+    const subreddit = context.subredditName;
+    if (!subreddit) {
+      res
+        .status(400)
+        .json({ status: "error", message: "Subreddit context not available" });
+      return;
+    }
+    const body = req.body as WikiHistoryActionRequest;
+    const entry = await loadHistoryEntry(body.id);
+    if (!entry) {
+      res
+        .status(404)
+        .json({ status: "error", message: "History entry not found" });
+      return;
+    }
+    const now = Date.now();
+
+    if (body.action === "restart-vote") {
+      if (entry.status === "pending") {
+        res
+          .status(400)
+          .json({ status: "error", message: "This suggestion is still open." });
+        return;
+      }
+      const existing = await redis
+        .get(`suggestion:${entry.author}`)
+        .catch(() => null);
+      if (existing) {
+        res.status(409).json({
+          status: "error",
+          message: `${entry.author} already has an open suggestion; resolve it first.`,
+        });
+        return;
+      }
+      // Keep the original createdAt so the eventual re-decision appends to THIS
+      // history entry (id = `author:createdAt`) rather than starting a new one.
+      const sepIdx = entry.id.lastIndexOf(":");
+      const originalCreatedAt = Number(entry.id.slice(sepIdx + 1)) || now;
+      const reopened: WikiSuggestion = {
+        username: entry.author,
+        page: entry.page,
+        content: entry.proposedContent,
+        description: entry.description,
+        createdAt: originalCreatedAt,
+      };
+      await Promise.all([
+        redis.set(`suggestion:${entry.author}`, JSON.stringify(reopened)),
+        redis.zAdd("suggestions", { member: entry.author, score: now }),
+      ]);
+      entry.status = "pending";
+      entry.events.push({ state: "vote-restarted", by: modUsername, at: now });
+      entry.updatedAt = now;
+      await saveHistoryEntry(entry);
+      res.json({ type: "wiki-history-action" });
+      return;
+    }
+
+    if (body.action === "approve-postmortem" && entry.status !== "denied") {
+      res.status(400).json({
+        status: "error",
+        message: "Only a denied suggestion can be approved post-mortem.",
+      });
+      return;
+    }
+    if (body.action === "revert" && entry.status !== "approved") {
+      res.status(400).json({
+        status: "error",
+        message: "Only an approved suggestion can be reverted.",
+      });
+      return;
+    }
+
+    const ours = await readPageContent(subreddit, entry.page);
+    // approve-postmortem replays the suggestion's change (baseContent ->
+    // proposedContent); revert undoes it (proposedContent -> baseContent).
+    const mergeBase =
+      body.action === "approve-postmortem"
+        ? entry.baseContent
+        : entry.proposedContent;
+    const theirs =
+      body.action === "approve-postmortem"
+        ? entry.proposedContent
+        : entry.baseContent;
+    const { merged, conflict } = threeWayMerge(mergeBase, ours, theirs, {
+      ours: "current page",
+      theirs: body.action === "revert" ? "pre-suggestion" : "suggestion",
+    });
+    const changedSince = ours !== mergeBase;
+
+    if (conflict && !body.force) {
+      res.json({ type: "wiki-history-action", conflict: true });
+      return;
+    }
+
+    await reddit.updateWikiPage({
+      subredditName: subreddit,
+      page: entry.page,
+      content: merged,
+      reason: `${modUsername} ${
+        body.action === "revert" ? "reverted" : "post-mortem approved"
+      } ${entry.author}'s suggestion${conflict ? " (merge conflict)" : ""}`,
+    });
+
+    const note = conflict
+      ? "merge conflict"
+      : changedSince
+        ? "auto-merged"
+        : undefined;
+    entry.status = body.action === "revert" ? "denied" : "approved";
+    entry.events.push({
+      state: body.action === "revert" ? "reverted" : "approved-postmortem",
+      by: modUsername,
+      at: now,
+      ...(note ? { note } : {}),
+    });
+    entry.updatedAt = now;
+    await saveHistoryEntry(entry);
+
+    res.json({
+      type: "wiki-history-action",
+      merged: changedSince && !conflict,
+      ...(conflict ? { conflict: true } : {}),
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? `Failed to apply action: ${error.message}`
         : "Unknown error";
     res.status(400).json({ status: "error", message });
   }

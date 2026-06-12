@@ -370,6 +370,65 @@ export type WikiSuggestionActionRequest = {
   username: string;
 };
 
+
+export type WikiHistoryState =
+  | "submitted"
+  | "approved"
+  | "denied"
+  | "approved-postmortem"
+  | "reverted"
+  | "vote-restarted";
+
+export type WikiHistoryEvent = {
+  state: WikiHistoryState;
+  /** Moderator who performed it, or null for community-vote / redacted-for-user. */
+  by: string | null;
+  at: number;
+  /** Decided by public vote (mod identity may legitimately be absent). */
+  viaVote?: boolean;
+  /** Free-form note, e.g. "auto-merged" or "merge conflict". */
+  note?: string;
+};
+
+export type WikiHistoryEntry = {
+  id: string;
+  author: string;
+  page: string;
+  description: string;
+  status: "approved" | "denied" | "pending";
+  events: WikiHistoryEvent[];
+  updatedAt: number;
+  /** Mod hint: a denied entry can be approved post-mortem / an approved one reverted. */
+  canRevert: boolean;
+  canRestartVote: boolean;
+};
+
+export type WikiContribHistoryResponse = {
+  type: "wiki-contrib-history";
+  entries: WikiHistoryEntry[];
+  isMod: boolean;
+  /** More entries exist beyond the returned (capped at 10) window. */
+  hasMore: boolean;
+};
+
+export type WikiHistoryActionRequest = {
+  id: string;
+  action: "approve-postmortem" | "revert" | "restart-vote";
+  /** Proceed despite a merge-conflict warning (applies the auto-merged content). */
+  force?: boolean;
+};
+
+export type WikiHistoryActionResponse = {
+  type: "wiki-history-action";
+  /** True when the page changed since and a clean auto-merge was applied. */
+  merged?: boolean;
+  /**
+   * True when !force and the auto-merge hit a conflict: nothing was applied, the
+   * client should warn and re-submit with force to apply the marked merge.
+   */
+  conflict?: boolean;
+};
+
 export type WikiSuggestionActionResponse = {
   type: "wiki-suggestion-action";
 };
