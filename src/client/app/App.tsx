@@ -1199,6 +1199,12 @@ export const App = () => {
           }}
           onGo={handleEchoLinkGo}
           onDismiss={() => setShowEchoLinkDialog(false)}
+          currentPageLink={
+            activeTab === "wiki" && subredditName
+              ? `echolink://r/${subredditName}/wiki/${wikiCurrentPage}`
+              : undefined
+          }
+          onCopyLink={handleCopyEchoLink}
         />
       )}
 
@@ -1481,7 +1487,7 @@ export const App = () => {
           <div className="relative" style={{ zIndex: 10 }}>
             <div
               ref={topBarRef}
-              className={`flex items-center justify-between px-4 py-2 border-b ${showBreadcrumb && activeTab === "wiki" ? "border-transparent" : "border-gray-100"}`}
+              className={`flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 sm:px-4 py-2 border-b ${showBreadcrumb && activeTab === "wiki" ? "border-transparent" : "border-gray-100"}`}
               onMouseEnter={cancelBreadcrumbHide}
               onMouseLeave={(e) => {
                 const bar = breadcrumbBarRef.current;
@@ -1493,7 +1499,7 @@ export const App = () => {
                 scheduleBreadcrumbHide();
               }}
             >
-              <div className="flex items-center gap-1">
+              <div className="flex flex-wrap items-center gap-1 min-w-0">
                 {!gameMismatch && (
                   <button
                     className={`text-sm px-3 py-1 rounded-full transition-colors cursor-pointer ${
@@ -1577,7 +1583,7 @@ export const App = () => {
                     }}
                     onClick={() => setActiveTab("submissions")}
                   >
-                    Submissions
+                    Contributions
                   </button>
                 )}
                 {isAllMod && (
@@ -1613,7 +1619,7 @@ export const App = () => {
                   {gameMismatch.detected}'
                 </span>
               )}
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 sm:gap-3 shrink-0 ml-auto">
                 {earnedFlairs.length > 0 && (
                   <div ref={flairDropdownRef} className="relative">
                     <button
@@ -1773,15 +1779,9 @@ export const App = () => {
                       onClick={() => setWikiCurrentPage(crumb.page)}
                       onContextMenu={(e) => {
                         e.preventDefault();
-                        if (crumb.siblings.length > 0) {
-                          setOpenBreadcrumbDropdown(
-                            openBreadcrumbDropdown === i ? null : i,
-                          );
-                        } else {
-                          handleCopyEchoLink(
-                            `echolink://r/${subredditName}/wiki/${crumb.page}`,
-                          );
-                        }
+                        handleCopyEchoLink(
+                          `echolink://r/${subredditName}/wiki/${crumb.page}`,
+                        );
                       }}
                     >
                       {crumb.label}
@@ -1799,8 +1799,8 @@ export const App = () => {
                           onContextMenu={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
-                            setOpenBreadcrumbDropdown(
-                              openBreadcrumbDropdown === i ? null : i,
+                            handleCopyEchoLink(
+                              `echolink://r/${subredditName}/wiki/${crumb.page}`,
                             );
                           }}
                         >

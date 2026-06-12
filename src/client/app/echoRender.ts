@@ -184,6 +184,81 @@ export function parseBoolParam(
 }
 
 /**
+ * Resolve the effective `width`/`height` for a special block (scene, anim) and
+ * the vertical stretch factor `k` they imply.
+ *
+ * Semantics (per design): the block is composed at the image's natural size,
+ * then `width` scales it to that % of the container. `height` is taken relative
+ * to `width`: equal (or absent) keeps the image's natural aspect ratio; a
+ * larger `height` stretches it taller, a smaller one squishes it. The stretch
+ * factor is `heightPct / widthPct`. When only `height` is given, `width`
+ * defaults to 100% (so e.g. `height=50%` halves the natural height at full
+ * width). `k` is only derived from percentage heights; pixel heights keep their
+ * own box sizing and yield `k = 1`.
+ */
+export function resolveBlockSizing(
+  params: Record<string, string>,
+  defaultWidth: string,
+): { width: string; heightRaw: string | undefined; k: number } {
+  const heightRaw = params["height"];
+  // "only height given" => treat width as 100% (both for the box and for k).
+  let widthParam = params["width"];
+  if (widthParam === undefined && heightRaw !== undefined) widthParam = "100%";
+  const width = widthParam ?? defaultWidth;
+
+  let k = 1;
+  if (heightRaw !== undefined && heightRaw.trim().endsWith("%")) {
+    const hPct = parseFloat(heightRaw);
+    const wPct = width.trim().endsWith("%") ? parseFloat(width) : 100;
+    if (
+      Number.isFinite(hPct) &&
+      hPct > 0 &&
+      Number.isFinite(wPct) &&
+      wPct > 0
+    ) {
+      k = hPct / wPct;
+    }
+  }
+  return { width, heightRaw, k };
+}
+
+/**
+ * Build the HTML for a background image that fills its (relatively positioned,
+ * overflow-hidden) container, optionally stretched vertically by `k`.
+ *
+ * For `k === 1` the image just sizes the container to its natural aspect ratio.
+ * For `k !== 1` an invisible sizer image (widened/narrowed by `k`) drives the
+ * container height to `naturalHeight * k`, and the real image fills that box
+ * with `object-fit:fill`: stretching it vertically without ever cropping and
+ * without needing the image's intrinsic pixel size at render time.
+ */
+export function buildScaledBg(
+  src: string,
+  k: number,
+  extraImgStyle = "",
+): string {
+  if (!(k > 0) || Math.abs(k - 1) < 1e-4) {
+    return `<img class="echo-raw" src="${src}" style="display:block;width:100%;height:auto;${extraImgStyle}" alt="">`;
+  }
+  // The (invisible) sizer drives the container height to `naturalHeight * k`: an
+  // img at `width:k*100%` (`max-width:none` so it isn't clamped when k>1) with
+  // `height:auto` keeps its intrinsic ratio, so its laid-out height is exactly k
+  // times the height the bg would have at full width.
+  //
+  // The visible image is drawn at natural ratio (`width:100%;height:auto`) and
+  // stretched to that height with `transform:scaleY(k)` anchored at the top.
+  // This avoids `object-fit`/percentage-height (which don't reliably resolve for
+  // absolutely-positioned replaced elements against a content-sized box, leaving
+  // the image at natural height and clipped). The transformed image exactly
+  // fills the sizer-defined box: no crop, scales responsively, and needs no
+  // intrinsic dimensions at render time.
+  const kStr = k.toFixed(4);
+  const sizer = `<img class="echo-raw" src="${src}" style="display:block;width:${(k * 100).toFixed(4)}%;height:auto;max-width:none;visibility:hidden;pointer-events:none;" alt="">`;
+  const img = `<img class="echo-raw" src="${src}" style="position:absolute;top:0;left:0;width:100%;height:auto;transform:scaleY(${kStr});transform-origin:top;display:block;${extraImgStyle}" alt="">`;
+  return `${sizer}${img}`;
+}
+
+/**
  * Resolve the duration (in seconds) of an animation phase. An explicit
  * `duration` always wins. Otherwise the duration is derived from whole walk
  * cycles: `loops × frames / fps`. This keeps the sprite's frame animation
@@ -257,8 +332,7 @@ export function renderSceneBlock(
   params: Record<string, string>,
   lines: string[],
 ): string {
-  const width = params["width"] ?? "100%";
-  const heightRaw = params["height"];
+  const { width, heightRaw, k } = resolveBlockSizing(params, "100%");
   let bgSrc = "";
   let fgSrc = "";
   const layerImgs: string[] = [];
@@ -274,26 +348,26 @@ export function renderSceneBlock(
       const posStr = spIdx === -1 ? "" : rest.slice(spIdx + 1);
       const pos = parseEchoBlockParams(posStr);
       let posStyle = "position:absolute;display:block;";
-      for (const [k, v] of Object.entries(pos)) posStyle += `${k}:${v};`;
+      for (const [pk, pv] of Object.entries(pos)) posStyle += `${pk}:${pv};`;
       layerImgs.push(
         `<img class="echo-raw" src="${src}" style="${posStyle}" alt="">`,
       );
     }
   }
+  // `fg` overlays the whole scene; fill (not cover) so it stretches with the
+  // box exactly like the background does, never cropping.
   const fgHtml = fgSrc
-    ? `<img class="echo-raw" src="${fgSrc}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none;display:block;" alt="">`
+    ? `<img class="echo-raw" src="${fgSrc}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:fill;pointer-events:none;display:block;" alt="">`
     : "";
   const overlayHtml = `<div style="position:absolute;inset:0;overflow:hidden;">${layerImgs.join("")}${fgHtml}</div>`;
-  const baseStyle = `position:relative;display:block;width:${width};max-width:100%;border-radius:6px;overflow:hidden;line-height:0;`;
+  // inline-block so a wrapping `>>> <<<` (text-align:center) actually centers it.
+  const baseStyle = `position:relative;display:inline-block;width:${width};max-width:100%;border-radius:6px;overflow:hidden;line-height:0;`;
 
   if (bgSrc) {
-    if (heightRaw?.endsWith("%")) {
-      const hPct = parseFloat(heightRaw);
-      const bgImg = `<img class="echo-raw" src="${bgSrc}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;" alt="">`;
-      return `<div style="${baseStyle}aspect-ratio:${(100 / hPct).toFixed(4)} / 1;">${bgImg}${overlayHtml}</div>`;
-    }
-
-    const bgImg = `<img class="echo-raw" src="${bgSrc}" style="display:block;width:100%;height:auto;" alt="">`;
+    // The background drives the natural aspect ratio (never cropped); `width`
+    // scales the whole composite and `height`, when given, stretches it
+    // vertically relative to `width` (see resolveBlockSizing).
+    const bgImg = buildScaledBg(bgSrc, k);
     return `<div style="${baseStyle}">${bgImg}${overlayHtml}</div>`;
   }
 
@@ -346,8 +420,7 @@ export function renderAnimBlock(
     false,
   );
   const duration = `${durationSecs.toFixed(3)}s`;
-  const width = params["width"] ?? "50%";
-  const heightRaw = params["height"];
+  const { width, heightRaw, k } = resolveBlockSizing(params, "50%");
   const bg = params["bg"] ?? "";
   const bgOpacity = params["bgopacity"] ?? "1";
   const pingpong = params["pingpong"] === "true";
@@ -400,17 +473,15 @@ export function renderAnimBlock(
     spriteDiv = `<div style="position:absolute;width:${px}px;height:${px}px;${moveStyle}">${frameImgs}</div>`;
   }
 
-  const baseStyle = `position:relative;display:block;width:${width};max-width:100%;overflow:hidden;border-radius:6px;line-height:0;`;
+  // inline-block so a wrapping `>>> <<<` (text-align:center) actually centers it.
+  const baseStyle = `position:relative;display:inline-block;width:${width};max-width:100%;overflow:hidden;border-radius:6px;line-height:0;`;
   const overlayDiv = `<div style="position:absolute;inset:0;overflow:hidden;">${spriteDiv}</div>`;
 
   if (bg) {
-    if (heightRaw?.endsWith("%")) {
-      const hPct = parseFloat(heightRaw);
-      const bgImg = `<img class="echo-raw" src="${bg}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:${bgOpacity};display:block;" alt="">`;
-      return `<style>${framekf} ${moveKf}</style><div style="${baseStyle}aspect-ratio:${(100 / hPct).toFixed(4)} / 1;">${bgImg}${overlayDiv}</div>`;
-    }
-
-    const bgImg = `<img class="echo-raw" src="${bg}" style="display:block;width:100%;height:auto;opacity:${bgOpacity};" alt="">`;
+    // Background drives the natural aspect ratio (never cropped); `width` scales
+    // the composite and `height`, when given, stretches it vertically relative
+    // to `width` (see resolveBlockSizing). The sprite overlay scales with it.
+    const bgImg = buildScaledBg(bg, k, `opacity:${bgOpacity};`);
     return `<style>${framekf} ${moveKf}</style><div style="${baseStyle}">${bgImg}${overlayDiv}</div>`;
   }
 
@@ -531,8 +602,7 @@ export function renderMultiPhaseAnimBlock(
   if (phases.length < 2) return renderAnimBlock(uid, params, body, aliases);
 
   const totalDuration = phases.reduce((s, p) => s + p.duration, 0);
-  const width = params["width"] ?? "50%";
-  const height = params["height"];
+  const { width, heightRaw: height, k } = resolveBlockSizing(params, "50%");
   const bg = params["bg"] ?? "";
   const bgOpacity = params["bgopacity"] ?? "1";
 
@@ -635,16 +705,15 @@ export function renderMultiPhaseAnimBlock(
     spriteDiv = `<div style="position:absolute;width:${pSize}px;height:${pSize}px;animation:${uid}-move ${totalDuration.toFixed(3)}s linear infinite;">${frameEls.join("")}</div>`;
   }
 
-  const baseStyle = `position:relative;display:block;width:${width};max-width:100%;overflow:hidden;border-radius:6px;line-height:0;`;
+  // inline-block so a wrapping `>>> <<<` (text-align:center) actually centers it.
+  const baseStyle = `position:relative;display:inline-block;width:${width};max-width:100%;overflow:hidden;border-radius:6px;line-height:0;`;
   const overlayDiv = `<div style="position:absolute;inset:0;overflow:hidden;">${spriteDiv}</div>`;
 
   if (bg) {
-    if (height?.endsWith("%")) {
-      const hPct = parseFloat(height);
-      const bgImg = `<img class="echo-raw" src="${bg}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:${bgOpacity};display:block;" alt="">`;
-      return `<style>${cssOut}</style><div style="${baseStyle}aspect-ratio:${(100 / hPct).toFixed(4)} / 1;">${bgImg}${overlayDiv}</div>`;
-    }
-    const bgImg = `<img class="echo-raw" src="${bg}" style="display:block;width:100%;height:auto;opacity:${bgOpacity};" alt="">`;
+    // Background drives the natural aspect ratio (never cropped); `width` scales
+    // the composite and `height`, when given, stretches it vertically relative
+    // to `width` (see resolveBlockSizing). The sprite overlay scales with it.
+    const bgImg = buildScaledBg(bg, k, `opacity:${bgOpacity};`);
     return `<style>${cssOut}</style><div style="${baseStyle}">${bgImg}${overlayDiv}</div>`;
   }
 

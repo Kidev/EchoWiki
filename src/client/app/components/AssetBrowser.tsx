@@ -302,7 +302,7 @@ export function FilterTabs({
     (f) => f === "images" || f === "audio" || counts[f] > 0,
   );
   return (
-    <div className="flex gap-1">
+    <div className="flex flex-wrap gap-1">
       {visible.map((f) => (
         <button
           key={f}

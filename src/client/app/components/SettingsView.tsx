@@ -328,7 +328,7 @@ function CollaborativePanel({
               Eligibility
               <HelpTip text="Who is allowed to submit suggestions. A member must meet both the minimum karma and the minimum account age to suggest changes. Set a value to 0 to drop that requirement. These checks fail open: if Reddit can't return a user's stats, the suggestion is allowed." />
             </span>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
               <label className="text-xs text-[var(--text-muted)] w-20 shrink-0">
                 Min. karma
               </label>
@@ -354,7 +354,7 @@ function CollaborativePanel({
                 style={inputStyle}
               />
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
               <label className="text-xs text-[var(--text-muted)] w-20 shrink-0">
                 Edit cooldown
               </label>
@@ -412,7 +412,7 @@ function CollaborativePanel({
             <span className="text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wide">
               Advanced contributor flair
             </span>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
               <label className="text-xs text-[var(--text-muted)] w-20 shrink-0">
                 After
               </label>
@@ -432,7 +432,7 @@ function CollaborativePanel({
                 value={advFlairTemplateId ?? ""}
                 onChange={(e) => setAdvFlairTemplateId(e.target.value || null)}
                 disabled={loadingInfo}
-                className={`${inputCls} flex-1`}
+                className={`${inputCls} flex-1 min-w-[7rem]`}
                 style={inputStyle}
               >
                 <option value="">No flair</option>
@@ -737,9 +737,12 @@ function VotingSettingsPanel({
       </div>
 
       {}
-      <div className="flex border-b" style={divSt}>
+      <div className="flex flex-col sm:flex-row border-b" style={divSt}>
         {}
-        <div className="flex-1 px-3 py-2 border-r" style={divSt}>
+        <div
+          className="flex-1 min-w-0 px-3 py-2 border-b sm:border-b-0 sm:border-r"
+          style={divSt}
+        >
           <p className={`${secHdr} flex items-center gap-1`} style={secHdrSt}>
             Voter Eligibility
             <HelpTip text="Sets the minimum Reddit reputation a member needs in order to cast a vote on suggestions. The suggestion's own author can never vote on it. Moderators are always allowed to vote. Set a field to 0 to remove that requirement." />
@@ -775,7 +778,10 @@ function VotingSettingsPanel({
         </div>
 
         {}
-        <div className="flex-1 px-3 py-2 border-r" style={divSt}>
+        <div
+          className="flex-1 min-w-0 px-3 py-2 border-b sm:border-b-0 sm:border-r"
+          style={divSt}
+        >
           <p className={`${secHdr} flex items-center gap-1`} style={secHdrSt}>
             Instant Thresholds
             <span className="font-normal normal-case">(0 = off)</span>
@@ -810,7 +816,7 @@ function VotingSettingsPanel({
         </div>
 
         {}
-        <div className="flex-1 px-3 py-2">
+        <div className="flex-1 min-w-0 px-3 py-2">
           <p className={`${secHdr} flex items-center gap-1`} style={secHdrSt}>
             Timed Voting
             <span className="font-normal normal-case">(0 = off)</span>
@@ -859,9 +865,12 @@ function VotingSettingsPanel({
       </div>
 
       {}
-      <div className="flex border-b" style={divSt}>
+      <div className="flex flex-col sm:flex-row border-b" style={divSt}>
         {}
-        <div className="flex-1 px-3 py-2 border-r" style={divSt}>
+        <div
+          className="flex-1 min-w-0 px-3 py-2 border-b sm:border-b-0 sm:border-r"
+          style={divSt}
+        >
           <p className={`${secHdr} flex items-center gap-1`} style={secHdrSt}>
             Vote Changes
             <HelpTip text="Controls whether a member can change their mind after voting. When allowed, voters can switch their vote (FOR <-> AGAINST) or retract it. The cooldown is the minimum number of minutes they must wait between one vote change and the next, which curbs last-second flip-flopping. A cooldown of 0 lets them change instantly." />
@@ -891,7 +900,10 @@ function VotingSettingsPanel({
         </div>
 
         {}
-        <div className="flex-1 px-3 py-2 border-r" style={divSt}>
+        <div
+          className="flex-1 min-w-0 px-3 py-2 border-b sm:border-b-0 sm:border-r"
+          style={divSt}
+        >
           <p className={`${secHdr} flex items-center gap-1`} style={secHdrSt}>
             Display
             <HelpTip text="When on, the vote post shows who voted and how. When off, only the running FOR / AGAINST tallies are visible, keeping individual votes anonymous." />
@@ -903,7 +915,7 @@ function VotingSettingsPanel({
         </div>
 
         {}
-        <div className="flex-1 px-3 py-2">
+        <div className="flex-1 min-w-0 px-3 py-2">
           <p className={`${secHdr} flex items-center gap-1`} style={secHdrSt}>
             Suggestion Limits
             <HelpTip text="How many times the author may update a suggestion after first submitting it. Each update edits the same pending suggestion in place; under public voting it also resets all votes and restarts the timer, so people re-vote on the latest version. Set to 0 for unlimited updates." />
@@ -924,8 +936,11 @@ function VotingSettingsPanel({
       </div>
 
       {}
-      <div className="flex gap-3 px-3 py-2 border-b" style={divSt}>
-        <div className="shrink-0" style={{ width: 160 }}>
+      <div
+        className="flex flex-col sm:flex-row gap-2 sm:gap-3 px-3 py-2 border-b"
+        style={divSt}
+      >
+        <div className="shrink-0 w-full sm:w-40">
           <label
             className="flex items-center gap-1 mb-1"
             style={{ color: "var(--text-muted)" }}
@@ -988,21 +1003,42 @@ function VotingSettingsPanel({
 // the developer portal reports a newer published version: an "update
 // available" hint. Fails silently (renders nothing) if the version endpoint is
 // unreachable, so it never blocks the rest of the settings.
+// Cache the version lookup for the lifetime of the page so reopening Settings
+// doesn't refetch `/api/version` every time. `versionPromise` also dedupes
+// concurrent/successive mounts before the first response lands.
+let versionCache: VersionResponse | null = null;
+let versionPromise: Promise<VersionResponse | null> | null = null;
+
+function fetchVersionOnce(): Promise<VersionResponse | null> {
+  if (versionCache) return Promise.resolve(versionCache);
+  if (!versionPromise) {
+    versionPromise = fetch("/api/version")
+      .then((r) => (r.ok ? (r.json() as Promise<VersionResponse>) : null))
+      .then((d) => {
+        if (d) versionCache = d;
+        return d;
+      })
+      .catch(() => null)
+      .finally(() => {
+        versionPromise = null;
+      });
+  }
+  return versionPromise;
+}
+
 function VersionFooter() {
-  const [version, setVersion] = useState<VersionResponse | null>(null);
+  const [version, setVersion] = useState<VersionResponse | null>(versionCache);
 
   useEffect(() => {
+    if (version) return;
     let cancelled = false;
-    void fetch("/api/version")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d: VersionResponse | null) => {
-        if (!cancelled && d) setVersion(d);
-      })
-      .catch(() => {});
+    void fetchVersionOnce().then((d) => {
+      if (!cancelled && d) setVersion(d);
+    });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [version]);
 
   if (!version || !version.current) return null;
 
@@ -1229,8 +1265,8 @@ export function SettingsView({
 
   return (
     <>
-      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100">
-        <div className="flex gap-1">
+      <div className="flex flex-wrap items-center gap-2 px-3 sm:px-4 py-2 border-b border-gray-100">
+        <div className="flex flex-wrap gap-1 min-w-0">
           {SETTINGS_TABS.map((tab) => (
             <button
               key={tab.value}
@@ -1261,7 +1297,7 @@ export function SettingsView({
         <button
           onClick={() => void handleSaveAll()}
           disabled={!anyDirty || savingConfig}
-          className="text-xs px-[10px] py-[4px] rounded-full bg-[var(--accent)] text-white transition-colors cursor-pointer disabled:opacity-30"
+          className="shrink-0 ml-auto text-xs px-[10px] py-[4px] rounded-full bg-[var(--accent)] text-white transition-colors cursor-pointer disabled:opacity-30"
         >
           {savingConfig ? "Saving..." : "Save"}
         </button>
