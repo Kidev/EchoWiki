@@ -68,6 +68,8 @@ Create and set up the wiki for your subreddit from the moderator menu: it create
 
 Moderators can edit wiki pages directly inside the app. The **Edit page** button lives on the [breadcrumb bar](#breadcrumb-navigation) (right side); it collapses to a pen icon when space is tight and follows the breadcrumb's visibility. Clicking it opens the editor, where the Markdown source sits next to a live preview that updates as you type. From the collapsed inline view the same button pops the app out to the expanded editor.
 
+The source pane has **syntax highlighting** for EchoWiki's Markdown dialect: headings, links, blockquotes, list markers, `:::` block fences and phase separators, `echo://` links, and `key=value` block params are all colored as you type (the same highlighter colors the read-only **Source** review panes). A **Scroll lock** toggle above the source, on by default, keeps the two panes aligned: it anchors them on matching headings so the source follows the preview (and vice-versa) to the same section rather than yoking the scrollbars by raw proportion. Toggle it off to scroll each pane independently.
+
 An **Insert** toolbar above the editor builds the trickier syntax for you: dialogs for inserting an image (with an asset picker and an inline emoji-size mode), an interactive 3D model, an infobox, a layered scene, a frame-by-frame or moving animation, and `:::def` path aliases, plus quick buttons for centered text, bold, italic, inline code, and a table template.
 
 Saving requires a short description of the change (at least 10 characters). When collaborative mode and voting are both enabled, the save dialog shows a "Bypass public vote" checkbox, unchecked by default: leaving it unchecked sends the edit through the suggestion and voting flow, while checking it writes straight to the wiki without a vote post.
@@ -235,7 +237,7 @@ The viewer and its format loaders are lazy-loaded: the three.js runtime is only 
 
 Wiki pages support a set of fenced block directives for building richer layouts and animations without writing raw HTML. Each block opens with `:::type [params]` and closes with `:::`. Parameter values containing spaces must be quoted: `key="some value"`.
 
-**`:::card`** floats an image beside free-form Markdown content (headings, tables, prose). `image=` is the echo path, `size=` sets the image width (default `120px`), and `align=` floats it `right` (default) or `left`.
+**`:::card`** floats an image beside free-form Markdown content (headings, tables, prose). `image=` is the echo path, `size=` sets the image width (default `30%`, accepts `%` or px), and `align=` places it `right` (default), `left`, or `center`. Add `fit=true` to shrink the card so it hugs the image: a self-contained captioned illustration rather than a body-wrapping float.
 
 ```
 :::card image=echo://img/faces/hero.png size=96px align=right
@@ -261,7 +263,7 @@ Weapon | Echo Blade
 :::
 ```
 
-**`:::scene`** stacks images at absolute positions over a background. `bg:` is the background layer, `layer:` places a sprite at custom CSS coordinates (append `bottom=`, `left=`, `height=`, etc.), and `fg:` is a foreground overlay with `pointer-events: none`. The background is composed at its natural size and scaled to fit `width`/`height` without ever being cropped, so the whole image is always visible; size layers in `%` so they scale with it. Like `:::fbf` and `:::anim`, a scene can be centered by wrapping it in `>>> ... <<<`.
+**`:::scene`** stacks images at absolute positions over a background. `bg:` is the background layer, `layer:` places a sprite at custom CSS coordinates (append `bottom=`, `left=`, `height=`, etc., or `size=` to pin its width as a fraction of the background so it scales with the scene), and `fg:` is a foreground overlay with `pointer-events: none`. The background is composed at its natural size and scaled to fit `width`/`height` without ever being cropped, so the whole image is always visible; size layers in `%` so they scale with it. Like `:::fbf` and `:::anim`, a scene can be centered by wrapping it in `>>> ... <<<`.
 
 ![Scene](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/scene.png)
 
