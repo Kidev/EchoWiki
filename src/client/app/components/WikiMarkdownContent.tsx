@@ -17,6 +17,7 @@ import {
   preprocessCenterBlocks,
   withCodeProtected,
   preprocessEchoBlocks,
+  echoBlocksToSource,
   extractDisplayHints,
 } from "../echoRender";
 import {
@@ -374,7 +375,7 @@ export function WikiMarkdownContent({
                 // (?autorotate, ?height=...) after the file name.
                 if (isModelPath(rawPath.split("?")[0] ?? rawPath)) {
                   // Assets bypassed: don't pull in the 3D viewer or its model;
-                  // surface the model as a labelled placeholder instead.
+                  // surface the model as its echo:// source instead.
                   if (assetsBypassed) {
                     return (
                       <EchoInlineAsset path={rawPath} style={style}>
@@ -580,9 +581,14 @@ export function WikiMarkdownContent({
             },
           }}
         >
-          {withCodeProtected(content, (s) =>
-            preprocessEchoBlocks(preprocessCenterBlocks(preprocessAlerts(s))),
-          )}
+          {withCodeProtected(content, (s) => {
+            const base = preprocessCenterBlocks(preprocessAlerts(s));
+            // Without imported assets, show echo blocks as their ```echo source
+            // rather than compositing them from images that can't load.
+            return assetsBypassed
+              ? echoBlocksToSource(base)
+              : preprocessEchoBlocks(base);
+          })}
         </Markdown>
       </div>
     </div>

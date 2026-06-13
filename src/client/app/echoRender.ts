@@ -844,6 +844,23 @@ export function renderMultiPhaseAnimBlock(
   return `<style>${cssOut}</style><div style="${baseStyle}${hStyle}">${overlayDiv}</div>`;
 }
 
+/**
+ * Bypass-mode counterpart to {@link preprocessEchoBlocks}. When assets aren't
+ * loaded, the visual blocks can't be composited from their (missing) images, so
+ * instead of emitting broken placeholders we show each block verbatim inside an
+ * ```echo fence: the same source the author wrote, highlighted by the rendered
+ * preview's echo highlighter. The result is deterministic (no async image
+ * decode), which also keeps scroll-locked diff panes aligned. `:::def` blocks
+ * are invisible config, so they're stripped rather than shown.
+ */
+export function echoBlocksToSource(md: string): string {
+  const stripped = md.replace(/^:::def[ \t]*\n[\s\S]*?^:::/gm, "");
+  return stripped.replace(
+    /^:::(?:fbf|scene|anim|card|infobox)(?:[ \t][^\n]*)?\n[\s\S]*?^:::/gm,
+    (match) => `\`\`\`echo\n${match.replace(/\n+$/, "")}\n\`\`\``,
+  );
+}
+
 export function preprocessEchoBlocks(md: string): string {
   const defs = collectDefs(md);
   const expanded = expandDefs(md, defs);

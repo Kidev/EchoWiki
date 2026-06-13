@@ -28,7 +28,7 @@ import { preloadPaths } from "../../lib/echo";
 import { extractEchoPathsFromMarkdown } from "../echoRender";
 import { slugify } from "../assetUtils";
 import { WikiMarkdownContent } from "./WikiMarkdownContent";
-import { SideBySideDiffView } from "./DiffView";
+import { SideBySideDiffView, ScrollLockToggle } from "./DiffView";
 import { WikiSourceEditor, WikiSourceHighlight } from "./WikiSource";
 import {
   ConfirmDialog,
@@ -832,6 +832,108 @@ export const WikiView = memo(function WikiView({
         </div>
       ) : isEditing ? (
         <div className="flex-1 flex flex-col overflow-hidden">
+          {}
+          <div className="px-3 h-8 text-xs bg-[var(--thumb-bg)] border-b border-gray-100 shrink-0 select-none flex items-stretch z-10">
+            {}
+            <div className="flex-1 flex items-center justify-center gap-1 min-w-0">
+              {isProposeMode ? (
+                (["normal", "source", "diff"] as const).map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => setProposeViewMode(m)}
+                    className={`text-[10px] px-2 py-0.5 rounded transition-colors cursor-pointer ${
+                      proposeViewMode === m
+                        ? m === "diff"
+                          ? "bg-amber-500 text-white"
+                          : "bg-[var(--accent)] text-white"
+                        : "text-[var(--text-muted)] hover:bg-[var(--control-bg)]"
+                    }`}
+                  >
+                    {m === "normal"
+                      ? "Preview"
+                      : m === "source"
+                        ? "Source"
+                        : "Changes"}
+                  </button>
+                ))
+              ) : (
+                <span className="font-mono text-[var(--text-muted)] truncate">
+                  Preview
+                </span>
+              )}
+            </div>
+            {}
+            <div className="flex items-center justify-center px-2">
+              {proposeViewMode !== "diff" && (
+                <ScrollLockToggle
+                  locked={scrollLocked}
+                  onToggle={() => setScrollLocked((v) => !v)}
+                />
+              )}
+            </div>
+            {}
+            <div className="flex-1 relative flex items-center justify-center min-w-0">
+              <span className="font-mono text-[var(--text-muted)] truncate min-w-0 px-2">
+                {isProposeMode ? "Suggesting changes" : "Source"}
+              </span>
+              <div className="absolute right-0 inset-y-0 flex items-center gap-1.5">
+              {isMod && !isProposeMode && currentPage !== "index" && (
+                <button
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    startDeleteHold();
+                  }}
+                  onPointerUp={cancelDeleteHold}
+                  onPointerLeave={cancelDeleteHold}
+                  onPointerCancel={cancelDeleteHold}
+                  title="Hold to delete this page"
+                  className="relative overflow-hidden px-2 py-0.5 rounded border border-red-300 text-red-600 hover:bg-red-50 transition-colors cursor-pointer select-none touch-none shrink-0"
+                >
+                  <span
+                    className="absolute top-0 left-0 h-full bg-red-500/30 pointer-events-none"
+                    style={{
+                      width: deleteHolding ? "100%" : "0%",
+                      transition: deleteHolding
+                        ? "width 3s linear"
+                        : "width 0.15s ease",
+                    }}
+                  />
+                  <span className="relative">Delete page</span>
+                </button>
+              )}
+              <button
+                onClick={() => setShowCancelDialog(true)}
+                className="px-2 py-0.5 rounded border border-gray-300 text-[var(--text-muted)] hover:bg-[var(--control-bg)] transition-colors cursor-pointer shrink-0"
+              >
+                Cancel
+              </button>
+              {isProposeMode ? (
+                <button
+                  onClick={() => {
+                    setSuggestError(null);
+                    setShowSuggestDialog(true);
+                  }}
+                  className="px-2 py-0.5 rounded bg-[var(--accent)] text-white hover:opacity-90 transition-opacity cursor-pointer shrink-0"
+                >
+                  Submit
+                </button>
+              ) : (
+                <button
+                  onClick={() => {
+                    setSaveError(null);
+                    setCreateVotePost(true);
+                    setShowSaveDialog(true);
+                  }}
+                  className="px-2 py-0.5 rounded bg-[var(--accent)] text-white hover:opacity-90 transition-opacity cursor-pointer shrink-0"
+                >
+                  Save
+                </button>
+              )}
+              </div>
+            </div>
+          </div>
+
+          {}
           <div className="flex flex-1 min-h-0 overflow-hidden">
             <div
               style={{
@@ -845,29 +947,6 @@ export const WikiView = memo(function WikiView({
               }}
               className="flex flex-col"
             >
-              {isProposeMode && (
-                <div className="px-3 py-1 bg-[var(--thumb-bg)] border-b border-gray-100 shrink-0 flex items-center gap-1">
-                  {(["normal", "source", "diff"] as const).map((m) => (
-                    <button
-                      key={m}
-                      onClick={() => setProposeViewMode(m)}
-                      className={`text-[10px] px-2 py-0.5 rounded transition-colors cursor-pointer ${
-                        proposeViewMode === m
-                          ? m === "diff"
-                            ? "bg-amber-500 text-white"
-                            : "bg-[var(--accent)] text-white"
-                          : "text-[var(--text-muted)] hover:bg-[var(--control-bg)]"
-                      }`}
-                    >
-                      {m === "normal"
-                        ? "Preview"
-                        : m === "source"
-                          ? "Source"
-                          : "Changes"}
-                    </button>
-                  ))}
-                </div>
-              )}
               <div
                 className="flex-1 overflow-hidden"
                 style={{
@@ -928,102 +1007,6 @@ export const WikiView = memo(function WikiView({
               }}
               className="flex flex-col"
             >
-              <div className="px-3 py-1.5 text-xs bg-[var(--thumb-bg)] border-b border-gray-100 shrink-0 select-none grid grid-cols-[1fr_auto_1fr] items-center gap-2 sticky top-0 z-10">
-                <div className="flex items-center min-w-0">
-                  {proposeViewMode !== "diff" && (
-                    <button
-                      onClick={() => setScrollLocked((v) => !v)}
-                      title={
-                        scrollLocked
-                          ? "Scroll lock on: source stays aligned with the preview"
-                          : "Scroll lock off: panes scroll independently"
-                      }
-                      aria-pressed={scrollLocked}
-                      className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors cursor-pointer text-[var(--text-muted)] hover:bg-[var(--control-bg)]"
-                    >
-                      <span className="font-mono whitespace-nowrap">
-                        Scroll lock
-                      </span>
-                      {scrollLocked ? (
-                        <svg
-                          className="w-3.5 h-3.5 text-green-500"
-                          viewBox="0 0 16 16"
-                          fill="currentColor"
-                          aria-hidden="true"
-                        >
-                          <path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z" />
-                        </svg>
-                      ) : (
-                        <svg
-                          className="w-3.5 h-3.5 text-red-500"
-                          viewBox="0 0 16 16"
-                          fill="currentColor"
-                          aria-hidden="true"
-                        >
-                          <path d="M4.78 3.72a.75.75 0 0 0-1.06 1.06L6.94 8l-3.22 3.22a.75.75 0 1 0 1.06 1.06L8 9.06l3.22 3.22a.75.75 0 1 0 1.06-1.06L9.06 8l3.22-3.22a.75.75 0 0 0-1.06-1.06L8 6.94 4.78 3.72Z" />
-                        </svg>
-                      )}
-                    </button>
-                  )}
-                </div>
-                <span className="font-mono text-[var(--text-muted)] text-center truncate">
-                  {isProposeMode ? "Suggesting changes" : "Source"}
-                </span>
-                <div className="flex items-center justify-end gap-1.5">
-                  {isMod && !isProposeMode && currentPage !== "index" && (
-                    <button
-                      onPointerDown={(e) => {
-                        e.preventDefault();
-                        startDeleteHold();
-                      }}
-                      onPointerUp={cancelDeleteHold}
-                      onPointerLeave={cancelDeleteHold}
-                      onPointerCancel={cancelDeleteHold}
-                      title="Hold to delete this page"
-                      className="relative overflow-hidden px-2 py-0.5 rounded border border-red-300 text-red-600 hover:bg-red-50 transition-colors cursor-pointer select-none touch-none"
-                    >
-                      <span
-                        className="absolute top-0 left-0 h-full bg-red-500/30 pointer-events-none"
-                        style={{
-                          width: deleteHolding ? "100%" : "0%",
-                          transition: deleteHolding
-                            ? "width 3s linear"
-                            : "width 0.15s ease",
-                        }}
-                      />
-                      <span className="relative">Delete page</span>
-                    </button>
-                  )}
-                  <button
-                    onClick={() => setShowCancelDialog(true)}
-                    className="px-2 py-0.5 rounded border border-gray-300 text-[var(--text-muted)] hover:bg-[var(--control-bg)] transition-colors cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  {isProposeMode ? (
-                    <button
-                      onClick={() => {
-                        setSuggestError(null);
-                        setShowSuggestDialog(true);
-                      }}
-                      className="px-2 py-0.5 rounded bg-[var(--accent)] text-white hover:opacity-90 transition-opacity cursor-pointer"
-                    >
-                      Submit
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => {
-                        setSaveError(null);
-                        setCreateVotePost(true);
-                        setShowSaveDialog(true);
-                      }}
-                      className="px-2 py-0.5 rounded bg-[var(--accent)] text-white hover:opacity-90 transition-opacity cursor-pointer"
-                    >
-                      Save
-                    </button>
-                  )}
-                </div>
-              </div>
               <Suspense fallback={null}>
                 <WikiToolbar
                   onInsert={handleToolbarInsert}

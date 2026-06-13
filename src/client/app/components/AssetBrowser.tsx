@@ -403,7 +403,11 @@ export function SubFilterTabs({
 
   return (
     <div
-      className="relative"
+      // While the group dropdown is open, lift the whole tab bar into its own
+      // stacking context above the asset grid. The inner content layer carries a
+      // non-`none` transform, which traps the dropdown's z-index in a nested
+      // context; without this the grid (later in DOM order) paints over it.
+      className={`relative ${dropdownOpen ? "z-50" : ""}`}
       style={overflowing ? { height: rowHeight } : undefined}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}

@@ -2064,6 +2064,14 @@ router.post<
   }
 });
 
+// Pages the app reserves for its own use and must never surface in user-facing
+// page lists: the `config/` namespace holds app configuration, and `echowiki/`
+// is the internal namespace (e.g. the dev self-test target `echowiki/selftest`,
+// which Reddit wikis can't truly delete once written).
+function isListableWikiPage(page: string): boolean {
+  return !page.startsWith("config/") && !page.startsWith("echowiki/");
+}
+
 router.get<Record<string, never>, WikiPagesResponse | ErrorResponse>(
   "/api/wiki/pages",
   async (_req, res): Promise<void> => {
@@ -2077,7 +2085,7 @@ router.get<Record<string, never>, WikiPagesResponse | ErrorResponse>(
         return;
       }
       const allPages = await reddit.getWikiPages(subreddit);
-      const filtered = allPages.filter((p) => !p.startsWith("config/"));
+      const filtered = allPages.filter(isListableWikiPage);
       const toCheck = filtered.slice(0, 50);
       const results = await Promise.allSettled(
         toCheck.map((page) =>
@@ -2158,31 +2166,6 @@ router.post<
   }
 });
 
-// Append a markdown bullet linking a freshly-created page from the wiki index so
-// it doesn't start life orphaned. No-ops if the index already links the page.
-async function addPageToIndex(
-  subreddit: string,
-  page: string,
-  title: string,
-  username: string,
-): Promise<void> {
-  let indexContent = "";
-  try {
-    const idx = await reddit.getWikiPage(subreddit, "index");
-    indexContent = idx.content ?? "";
-  } catch {}
-  if (indexContent.includes(`/wiki/${page})`)) return;
-  const link = `- [${title}](/r/${subreddit}/wiki/${page})`;
-  const newContent =
-    (indexContent.trim() ? `${indexContent.trimEnd()}\n` : "") + `${link}\n`;
-  await reddit.updateWikiPage({
-    subredditName: subreddit,
-    page: "index",
-    content: newContent,
-    reason: `${username}: linked ${page} via EchoWiki`,
-  });
-}
-
 // Drop any index list line whose link targets `page` (our created-page link
 // format). Used when a page is deleted so it disappears from navigation.
 async function removePageFromIndex(
@@ -2225,7 +2208,7 @@ router.get<Record<string, never>, WikiAllPagesResponse | ErrorResponse>(
         return;
       }
       const allPages = await reddit.getWikiPages(subreddit);
-      const pages = allPages.filter((p) => !p.startsWith("config/")).sort();
+      const pages = allPages.filter(isListableWikiPage).sort();
       res.json({ type: "wiki-all-pages", pages });
     } catch {
       res.json({ type: "wiki-all-pages", pages: [] });
@@ -2301,7 +2284,6 @@ router.post<
       content: `# ${title}\n`,
       reason: `${username}: created via EchoWiki`,
     });
-    await addPageToIndex(subreddit, page, title, username);
     res.json({ type: "wiki-created", page, title });
   } catch (error) {
     const message =

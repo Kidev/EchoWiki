@@ -11,40 +11,25 @@ import { parseEditions } from "../../lib/editions";
 import { getAudioEditionParamsForPath } from "../../lib/echo";
 import { getFileName, isImagePath, isAudioPath } from "../assetUtils";
 import { AssetBypassContext } from "../assetBypass";
+import { highlightEchoCode } from "../wikiHighlight";
 
-// Inline placeholder for an unresolved echo asset. Shows the asset's label (alt
-// text / link text / file name) with an "image off" glyph so it reads clearly as
-// a deliberately skipped asset rather than a broken one.
-function MissingAssetChip({
-  label,
-  style,
-  className,
-}: {
-  label: ReactNode;
-  style?: CSSProperties | undefined;
-  className?: string | undefined;
-}) {
+// When assets are bypassed, an echo reference renders as its source: the same
+// `echo://...` text, highlighted exactly like a ```echo``` fenced block. This keeps
+// the preview deterministic (no async image decode that would shift a
+// scroll-locked diff pane) and keeps the reference readable.
+function EchoSourceRef({ reference }: { reference: string }) {
   return (
-    <span
-      className={`echo-asset-missing inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-dashed text-[var(--text-muted)] text-xs align-middle max-w-full${className ? ` ${className}` : ""}`}
-      style={{ borderColor: "var(--text-muted)", ...style }}
-      title="Asset not loaded: viewing without imported assets"
-    >
-      <svg
-        className="w-3 h-3 shrink-0 opacity-70"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M3 3l18 18M21 15V5a2 2 0 00-2-2H9m-4.5.5A2 2 0 003 5v14a2 2 0 002 2h14a2 2 0 001.5-.68M21 15l-5-5M5 21l8-8"
-        />
-      </svg>
-      <span className="truncate">{label}</span>
-    </span>
+    <code
+      className="echo-asset-source not-prose inline-block max-w-full overflow-x-auto align-middle rounded px-1.5 py-0.5 text-xs font-mono"
+      style={{
+        background: "var(--thumb-bg)",
+        border: "1px solid var(--text-muted)",
+        whiteSpace: "pre-wrap",
+        wordBreak: "break-all",
+      }}
+      title="Viewing without imported assets: showing the echo:// source"
+      dangerouslySetInnerHTML={{ __html: highlightEchoCode(reference) }}
+    />
   );
 }
 
@@ -222,15 +207,10 @@ export function EchoInlineAsset({
     }
   }, [url, audioParams]);
 
-  // Assets bypassed: render an inert labelled placeholder, never touching IDB.
+  // Assets bypassed: render the echo:// source instead of resolving it against
+  // IDB, so the reference stays visible and the layout stays stable.
   if (bypass) {
-    return (
-      <MissingAssetChip
-        label={children ?? name}
-        style={style}
-        className={className}
-      />
-    );
+    return <EchoSourceRef reference={`echo://${path}`} />;
   }
 
   // Phase 1: IDB read in progress: show spinner badge

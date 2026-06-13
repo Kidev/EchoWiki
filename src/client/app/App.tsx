@@ -379,6 +379,12 @@ export const App = () => {
     });
   }, [wikiCurrentPage, wikiPages]);
 
+  // The hover breadcrumb bar overlays the wiki editor's own top bar, so keep it
+  // dismissed whenever the editor is open (the hover handler is also guarded).
+  useEffect(() => {
+    if (wikiIsEditing) setShowBreadcrumb(false);
+  }, [wikiIsEditing]);
+
   const handleBreadcrumbBarLeave = useCallback(
     (e: ReactMouseEvent) => {
       const topBar = topBarRef.current;
@@ -504,7 +510,21 @@ export const App = () => {
           const contentNeedsAssets = contentEchoPaths.length > 0;
           const imported = await hasAssetsPromise;
           if (contentNeedsAssets && !imported) {
-            setAppState("no-assets");
+            // Honour a remembered "continue without assets" choice for this post
+            // so a re-init drops the voter straight back into the bypassed view
+            // instead of the import prompt.
+            let remembered = false;
+            try {
+              remembered =
+                sessionStorage.getItem(`echowiki:bypassAssets:${vd.postId}`) ===
+                "1";
+            } catch {}
+            if (remembered) {
+              setAssetsBypassed(true);
+              setAppState("ready");
+            } else {
+              setAppState("no-assets");
+            }
             return;
           }
 
@@ -785,7 +805,29 @@ export const App = () => {
   const handleBypassAssets = useCallback(() => {
     setAssetsBypassed(true);
     setAppState("ready");
-  }, []);
+    // Remember the choice for this post (session-scoped) so a webview re-init
+    // (e.g. the view losing/regaining focus) doesn't bounce the voter back to
+    // the import prompt. The new "Load assets" button is the explicit way out.
+    try {
+      if (votingData)
+        sessionStorage.setItem(
+          `echowiki:bypassAssets:${votingData.postId}`,
+          "1",
+        );
+    } catch {}
+  }, [votingData]);
+
+  // Reverse of the bypass: a voter who chose "continue without assets" can
+  // return to the import prompt to actually load them. Clears the remembered
+  // choice so they aren't sent straight back into the bypassed view.
+  const handleLoadAssets = useCallback(() => {
+    setAssetsBypassed(false);
+    setAppState("no-assets");
+    try {
+      if (votingData)
+        sessionStorage.removeItem(`echowiki:bypassAssets:${votingData.postId}`);
+    } catch {}
+  }, [votingData]);
 
   const handleFiles = useCallback(
     async (e: ChangeEvent<HTMLInputElement>) => {
@@ -1201,7 +1243,11 @@ export const App = () => {
   const isInline = webViewMode === "inline";
 
   useEffect(() => {
-    if (!isInline || appState !== "ready" || isGameIndependent) return;
+    // `assetsBypassed` is an intentional "ready without assets" state (a voter
+    // chose "continue without assets"), so re-acquiring focus must not treat the
+    // absence of imported assets as a reason to bounce back to the import prompt.
+    if (!isInline || appState !== "ready" || isGameIndependent || assetsBypassed)
+      return;
     const onFocus = () => {
       void hasAssets().then((still) => {
         if (!still) {
@@ -1220,7 +1266,7 @@ export const App = () => {
     };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-  }, [isInline, appState, isGameIndependent]);
+  }, [isInline, appState, isGameIndependent, assetsBypassed]);
 
   useEffect(() => {
     if (!postId) return;
@@ -1976,6 +2022,7 @@ export const App = () => {
             data={votingData}
             wikiFontSize={style.wikiFontSize}
             isInline={isInline}
+            onLoadAssets={handleLoadAssets}
             onVoteCast={(updatedStatus, updatedMyVote) => {
               setVotingData((prev) =>
                 prev
@@ -1996,7 +2043,7 @@ export const App = () => {
           <div className="relative" style={{ zIndex: 10 }}>
             <div
               ref={topBarRef}
-              className={`flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 sm:px-4 py-2 border-b ${showBreadcrumb && activeTab === "wiki" ? "border-transparent" : "border-gray-100"}`}
+              className={`flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 sm:px-4 py-2 border-b ${showBreadcrumb && activeTab === "wiki" && !wikiIsEditing ? "border-transparent" : "border-gray-100"}`}
               onMouseEnter={cancelBreadcrumbHide}
               onMouseLeave={(e) => {
                 const bar = breadcrumbBarRef.current;
@@ -2023,7 +2070,10 @@ export const App = () => {
                     }
                     onMouseEnter={(e) => {
                       if (activeTab === "wiki") {
-                        setShowBreadcrumb(true);
+                        // While the wiki editor is open the breadcrumb bar would
+                        // overlay the editor's top bar and blank out the divider
+                        // beneath the top menu, so suppress it during editing.
+                        if (!wikiIsEditing) setShowBreadcrumb(true);
                       } else {
                         e.currentTarget.style.backgroundColor =
                           "var(--thumb-bg)";
@@ -2723,6 +2773,7 @@ export const App = () => {
                 username={username}
                 wikiFontSize={style.wikiFontSize}
                 onPendingCountChange={setPendingCount}
+                onEditSuggestion={handleNavigateToSuggestion}
               />
             )}
 

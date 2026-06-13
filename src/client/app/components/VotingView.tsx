@@ -9,7 +9,7 @@ import type {
   WikiFontSize,
 } from "../../../shared/types/api";
 import { requestExpandedMode, navigateTo } from "@devvit/web/client";
-import { CompareView } from "./DiffView";
+import { CompareView, ScrollLockToggle } from "./DiffView";
 import { AssetBypassContext } from "../assetBypass";
 
 function formatAuthorKarma(karma: number): string {
@@ -62,14 +62,17 @@ function VotingView({
   wikiFontSize,
   isInline,
   onVoteCast,
+  onLoadAssets,
 }: {
   data: VotingInitResponse;
   wikiFontSize: WikiFontSize;
   isInline: boolean;
   onVoteCast: (updated: VoteStatus, myVote: VoteValue | null) => void;
+  onLoadAssets: () => void;
 }) {
   const { suggestion, currentContent, canVote, config } = data;
   const assetsBypassed = useContext(AssetBypassContext);
+  const [scrollLocked, setScrollLocked] = useState(true);
   const [voteStatus, setVoteStatus] = useState<VoteStatus>(data.voteStatus);
   const [myVote, setMyVote] = useState<VoteValue | null>(data.myVote);
   const [isCasting, setIsCasting] = useState(false);
@@ -233,14 +236,14 @@ function VotingView({
 
       {}
       <div
-        className="flex items-center justify-between gap-3 px-3 py-1.5 border-b shrink-0"
+        className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-3 py-1.5 border-b shrink-0"
         style={{
           borderColor: "var(--thumb-bg)",
           backgroundColor: "var(--thumb-bg)",
         }}
       >
         {}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 min-w-0">
           {(["normal", "source", "diff"] as const).map((m) => (
             <button
               key={m}
@@ -259,20 +262,43 @@ function VotingView({
             </button>
           ))}
           {assetsBypassed && (
-            <span
-              className="ml-1 text-[10px] px-1.5 py-0.5 rounded border border-dashed"
-              style={{
-                color: "var(--text-muted)",
-                borderColor: "var(--text-muted)",
-              }}
-              title="You chose to continue without assets: echo:// references are shown as placeholders. Reload and import the game to view them."
-            >
-              assets not loaded
-            </span>
+            <>
+              <div className="mx-1 self-stretch w-px bg-[var(--text-muted)] opacity-30" />
+              <button
+                onClick={onLoadAssets}
+                className="flex items-center gap-1 text-[10px] px-2 py-1 rounded font-medium border border-[var(--accent)] text-[var(--accent)] cursor-pointer transition-colors hover:bg-[var(--accent)] hover:text-white"
+                title="You chose to continue without assets: echo:// references are shown as placeholders. Load the game to view them."
+              >
+                <svg
+                  className="w-3 h-3"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"
+                  />
+                </svg>
+                Load assets
+              </button>
+            </>
           )}
         </div>
         {}
-        <div className="flex items-center gap-3 shrink-0 flex-wrap justify-end">
+        <div className="flex items-center justify-center">
+          {mode !== "diff" && (
+            <ScrollLockToggle
+              locked={scrollLocked}
+              onToggle={() => setScrollLocked((v) => !v)}
+            />
+          )}
+        </div>
+        {}
+        <div className="flex items-center gap-3 min-w-0 flex-wrap justify-end">
           {}
           <div className="relative group cursor-default select-none">
             <span className="text-xs text-green-600 font-medium">
@@ -401,6 +427,8 @@ function VotingView({
           leftLabel="Current"
           rightLabel="Suggested"
           mode={mode}
+          scrollLocked={scrollLocked}
+          onScrollLockChange={setScrollLocked}
         />
         {isCasting && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/10 z-10">
@@ -495,7 +523,7 @@ function VotingView({
                     </div>
                     {suggestion.previousDescriptions.map((d, i) => (
                       <div key={i} className="truncate">
-                       . {d}
+                        . {d}
                       </div>
                     ))}
                   </div>

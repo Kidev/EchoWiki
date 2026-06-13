@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WikiFontSize } from "../../../shared/types/api";
 import { WikiMarkdownContent } from "./WikiMarkdownContent";
 import { WikiSourceHighlight } from "./WikiSource";
@@ -291,7 +291,7 @@ export function SideBySideDiffView({
                   borderColor: "var(--thumb-bg)",
                 }}
               >
-               . {line.count} unchanged line{line.count !== 1 ? "s" : ""}
+                . {line.count} unchanged line{line.count !== 1 ? "s" : ""}
               </div>
               <div className="w-9 shrink-0" />
               <div className="flex-1" />
@@ -362,6 +362,63 @@ export function SideBySideDiffView({
   );
 }
 
+// Toggle for the side-by-side scroll lock. Kept here (rather than inline) so the
+// compare panes and any external toolbar (e.g. the voting view) render an
+// identical control. Mirrors the editor's scroll-lock button styling.
+export function ScrollLockToggle({
+  locked,
+  onToggle,
+}: {
+  locked: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      onClick={onToggle}
+      title={
+        locked
+          ? "Scroll lock on: the two panes stay aligned as you scroll"
+          : "Scroll lock off: panes scroll independently"
+      }
+      aria-pressed={locked}
+      aria-label={locked ? "Scroll lock on" : "Scroll lock off"}
+      className={`shrink-0 flex items-center justify-center w-6 h-6 rounded transition-colors cursor-pointer hover:bg-[var(--control-bg)] ${
+        locked ? "text-[var(--accent)]" : "text-[var(--text-muted)]"
+      }`}
+    >
+      {locked ? (
+        <svg
+          className="w-4 h-4"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <rect x="4" y="11" width="16" height="10" rx="2" />
+          <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+        </svg>
+      ) : (
+        <svg
+          className="w-4 h-4"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <rect x="4" y="11" width="16" height="10" rx="2" />
+          <path d="M8 11V7a4 4 0 0 1 7.5-1.9" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
 export function CompareView({
   original,
   proposed,
@@ -372,6 +429,8 @@ export function CompareView({
   rightLabel = "Suggested",
   mode: controlledMode,
   initialMode = "normal",
+  scrollLocked: controlledScrollLocked,
+  onScrollLockChange,
 }: {
   original: string;
   proposed: string;
@@ -382,6 +441,11 @@ export function CompareView({
   rightLabel?: string;
   mode?: "normal" | "source" | "diff";
   initialMode?: "normal" | "source" | "diff";
+  // When provided, scroll-lock state is controlled by the parent (which is then
+  // responsible for rendering its own ScrollLockToggle). Otherwise CompareView
+  // manages the state itself and shows a toggle in its built-in toolbar.
+  scrollLocked?: boolean;
+  onScrollLockChange?: (locked: boolean) => void;
 }) {
   const [internalMode, setInternalMode] = useState<
     "normal" | "source" | "diff"
@@ -391,6 +455,44 @@ export function CompareView({
   useEffect(() => {
     if (mode === "diff") setHiddenCol(null);
   }, [mode]);
+
+  // Side-by-side scroll lock: yoke the two panes proportionally so the same
+  // relative position of each document stays visible together. Proportional
+  // (rather than heading-anchored like the editor) because the panes share an
+  // identical layout/zoom, so the fraction maps cleanly and is robust to the
+  // two documents diverging. `lockGuardRef` stops the programmatic scroll of one
+  // pane from echoing back and fighting the user.
+  const [internalLock, setInternalLock] = useState(true);
+  const scrollLocked = controlledScrollLocked ?? internalLock;
+  const leftScrollRef = useRef<HTMLDivElement>(null);
+  const rightScrollRef = useRef<HTMLDivElement>(null);
+  const lockGuardRef = useRef(false);
+
+  const syncFrom = useCallback(
+    (from: "left" | "right") => {
+      if (!scrollLocked || lockGuardRef.current || hiddenCol !== null) return;
+      const left = leftScrollRef.current;
+      const right = rightScrollRef.current;
+      if (!left || !right) return;
+      const src = from === "left" ? left : right;
+      const dst = from === "left" ? right : left;
+      const fromMax = src.scrollHeight - src.clientHeight;
+      const toMax = dst.scrollHeight - dst.clientHeight;
+      if (fromMax <= 0 || toMax <= 0) return;
+      lockGuardRef.current = true;
+      dst.scrollTop = (src.scrollTop / fromMax) * toMax;
+      requestAnimationFrame(() => {
+        lockGuardRef.current = false;
+      });
+    },
+    [scrollLocked, hiddenCol],
+  );
+  const handleLeftScroll = useCallback(() => syncFrom("left"), [syncFrom]);
+  const handleRightScroll = useCallback(() => syncFrom("right"), [syncFrom]);
+  const toggleScrollLock = useCallback(() => {
+    if (controlledScrollLocked === undefined) setInternalLock((v) => !v);
+    onScrollLockChange?.(!scrollLocked);
+  }, [controlledScrollLocked, onScrollLockChange, scrollLocked]);
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {controlledMode === undefined && (
@@ -418,6 +520,14 @@ export function CompareView({
                   : "Changes"}
             </button>
           ))}
+          {mode !== "diff" && (
+            <div className="ml-auto">
+              <ScrollLockToggle
+                locked={scrollLocked}
+                onToggle={toggleScrollLock}
+              />
+            </div>
+          )}
         </div>
       )}
       {mode === "diff" ? (
@@ -439,6 +549,8 @@ export function CompareView({
             }}
           >
             <div
+              ref={leftScrollRef}
+              onScroll={handleLeftScroll}
               className="h-full overflow-auto"
               style={{ scrollbarGutter: "stable both-edges" }}
             >
@@ -483,6 +595,8 @@ export function CompareView({
             }}
           >
             <div
+              ref={rightScrollRef}
+              onScroll={handleRightScroll}
               className="h-full overflow-auto"
               style={{ scrollbarGutter: "stable both-edges" }}
             >

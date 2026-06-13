@@ -2,8 +2,6 @@ import { useState, useEffect, useCallback } from "react";
 import type {
   WikiSuggestion,
   WikiSuggestionActionRequest,
-  WikiSuggestionRequest,
-  WikiSuggestionResponse,
   WikiSuggestionsResponse,
   WikiSuggestionWithVoting,
   WikiResponse,
@@ -404,12 +402,16 @@ function SubmissionsPanel({
   username,
   wikiFontSize,
   onPendingCountChange,
+  onEditSuggestion,
 }: {
   subredditName: string;
   isMod: boolean;
   username: string;
   wikiFontSize: WikiFontSize;
   onPendingCountChange?: (count: number) => void;
+  // Open one of the user's own contributions in the full split suggestion
+  // editor (preview + source) on the Wiki tab, rather than a bare textarea.
+  onEditSuggestion: (page: string, content: string) => void;
 }) {
   const [suggestions, setSuggestions] = useState<WikiSuggestionWithVoting[]>(
     [],
@@ -429,13 +431,6 @@ function SubmissionsPanel({
   const [denyPromptReason, setDenyPromptReason] = useState("");
   const [denyPromptError, setDenyPromptError] = useState<string | null>(null);
   const [denyPromptBusy, setDenyPromptBusy] = useState(false);
-
-  const [editSuggestion, setEditSuggestion] =
-    useState<WikiSuggestionWithVoting | null>(null);
-  const [editContent, setEditContent] = useState("");
-  const [editDescription, setEditDescription] = useState("");
-  const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
-  const [editError, setEditError] = useState<string | null>(null);
 
   const [tab, setTab] = useState<"pending" | "history">("pending");
 
@@ -586,149 +581,8 @@ function SubmissionsPanel({
     setDenyPromptReason("");
   }, [denyPromptUser, denyPromptReason, submitDecision]);
 
-  const handleOpenEdit = useCallback((s: WikiSuggestionWithVoting) => {
-    setEditSuggestion(s);
-    setEditContent(s.content);
-    setEditDescription(s.description);
-    setEditError(null);
-  }, []);
-
-  const handleEditSave = useCallback(async () => {
-    if (!editSuggestion) return;
-    if (!editDescription.trim()) {
-      setEditError("Please provide a description.");
-      return;
-    }
-    setIsSubmittingEdit(true);
-    setEditError(null);
-    try {
-      const body: WikiSuggestionRequest = {
-        page: editSuggestion.page,
-        content: editContent,
-        description: editDescription.trim(),
-      };
-      const res = await fetch("/api/wiki/suggestion", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        const err = (await res.json()) as ErrorResponse;
-        setEditError(err.message ?? "Failed to update suggestion.");
-        return;
-      }
-      const data: WikiSuggestionResponse = await res.json();
-      if (data.suggestion) {
-        setSuggestions((prev) =>
-          prev.map((s) =>
-            s.username === editSuggestion.username
-              ? { ...s, ...data.suggestion!, voteStatus: s.voteStatus }
-              : s,
-          ),
-        );
-      }
-      setEditSuggestion(null);
-      showToast("Suggestion updated!");
-    } catch {
-      setEditError("Network error. Please try again.");
-    } finally {
-      setIsSubmittingEdit(false);
-    }
-  }, [editSuggestion, editContent, editDescription]);
-
   return (
     <>
-      {editSuggestion && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
-          <div
-            className="flex flex-col w-full max-w-2xl max-h-[90vh] rounded-xl shadow-2xl overflow-hidden"
-            style={{
-              backgroundColor: "var(--bg)",
-              border: "1px solid var(--thumb-bg)",
-            }}
-          >
-            <div
-              className="flex items-center justify-between px-4 py-3 border-b"
-              style={{ borderColor: "var(--thumb-bg)" }}
-            >
-              <div className="flex flex-col min-w-0">
-                <span className="text-sm font-semibold text-[var(--text)]">
-                  Edit suggestion
-                </span>
-                <span className="text-xs text-[var(--text-muted)] truncate">
-                  {editSuggestion.page
-                    .replace(/_/g, " ")
-                    .replace(/\b\w/g, (c) => c.toUpperCase())}
-                </span>
-              </div>
-              <button
-                onClick={() => setEditSuggestion(null)}
-                className="text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer"
-              >
-                <svg
-                  className="w-4 h-4"
-                  viewBox="0 0 16 16"
-                  fill="currentColor"
-                >
-                  <path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z" />
-                </svg>
-              </button>
-            </div>
-            <div className="flex flex-col gap-3 px-4 py-3 overflow-auto flex-1">
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-[var(--text-muted)]">
-                  Description
-                </label>
-                <input
-                  type="text"
-                  value={editDescription}
-                  onChange={(e) => setEditDescription(e.target.value)}
-                  placeholder="Describe your changes (min 10 characters)"
-                  className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)]"
-                  style={{
-                    backgroundColor: "var(--control-bg)",
-                    color: "var(--control-text)",
-                  }}
-                />
-              </div>
-              <div className="flex flex-col gap-1 flex-1 min-h-0">
-                <label className="text-xs font-medium text-[var(--text-muted)]">
-                  Content
-                </label>
-                <textarea
-                  value={editContent}
-                  onChange={(e) => setEditContent(e.target.value)}
-                  className="text-sm px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)] resize-none flex-1 font-mono min-h-60"
-                  style={{
-                    backgroundColor: "var(--control-bg)",
-                    color: "var(--control-text)",
-                  }}
-                />
-              </div>
-              {editError && <p className="text-xs text-red-500">{editError}</p>}
-            </div>
-            <div
-              className="flex items-center justify-end gap-2 px-4 py-3 border-t"
-              style={{ borderColor: "var(--thumb-bg)" }}
-            >
-              <button
-                onClick={() => setEditSuggestion(null)}
-                disabled={isSubmittingEdit}
-                className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer disabled:opacity-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => void handleEditSave()}
-                disabled={isSubmittingEdit}
-                className="text-xs px-3 py-1.5 rounded-lg bg-[var(--accent)] text-white hover:opacity-90 cursor-pointer disabled:opacity-50 transition-opacity"
-              >
-                {isSubmittingEdit ? "Saving..." : "Update suggestion"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       {reviewSuggestion && (
         <SuggestionReviewModal
           suggestion={reviewSuggestion}
@@ -914,7 +768,7 @@ function SubmissionsPanel({
                     )}
                     {p.username === username && (
                       <button
-                        onClick={() => handleOpenEdit(p)}
+                        onClick={() => onEditSuggestion(p.page, p.content)}
                         className="text-xs px-2 py-1 rounded border border-gray-300 text-[var(--text)] hover:bg-[var(--thumb-bg)] cursor-pointer"
                       >
                         Edit
