@@ -97,6 +97,7 @@ function matchesFilter(p: string, f: FilterType): boolean {
 import { extractEchoPathsFromMarkdown } from "./echoRender";
 import { EchoLinkDialog } from "./components/EchoLinkDialog";
 import { CompareView } from "./components/DiffView";
+import { AssetBypassContext } from "./assetBypass";
 import { parseEchoLink } from "./wikiLinks";
 import { WikiView } from "./components/WikiView";
 import {
@@ -120,6 +121,10 @@ const SettingsView = lazy(() =>
 export const App = () => {
   const [appMode, setAppMode] = useState<AppMode>("main");
   const [votingData, setVotingData] = useState<VotingInitResponse | null>(null);
+  // Session-only opt-in to review a vote without importing the game's assets.
+  // Deliberately never persisted: each visit must press "continue without
+  // assets" again, so the import path stays the default, encouraged flow.
+  const [assetsBypassed, setAssetsBypassed] = useState(false);
   const [appState, setAppState] = useState<AppState>("loading");
   const [activeTab, setActiveTab] = useState<ActiveTab>("wiki");
   const [subredditName, setSubredditName] = useState("");
@@ -772,6 +777,14 @@ export const App = () => {
 
   const handleImport = useCallback(() => {
     fileInputRef.current?.click();
+  }, []);
+
+  // Voting-only: skip the asset import and review the suggestion's text/diff
+  // with echo:// references shown as inert placeholders. Not persisted, so a
+  // reload returns to the import prompt.
+  const handleBypassAssets = useCallback(() => {
+    setAssetsBypassed(true);
+    setAppState("ready");
   }, []);
 
   const handleFiles = useCallback(
@@ -1896,6 +1909,14 @@ export const App = () => {
                 >
                   Select Game Folder
                 </button>
+                {appMode === "voting" && (
+                  <button
+                    className="text-xs underline underline-offset-2 text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer -mt-2"
+                    onClick={handleBypassAssets}
+                  >
+                    Continue without assets
+                  </button>
+                )}
                 {error && (
                   <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
                     {error}
@@ -1950,18 +1971,24 @@ export const App = () => {
       )}
 
       {appState === "ready" && appMode === "voting" && votingData && (
-        <VotingView
-          data={votingData}
-          wikiFontSize={style.wikiFontSize}
-          isInline={isInline}
-          onVoteCast={(updatedStatus, updatedMyVote) => {
-            setVotingData((prev) =>
-              prev
-                ? { ...prev, voteStatus: updatedStatus, myVote: updatedMyVote }
-                : null,
-            );
-          }}
-        />
+        <AssetBypassContext.Provider value={assetsBypassed}>
+          <VotingView
+            data={votingData}
+            wikiFontSize={style.wikiFontSize}
+            isInline={isInline}
+            onVoteCast={(updatedStatus, updatedMyVote) => {
+              setVotingData((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      voteStatus: updatedStatus,
+                      myVote: updatedMyVote,
+                    }
+                  : null,
+              );
+            }}
+          />
+        </AssetBypassContext.Provider>
       )}
 
       {appState === "ready" && appMode === "main" && (

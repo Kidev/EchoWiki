@@ -3,6 +3,7 @@ import {
   type ReactNode,
   lazy,
   Suspense,
+  useContext,
   useLayoutEffect,
   useRef,
 } from "react";
@@ -23,6 +24,7 @@ import {
   EchoRawImage,
   EchoSceneFrame,
 } from "./EchoInlineAsset";
+import { AssetBypassContext } from "../assetBypass";
 import { getFileName, isModelPath, slugify } from "../assetUtils";
 import { highlightEchoCode } from "../wikiHighlight";
 
@@ -139,6 +141,7 @@ export function WikiMarkdownContent({
   onAnchorConsumed?: (() => void) | undefined;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const assetsBypassed = useContext(AssetBypassContext);
   useLayoutEffect(() => {
     if (!targetAnchor) return;
     const el =
@@ -371,6 +374,15 @@ export function WikiMarkdownContent({
                 // tested separately because the path may carry display params
                 // (?autorotate, ?height=...) after the file name.
                 if (isModelPath(rawPath.split("?")[0] ?? rawPath)) {
+                  // Assets bypassed: don't pull in the 3D viewer or its model;
+                  // surface the model as a labelled placeholder instead.
+                  if (assetsBypassed) {
+                    return (
+                      <EchoInlineAsset path={rawPath} style={style}>
+                        {alt ?? getFileName(rawPath.split("?")[0] ?? rawPath)}
+                      </EchoInlineAsset>
+                    );
+                  }
                   return (
                     <Suspense
                       fallback={

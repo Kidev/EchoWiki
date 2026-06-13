@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useContext, useRef } from "react";
 import type {
   VotingInitResponse,
   CastVoteRequest,
@@ -10,6 +10,7 @@ import type {
 } from "../../../shared/types/api";
 import { requestExpandedMode, navigateTo } from "@devvit/web/client";
 import { CompareView } from "./DiffView";
+import { AssetBypassContext } from "../assetBypass";
 
 function formatAuthorKarma(karma: number): string {
   if (karma >= 1_000_000) return `${(karma / 1_000_000).toFixed(1)}M`;
@@ -68,6 +69,7 @@ function VotingView({
   onVoteCast: (updated: VoteStatus, myVote: VoteValue | null) => void;
 }) {
   const { suggestion, currentContent, canVote, config } = data;
+  const assetsBypassed = useContext(AssetBypassContext);
   const [voteStatus, setVoteStatus] = useState<VoteStatus>(data.voteStatus);
   const [myVote, setMyVote] = useState<VoteValue | null>(data.myVote);
   const [isCasting, setIsCasting] = useState(false);
@@ -256,6 +258,18 @@ function VotingView({
                   : "Changes"}
             </button>
           ))}
+          {assetsBypassed && (
+            <span
+              className="ml-1 text-[10px] px-1.5 py-0.5 rounded border border-dashed"
+              style={{
+                color: "var(--text-muted)",
+                borderColor: "var(--text-muted)",
+              }}
+              title="You chose to continue without assets: echo:// references are shown as placeholders. Reload and import the game to view them."
+            >
+              assets not loaded
+            </span>
+          )}
         </div>
         {}
         <div className="flex items-center gap-3 shrink-0 flex-wrap justify-end">
