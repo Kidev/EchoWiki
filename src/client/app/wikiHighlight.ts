@@ -15,6 +15,8 @@
  * out of alignment with the textarea underneath.
  */
 
+import { isAllowedImageHost } from "../../shared/imageHosts";
+
 const COLOR = {
   fence: "#a855f7", // ::: block fences, --- phase separators, list markers
   attrKey: "#3b9eff", // key in key=value params
@@ -27,7 +29,26 @@ const COLOR = {
   code: "#16a34a", // `inline code`
   link: "var(--link-color, #0079d3)", // [link](url) text
   muted: "var(--text-muted)", // blockquotes, punctuation
+  invalid: "#ef4444", // remote image src that can't be proxied (won't load)
 } as const;
+
+// An `![alt](url)` whose src is a remote http(s) URL can only render if it goes
+// through the server image proxy, which is limited to the hosts declared in
+// devvit.json (see `isAllowedImageHost`). Detect a src that won't load so the
+// editor can flag it: any other src (echo://, data:, relative, reddit links) is
+// fine. `escUrl` is HTML-escaped source, so undo the entity escaping to parse.
+function isUnproxyableRemoteImage(escUrl: string): boolean {
+  const url = escUrl
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+  if (!/^https?:\/\//i.test(url)) return false;
+  try {
+    return !isAllowedImageHost(new URL(url).hostname);
+  } catch {
+    return true; // malformed http(s) url won't load either
+  }
+}
 
 function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -134,6 +155,30 @@ function highlightInline(escaped: string): string {
   );
   // echo:// asset links (alias + query params colored by highlightEchoUrl)
   s = s.replace(ECHO_URL_RE, (m) => hold(highlightEchoUrl(m)));
+  // ![alt](url) images. Run before the generic link rule so the `!` isn't
+  // stranded. A remote http(s) src whose host isn't in the proxy allowlist
+  // can't load (see isUnproxyableRemoteImage); flag the whole image in red with
+  // a wavy underline so the author sees it won't work. echo:// srcs are already
+  // held above, so `u` is a placeholder for them and reads as valid.
+  s = s.replace(
+    /!\[([^\]]*)\]\(((?:[^()]|\([^()]*\))*)\)/g,
+    (_m, t: string, u: string) => {
+      if (isUnproxyableRemoteImage(u)) {
+        return hold(
+          span(
+            COLOR.invalid,
+            "![" + t + "](" + u + ")",
+            "text-decoration:underline wavy;",
+          ),
+        );
+      }
+      return hold(
+        span(COLOR.muted, "![") +
+          span(COLOR.link, t) +
+          span(COLOR.muted, "](" + u + ")"),
+      );
+    },
+  );
   // [text](url): the url destination allows balanced `(...)` (e.g. a held echo
   // link whose filename contained parens), so it isn't truncated at the first `)`
   s = s.replace(

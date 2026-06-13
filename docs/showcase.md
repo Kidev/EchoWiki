@@ -15,6 +15,7 @@ This page demonstrates every visual feature the echo system supports. Assets are
 [8. Scene](#8-layered-scene)  
 [9. Frame-by-frame](#9-frame-by-frame-animation)  
 [10. Moving animation](#10-moving-animation)  
+[11. Remote images](#11-remote-images)  
 [Quick reference](#quick-reference)
 
 ---
@@ -544,6 +545,27 @@ echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,13
 
 ---
 
+## 11. Remote images
+
+Not every image has to come from the game. An ordinary remote image embeds with the **same markdown syntax**, pointing at a normal `http(s)` URL instead of an `echo://` path. It needs no game import and works on any page.
+
+```echo
+![EchoWiki logo](https://raw.githubusercontent.com/Kidev/EchoWiki/refs/heads/main/assets/echo-wiki.svg)
+```
+
+![EchoWiki logo](https://raw.githubusercontent.com/Kidev/EchoWiki/refs/heads/main/assets/echo-wiki.svg)
+
+Reddit's webview can't load external images directly, so EchoWiki fetches them through its own server and streams the bytes back to your browser. Nothing is stored or re-hosted: the server only relays the image for that request.
+
+> [!IMPORTANT]
+> For the relay to reach it, the image's host must be on the app's **allowlist** (the hosts the app is configured to fetch). Out of the box that is `i.imgur.com`, `raw.githubusercontent.com`, and `github.com`. An image from any other host won't load, and the editor flags its link **in red** as you type so you catch it before saving.
+
+```echo
+![Won't load](https://example.com/not-on-the-allowlist.png)
+```
+
+---
+
 ## Quick reference
 
 ### echo:// links
@@ -563,6 +585,14 @@ echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,13
 | Audio speed | `?speed=1.5` |
 | Audio pitch (semitones) | `?pitch=5` |
 | Combine params | `?crop&outline` or `?emoji&sprite=12,8,0` |
+
+### Remote images
+
+| Feature | Syntax |
+|---|---|
+| Remote image (allowlisted host) | `![alt](https://i.imgur.com/example.png)` |
+
+Relayed through the app's server; only hosts on the allowlist (`i.imgur.com`, `raw.githubusercontent.com`, `github.com`) load. Off-list links are flagged red in the editor.
 
 ### Layout helpers
 

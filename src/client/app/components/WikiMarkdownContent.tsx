@@ -27,6 +27,7 @@ import {
 } from "./EchoInlineAsset";
 import { AssetBypassContext } from "../assetBypass";
 import { getFileName, isModelPath, slugify } from "../assetUtils";
+import { RemoteImage } from "./RemoteImage";
 import { highlightEchoCode } from "../wikiHighlight";
 
 const ModelViewer = lazy(() => import("./ModelViewer"));
@@ -434,6 +435,23 @@ export function WikiMarkdownContent({
                   >
                     {alt ?? getFileName(cleanPath)}
                   </EchoInlineAsset>
+                );
+              }
+              // Non-echo images: a remote http(s) src can't be loaded directly
+              // by the Reddit webview (bare <img> requests aren't authorized and
+              // external origins are blocked), so fetch it through the server
+              // proxy as a blob via RemoteImage. data:/relative srcs load fine.
+              if (
+                src &&
+                (src.startsWith("http://") || src.startsWith("https://"))
+              ) {
+                return (
+                  <RemoteImage
+                    src={src}
+                    alt={alt}
+                    style={style}
+                    className={imgClass}
+                  />
                 );
               }
               return (

@@ -11,6 +11,7 @@ EchoWiki turns a subreddit wiki into a proper editing and reading environment. M
   - [Page Management](#page-management)
   - [Breadcrumb Navigation](#breadcrumb-navigation)
   - [Section Links](#section-links)
+  - [Remote Images](#remote-images)
 - [Collaborative Editing](#collaborative-editing)
   - [Suggestions](#suggestions)
   - [Voting](#voting)
@@ -50,6 +51,7 @@ Easy and powerful custom formatting based on Markdown:
 - [Composition blocks](#composition-blocks): cards, stat-table infoboxes, layered scenes, and frame-by-frame or moving-sprite animations built from game assets
 - Anchor links scrolling to the target heading within the page
 - External links opening in the browser
+- [Remote images](#remote-images) (`![alt](https://...)`) from a small allowlist of trusted hosts, relayed through the app's server so the webview can display them
 - Raw HTML for custom layouts (floating infoboxes, multi-column grids, inline styles...)
 
 Navigation uses a breadcrumb bar that slides down from the top when hovering the Wiki tab (see [Breadcrumb Navigation](#breadcrumb-navigation)), with sibling-page dropdowns, a full page index, the edit/suggest action, and moderator page tools all anchored to it.
@@ -98,6 +100,14 @@ The breadcrumb bar slides down (and fades) from the top when hovering the Wiki t
 
 Every heading has a copy-link button that appears on hover. Clicking it copies an `echolink://` URL pointing to that specific section. These links can be shared with other users of the same subreddit's EchoWiki. To open one, use the link icon in the top bar to open the EchoLink dialog, then paste the URL. When opened from a wiki page, the dialog also shows the **current page's `echolink://`** with a one-click copy button. It also accepts `echo://` asset paths to jump directly to a file in the asset browser.
 
+### Remote Images
+
+Beyond game assets, ordinary remote images embed with standard Markdown pointing at a normal URL: `![alt](https://i.imgur.com/example.png)`. These need no game import and work on any page, game-backed or not.
+
+Reddit's webview cannot load images from external origins directly, so EchoWiki **relays them through its own server**: the server fetches the image and streams the bytes back to the reader's browser same-origin. Nothing is stored or re-hosted; the server only proxies the bytes for that one request (the response is cacheable by the browser).
+
+Because the relay is the only way out, remote images only work from an **allowlist of trusted hosts**. The list is the set of domains the app is configured to reach (`i.imgur.com`, `raw.githubusercontent.com`, and `github.com` out of the box); an image from any other host is refused. The [live editor](#live-editor) helps here: as you type, an `![...](...)` whose host is not on the allowlist is **flagged in red with a wavy underline**, so you know it will not load before you save. `echo://` assets, `data:` URIs, and relative links are never flagged.
+
 ## Collaborative Editing
 
 When collaborative mode is enabled, users who meet the subreddit's eligibility thresholds (karma and account age, both configurable) can suggest changes to any wiki page. Each user can have one active suggestion at a time.
@@ -131,6 +141,8 @@ A suggestion is finalized automatically when any of the following conditions are
 A minimum number of voters can be required before the time-based threshold applies. The suggestion author cannot vote on their own suggestion. Voter eligibility (karma and account age) is configurable separately from contributor eligibility.
 
 The voting post includes a pinned bot comment that records vote events: when the vote opened, when the suggestion was updated, and when the vote concluded with the outcome and reason. The comment is updated as events occur, and the post is locked once the vote concludes.
+
+Voting posts are public, so a voter who has not imported the game can still review the change: the import prompt on a voting post offers a **Continue without assets** option. Choosing it opens the suggestion with its text and Diff fully readable, while `echo://` references render as inert placeholders rather than resolved assets. The choice is session-only and is never persisted, so each visit opts in again.
 
 ### Moderator Review
 
@@ -557,7 +569,7 @@ EchoWiki takes a different approach. No asset is ever uploaded, hosted, or distr
 
 ## Privacy
 
-All game files are processed locally in the browser using IndexedDB. No assets are uploaded anywhere. Server-side storage (Redis) holds only moderator configuration (game title, style settings, filename mappings, collaborative and voting settings) plus the text of pending suggestions, vote records, and a capped history of decided suggestions (the contribution audit trail). See [PRIVACY_POLICY.md](https://raw.githubusercontent.com/Kidev/EchoWiki/refs/heads/main/PRIVACY_POLICY.md) and [TERMS_AND_CONDITIONS.md](https://raw.githubusercontent.com/Kidev/EchoWiki/refs/heads/main/TERMS_AND_CONDITIONS.md).
+All game files are processed locally in the browser using IndexedDB. No assets are uploaded anywhere. Server-side storage (Redis) holds only moderator configuration (game title, style settings, filename mappings, collaborative and voting settings) plus the text of pending suggestions, vote records, and a capped history of decided suggestions (the contribution audit trail). The one case where the server touches image bytes is the [remote-image](#remote-images) relay, which fetches an allowlisted remote URL on demand and streams it straight back to the reader without storing it. See [PRIVACY_POLICY.md](https://raw.githubusercontent.com/Kidev/EchoWiki/refs/heads/main/PRIVACY_POLICY.md) and [TERMS_AND_CONDITIONS.md](https://raw.githubusercontent.com/Kidev/EchoWiki/refs/heads/main/TERMS_AND_CONDITIONS.md).
 
 [EchoWiki is available on GitHub](https://github.com/Kidev/EchoWiki)
 

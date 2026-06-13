@@ -14,6 +14,18 @@ export function isModelPath(p: string): boolean {
   return /\.(glb|gltf|obj|stl|ply|fbx|dae|3mf)$/i.test(p);
 }
 
+// Reddit webviews can only fetch same-origin (`/api/*`) and cannot load images
+// from arbitrary external origins. Route remote http(s) image URLs through the
+// server image proxy (`/api/image-proxy`), which fetches the bytes server-side
+// and returns them same-origin. Non-http(s) srcs (data:, blob:, relative) are
+// already loadable and pass through unchanged. See the `/api/image-proxy` route.
+export function proxiedImageUrl(src: string): string {
+  if (src.startsWith("http://") || src.startsWith("https://")) {
+    return `/api/image-proxy?url=${encodeURIComponent(src)}`;
+  }
+  return src;
+}
+
 export function getFileName(p: string): string {
   const parts = p.split("/");
   return parts[parts.length - 1] ?? p;

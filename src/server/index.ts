@@ -88,6 +88,7 @@ import {
 import { createPost } from "./core/post";
 import { threeWayMerge } from "./merge";
 import { DEV_SUBREDDIT } from "../shared/types/api";
+import { isAllowedImageHost } from "../shared/imageHosts";
 
 const app = express();
 
@@ -5031,6 +5032,99 @@ router.post<Record<string, never>, DevSelfTestResponse | ErrorResponse>(
     }
   },
 );
+
+// Remote image proxy. The Reddit webview can only fetch same-origin (`/api/*`)
+// and is blocked from loading images from arbitrary external origins, so a
+// markdown `![alt](https://host/img.png)` would never render client-side. The
+// server has no such restriction (subject to the declared allowlist), so it
+// fetches the bytes here and hands them back same-origin for the client.
+//
+// The allowlist is derived from `permissions.http.domains` in devvit.json (via
+// the shared `isAllowedImageHost`): Devvit's server-side `fetch` only reaches
+// those hosts, so validating up front turns an opaque upstream fetch failure
+// into a clear 403, and adding a host in devvit.json is enough to enable it.
+
+// Cap the proxied payload. Devvit serverless responses are size-limited and we
+// don't want to buffer an unbounded download; oversized images are refused.
+const IMAGE_PROXY_MAX_BYTES = 8 * 1024 * 1024; // 8 MB
+
+router.get("/api/image-proxy", async (req, res): Promise<void> => {
+  const rawUrl = typeof req.query["url"] === "string" ? req.query["url"] : "";
+  if (!rawUrl) {
+    res.status(400).json({ status: "error", message: "Missing url parameter" });
+    return;
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    res.status(400).json({ status: "error", message: "Invalid url" });
+    return;
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    res
+      .status(400)
+      .json({ status: "error", message: "Only http(s) urls are supported" });
+    return;
+  }
+  if (!isAllowedImageHost(parsed.hostname)) {
+    res.status(403).json({
+      status: "error",
+      message: `Image host not allowed: ${parsed.hostname}`,
+    });
+    return;
+  }
+
+  try {
+    const upstream = await fetch(parsed.toString(), {
+      headers: { Accept: "image/*" },
+    });
+    if (!upstream.ok) {
+      res.status(502).json({
+        status: "error",
+        message: `Upstream responded ${upstream.status}`,
+      });
+      return;
+    }
+
+    const contentType = upstream.headers.get("content-type") ?? "";
+    if (!contentType.toLowerCase().startsWith("image/")) {
+      res.status(415).json({
+        status: "error",
+        message: "Remote resource is not an image",
+      });
+      return;
+    }
+
+    // Cheap pre-check via the declared length before buffering the body.
+    const declaredLen = parseInt(
+      upstream.headers.get("content-length") ?? "",
+      10,
+    );
+    if (Number.isFinite(declaredLen) && declaredLen > IMAGE_PROXY_MAX_BYTES) {
+      res.status(413).json({ status: "error", message: "Image too large" });
+      return;
+    }
+
+    const buf = Buffer.from(await upstream.arrayBuffer());
+    if (buf.byteLength > IMAGE_PROXY_MAX_BYTES) {
+      res.status(413).json({ status: "error", message: "Image too large" });
+      return;
+    }
+
+    res.setHeader("Content-Type", contentType);
+    // Images at a given URL are effectively immutable; let the webview cache
+    // them so repeated renders don't re-hit the server.
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    res.send(buf);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    res
+      .status(502)
+      .json({ status: "error", message: `Failed to fetch image: ${message}` });
+  }
+});
 
 app.use(router);
 
