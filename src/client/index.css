@@ -214,10 +214,25 @@
 .prose
   :where(img.echo-inline):not(
     :where([class~="not-prose"], [class~="not-prose"] *)
+  ),
+.prose
+  :where(img.echo-raw):not(
+    :where([class~="not-prose"], [class~="not-prose"] *)
   ) {
   margin-top: 0;
   margin-bottom: 0;
 }
+
+/* :::scene / :::anim / :::fbf inject raw <img class="echo-raw"> elements whose
+   in-flow background image *defines* the composite's height (the layers and
+   sprites are absolutely positioned and pinned with bottom/top/left/right and
+   height percentages that resolve against that height). Tailwind Typography
+   otherwise gives every <img> a ~2em top+bottom margin, inflating the container
+   to `bgHeight + 4em`. That constant offset is a larger fraction of a small
+   composite than a large one, so the percentages drift with screen size
+   (sprites sit too low on smaller screens) and `height=%` layers scale up. The
+   reset above pins those margins to 0 so the box is exactly the background's
+   height and every position/size percentage stays resolution-independent. */
 
 .wiki-infobox table {
   width: 100%;

@@ -139,6 +139,13 @@ function pageLabelOf(page: string): string {
 }
 
 function historyEventLine(e: WikiHistoryEvent): string {
+  const date = new Date(e.at).toLocaleString();
+  const note = e.note ? `. ${e.note}` : "";
+  // A denial the author performed on their own contribution is a self-
+  // withdrawal, not a moderator decision, and never attributed to a user.
+  if (e.state === "denied" && e.withdrawn) {
+    return `Withdrawn by user. ${date}`;
+  }
   const label =
     e.state === "submitted"
       ? "Submitted"
@@ -151,15 +158,13 @@ function historyEventLine(e: WikiHistoryEvent): string {
             : e.state === "reverted"
               ? "Reverted"
               : "Vote restarted";
-  const who = e.by
-    ? `u/${e.by}`
-    : e.viaVote
-      ? "community vote"
-      : e.state === "submitted"
-        ? ""
-        : "a moderator";
-  const date = new Date(e.at).toLocaleString();
-  return `${label}${who ? `. ${who}` : ""}. ${date}${e.note ? `. ${e.note}` : ""}`;
+  // A named actor or the community vote reads as "<label>. <who>."; a moderator
+  // whose identity is redacted for non-mod viewers reads as "<label> by a
+  // moderator" so the sentence stays grammatical.
+  if (e.by) return `${label}. u/${e.by}. ${date}${note}`;
+  if (e.viaVote) return `${label}. community vote. ${date}${note}`;
+  if (e.state === "submitted") return `${label}. ${date}${note}`;
+  return `${label} by a moderator. ${date}${note}`;
 }
 
 const STATUS_STYLE: Record<WikiHistoryEntry["status"], string> = {

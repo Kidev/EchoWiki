@@ -40,5 +40,5 @@
     "target": "ES2023"
   },
   // https://github.com/microsoft/TypeScript/wiki/Performance#misconfigured-include-and-exclude
-  "exclude": ["dist", "node_modules", ".*/"]
+  "exclude": ["dist", "node_modules", ".*/", "docs"]
 }

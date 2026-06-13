@@ -403,6 +403,12 @@ export type WikiHistoryEvent = {
   at: number;
   /** Decided by public vote (mod identity may legitimately be absent). */
   viaVote?: boolean;
+  /**
+   * A denial the author performed on their own contribution: a self-withdrawal
+   * rather than a moderator decision. Survives `by` redaction so non-mod
+   * viewers also see it as a withdrawal.
+   */
+  withdrawn?: boolean;
   /** Free-form note, e.g. "auto-merged" or "merge conflict". */
   note?: string;
   /**

@@ -599,11 +599,17 @@ async function recordDecision(
   const now = Date.now();
   const id = historyEntryId(suggestion.username, suggestion.createdAt);
   const trimmedReason = reason?.trim();
+  // A denial the author performed on their own contribution is a self-
+  // withdrawal, not a moderator decision; flag it so the audit trail reads
+  // "Withdrawn by user" for both mods and the author (whose `by` is redacted).
+  const isWithdrawal =
+    outcome === "denied" && !viaVote && by != null && by === suggestion.username;
   const decisionEvent: WikiHistoryEvent = {
     state: outcome,
     by: viaVote ? null : by,
     at: now,
     ...(viaVote ? { viaVote: true } : {}),
+    ...(isWithdrawal ? { withdrawn: true } : {}),
     ...(trimmedReason ? { reason: trimmedReason } : {}),
   };
   // If this suggestion already has a history entry (e.g. it was re-opened via

@@ -28,8 +28,8 @@ import { preloadPaths } from "../../lib/echo";
 import { extractEchoPathsFromMarkdown } from "../echoRender";
 import { slugify } from "../assetUtils";
 import { WikiMarkdownContent } from "./WikiMarkdownContent";
-import { SideBySideDiffView, ScrollLockToggle } from "./DiffView";
-import { WikiSourceEditor, WikiSourceHighlight } from "./WikiSource";
+import { ScrollLockToggle } from "./DiffView";
+import { WikiSourceEditor } from "./WikiSource";
 import {
   ConfirmDialog,
   WikiSaveDialog,
@@ -131,9 +131,6 @@ export const WikiView = memo(function WikiView({
   const [existingSuggestion, setExistingSuggestion] =
     useState<WikiSuggestion | null>(null);
   const [isDeletingSuggestion, setIsDeletingSuggestion] = useState(false);
-  const [proposeViewMode, setProposeViewMode] = useState<
-    "normal" | "source" | "diff"
-  >("normal");
   const [proposeHiddenPane, setProposeHiddenPane] = useState<
     null | "left" | "right"
   >(null);
@@ -262,10 +259,6 @@ export const WikiView = memo(function WikiView({
   const deleteHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (proposeViewMode === "diff") setProposeHiddenPane(null);
-  }, [proposeViewMode]);
-
-  useEffect(() => {
     const load = async () => {
       setLoading(true);
       try {
@@ -311,7 +304,6 @@ export const WikiView = memo(function WikiView({
     setSuggestError(null);
     setShowSuggestDialog(false);
     setExistingSuggestion(null);
-    setProposeViewMode("normal");
     setShowResumeDialog(false);
     setElsewhereDraft(null);
   }, [currentPage]);
@@ -833,51 +825,21 @@ export const WikiView = memo(function WikiView({
       ) : isEditing ? (
         <div className="flex-1 flex flex-col overflow-hidden">
           {}
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-2 py-1 min-h-8 text-xs bg-[var(--thumb-bg)] border-b border-gray-100 shrink-0 select-none z-10">
+          <div className="relative flex flex-wrap items-center gap-x-2 gap-y-1 px-2 py-1 min-h-8 text-xs bg-[var(--thumb-bg)] border-b border-gray-100 shrink-0 select-none z-10">
             {}
-            <div className="flex items-center gap-1 min-w-0">
-              {isProposeMode ? (
-                (["normal", "source", "diff"] as const).map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => setProposeViewMode(m)}
-                    className={`text-[10px] px-2 py-0.5 rounded transition-colors cursor-pointer shrink-0 ${
-                      proposeViewMode === m
-                        ? m === "diff"
-                          ? "bg-amber-500 text-white"
-                          : "bg-[var(--accent)] text-white"
-                        : "text-[var(--text-muted)] hover:bg-[var(--control-bg)]"
-                    }`}
-                  >
-                    {m === "normal"
-                      ? "Preview"
-                      : m === "source"
-                        ? "Source"
-                        : "Changes"}
-                  </button>
-                ))
-              ) : (
-                <span className="font-mono text-[var(--text-muted)] truncate">
-                  Preview
-                </span>
-              )}
-            </div>
+            <div className="min-[480px]:flex-1" />
 
             {}
-            {proposeViewMode !== "diff" && (
-              <ScrollLockToggle
-                locked={scrollLocked}
-                onToggle={() => setScrollLocked((v) => !v)}
-              />
-            )}
+            <ScrollLockToggle
+              locked={scrollLocked}
+              onToggle={() => setScrollLocked((v) => !v)}
+            />
 
             {}
-            <span className="hidden min-[480px]:inline font-mono text-[var(--text-muted)] truncate min-w-0">
-              {isProposeMode ? "Suggesting changes" : "Source"}
-            </span>
+            <div className="min-[480px]:flex-1" />
 
             {}
-            <div className="ml-auto flex items-center gap-1.5 shrink-0">
+            <div className="ml-auto flex items-center gap-1.5 shrink-0 min-[480px]:ml-0 min-[480px]:absolute min-[480px]:right-2 min-[480px]:top-1/2 min-[480px]:-translate-y-1/2">
               {isMod && !isProposeMode && currentPage !== "index" && (
                 <button
                   onPointerDown={(e) => {
@@ -948,41 +910,21 @@ export const WikiView = memo(function WikiView({
               className="flex flex-col"
             >
               <div className="flex-1 overflow-hidden">
-                {isProposeMode && proposeViewMode === "diff" ? (
-                  <SideBySideDiffView
-                    original={content ?? ""}
-                    proposed={editContent}
+                <div
+                  ref={leftScrollRef}
+                  onScroll={handleLeftScroll}
+                  className="relative h-full overflow-auto"
+                  style={{ scrollbarGutter: "stable both-edges" }}
+                >
+                  <WikiMarkdownContent
+                    content={editContent}
+                    subredditName={subredditName}
+                    currentPage={currentPage}
+                    wikiFontSize={wikiFontSize}
+                    onPageChange={handlePageChange}
+                    onCopyEchoLink={onCopyEchoLink}
                   />
-                ) : isProposeMode && proposeViewMode === "source" ? (
-                  <div
-                    ref={leftScrollRef}
-                    onScroll={handleLeftScroll}
-                    className="relative h-full overflow-auto"
-                    style={{ scrollbarGutter: "stable both-edges" }}
-                  >
-                    <WikiSourceHighlight
-                      source={editContent}
-                      className="p-4 text-xs font-mono whitespace-pre-wrap leading-relaxed"
-                      style={{ color: "var(--text)" }}
-                    />
-                  </div>
-                ) : (
-                  <div
-                    ref={leftScrollRef}
-                    onScroll={handleLeftScroll}
-                    className="relative h-full overflow-auto"
-                    style={{ scrollbarGutter: "stable both-edges" }}
-                  >
-                    <WikiMarkdownContent
-                      content={editContent}
-                      subredditName={subredditName}
-                      currentPage={currentPage}
-                      wikiFontSize={wikiFontSize}
-                      onPageChange={handlePageChange}
-                      onCopyEchoLink={onCopyEchoLink}
-                    />
-                  </div>
-                )}
+                </div>
               </div>
             </div>
             {}
@@ -1040,9 +982,9 @@ export const WikiView = memo(function WikiView({
                   overflow: "hidden",
                   transition: "flex-grow 0.35s ease",
                 }}
-                className={`flex items-center justify-center px-3 py-0.5 select-none ${proposeHiddenPane === null && proposeViewMode !== "diff" ? "cursor-pointer" : ""}`}
+                className={`flex items-center justify-center px-3 py-0.5 select-none ${proposeHiddenPane === null ? "cursor-pointer" : ""}`}
                 onClick={
-                  proposeHiddenPane === null && proposeViewMode !== "diff"
+                  proposeHiddenPane === null
                     ? (e) => {
                         e.stopPropagation();
                         setProposeHiddenPane("right");
@@ -1089,9 +1031,9 @@ export const WikiView = memo(function WikiView({
                   overflow: "hidden",
                   transition: "flex-grow 0.35s ease",
                 }}
-                className={`flex items-center justify-center px-3 py-0.5 select-none ${proposeHiddenPane === null && proposeViewMode !== "diff" ? "cursor-pointer" : ""}`}
+                className={`flex items-center justify-center px-3 py-0.5 select-none ${proposeHiddenPane === null ? "cursor-pointer" : ""}`}
                 onClick={
-                  proposeHiddenPane === null && proposeViewMode !== "diff"
+                  proposeHiddenPane === null
                     ? (e) => {
                         e.stopPropagation();
                         setProposeHiddenPane("left");
