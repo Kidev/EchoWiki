@@ -161,7 +161,7 @@ function historyEventLine(e: WikiHistoryEvent): string {
         ? ""
         : "a moderator";
   const date = new Date(e.at).toLocaleString();
-  return `${label}${who ? ` · ${who}` : ""} · ${date}${e.note ? ` · ${e.note}` : ""}`;
+  return `${label}${who ? `. ${who}` : ""}. ${date}${e.note ? `. ${e.note}` : ""}`;
 }
 
 const STATUS_STYLE: Record<WikiHistoryEntry["status"], string> = {

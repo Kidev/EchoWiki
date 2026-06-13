@@ -291,7 +291,7 @@ export function SideBySideDiffView({
                   borderColor: "var(--thumb-bg)",
                 }}
               >
-                ··· {line.count} unchanged line{line.count !== 1 ? "s" : ""}
+               . {line.count} unchanged line{line.count !== 1 ? "s" : ""}
               </div>
               <div className="w-9 shrink-0" />
               <div className="flex-1" />

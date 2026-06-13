@@ -451,11 +451,11 @@ function VotingView({
               <span>
                 {formatAuthorKarma(data.suggestionAuthorInfo.karma)} karma
               </span>
-              <span>·</span>
+              <span>.</span>
               <span>
                 {formatAuthorAge(data.suggestionAuthorInfo.accountAgeDays)} old
               </span>
-              <span>·</span>
+              <span>.</span>
               {data.suggestionAuthorInfo.acceptedContributions > 0 ? (
                 <span>
                   {data.suggestionAuthorInfo.acceptedContributions} accepted
@@ -495,7 +495,7 @@ function VotingView({
                     </div>
                     {suggestion.previousDescriptions.map((d, i) => (
                       <div key={i} className="truncate">
-                        · {d}
+                       . {d}
                       </div>
                     ))}
                   </div>

@@ -1609,9 +1609,9 @@ export const App = () => {
                     u/{diffRev.author}
                   </span>
                   {diffRev.timestamp
-                    ? ` · ${new Date(diffRev.timestamp).toLocaleString()}`
+                    ? `. ${new Date(diffRev.timestamp).toLocaleString()}`
                     : ""}
-                  {diffRev.reason ? ` · ${diffRev.reason}` : ""}
+                  {diffRev.reason ? `. ${diffRev.reason}` : ""}
                 </div>
                 <div className="flex-1 min-h-0">
                   {diffLoading ||

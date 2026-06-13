@@ -4542,7 +4542,7 @@ async function runDevSelfTests(caller: string): Promise<DevSelfTestResponse> {
       eq: (actual, expected, claim) => {
         const cond = actual === expected;
         log.push(
-          `${cond ? "✓ PASS" : "✗ FAIL"}: ${claim} · expected ${show(expected)}, got ${show(actual)}`,
+          `${cond ? "✓ PASS" : "✗ FAIL"}: ${claim}. expected ${show(expected)}, got ${show(actual)}`,
         );
         if (!cond)
           throw new Error(

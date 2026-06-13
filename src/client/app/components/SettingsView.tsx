@@ -862,7 +862,7 @@ function VotingSettingsPanel({
                 style={inpSt}
               />
               <span style={{ color: "var(--text-muted)" }}>
-                % to pass · 0 = majority
+                % to pass. 0 = majority
               </span>
             </label>
           </div>
@@ -897,7 +897,7 @@ function VotingSettingsPanel({
                   style={inpSt}
                 />
                 <span style={{ color: "var(--text-muted)" }}>
-                  min. · 0 = instant
+                  min.. 0 = instant
                 </span>
               </label>
             )}
@@ -975,7 +975,7 @@ function VotingSettingsPanel({
             Vote Post Title
             <HelpTip text="Template for the title of each vote post. Placeholders are filled in automatically: %user% the author, %page% the page name, %pathPage% the full page path, and %shortPathPage% an abbreviated path. Leave empty to use the default title." />
             <span className="text-[10px] truncate">
-              · <code>%user%</code> <code>%page%</code> <code>%pathPage%</code>{" "}
+             . <code>%user%</code> <code>%page%</code> <code>%pathPage%</code>{" "}
               <code>%shortPathPage%</code>
             </span>
           </label>
@@ -1052,7 +1052,7 @@ function VersionFooter() {
       EchoWiki v{version.current}
       {version.updateAvailable && version.latest && (
         <span className="ml-1.5 text-[var(--accent)]">
-          · Update available ({version.latest})
+         . Update available ({version.latest})
         </span>
       )}
     </div>
