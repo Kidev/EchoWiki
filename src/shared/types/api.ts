@@ -528,3 +528,38 @@ export type ErrorResponse = {
   status: "error";
   message: string;
 };
+
+/**
+ * The development subreddit. Must stay in sync with `dev.subreddit` in
+ * devvit.json. Dev-only affordances (e.g. the in-app self-test harness) are
+ * gated on the running subreddit matching this value, on both the client (to
+ * decide whether to surface the UI) and the server (to authorize the endpoint).
+ */
+export const DEV_SUBREDDIT = "echo_wiki_dev";
+
+/** Outcome of a single self-test assertion in the dev-only test harness. */
+export type DevTestResult = {
+  /** Logical grouping shown as a section header (e.g. "Voting", "Permissions"). */
+  group: string;
+  /** Human-readable description of what the test verifies. */
+  name: string;
+  passed: boolean;
+  /** "ok" on success, or the failure message / thrown error on failure. */
+  detail: string;
+  durationMs: number;
+  /**
+   * Ordered, real runtime trace of the test: the actual actions performed and
+   * the actual values observed (Redis reads/writes, wiki page contents, API
+   * returns, and each PASS/FAIL assertion with its expected-vs-got values).
+   * Captured live during execution: never canned text.
+   */
+  log: string[];
+};
+
+export type DevSelfTestResponse = {
+  type: "dev-selftest";
+  ranAt: number;
+  passed: number;
+  failed: number;
+  results: DevTestResult[];
+};

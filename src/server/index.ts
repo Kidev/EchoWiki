@@ -11,6 +11,8 @@ import type {
   ConfigResponse,
   ConfigUpdateRequest,
   ConfigUpdateResponse,
+  DevSelfTestResponse,
+  DevTestResult,
   EquipFlairRequest,
   EquipFlairResponse,
   ErrorResponse,
@@ -85,6 +87,7 @@ import {
 } from "@devvit/web/server";
 import { createPost } from "./core/post";
 import { threeWayMerge } from "./merge";
+import { DEV_SUBREDDIT } from "../shared/types/api";
 
 const app = express();
 
@@ -357,11 +360,19 @@ function expandVotingTitle(
     .replace(/%shortPathPage%/g, shortPathPage);
 }
 
+// Prefix of the synthetic voting-post ids minted by the dev self-test harness.
+// These never correspond to a real Reddit post, so reddit-side effects keyed on
+// them (commenting, locking) are skipped to avoid noisy gRPC errors during a
+// self-test run. See runDevSelfTests.
+const SELFTEST_POST_PREFIX = "t3_selftest";
+
 async function appendBotComment(
   votingPostId: string,
   listEntry: string,
   newStatus?: string | undefined,
 ): Promise<void> {
+  // Synthetic self-test post: there is no real post to comment on.
+  if (votingPostId.startsWith(SELFTEST_POST_PREFIX)) return;
   const idKey = `votingBotCommentId:${votingPostId}`;
   const listKey = `votingBotCommentList:${votingPostId}`;
   const statusKey = `votingBotCommentStatus:${votingPostId}`;
@@ -819,11 +830,14 @@ async function cleanupVotingPost(
     }`,
     outcomeText,
   );
-  try {
-    const post = await reddit.getPostById(votingPostId as `t3_${string}`);
-    await post.lock();
-  } catch (err) {
-    console.error("Failed to lock voting post:", err);
+  // Skip locking synthetic self-test posts, which don't exist on Reddit.
+  if (!votingPostId.startsWith(SELFTEST_POST_PREFIX)) {
+    try {
+      const post = await reddit.getPostById(votingPostId as `t3_${string}`);
+      await post.lock();
+    } catch (err) {
+      console.error("Failed to lock voting post:", err);
+    }
   }
   const jobId = await redis.get(`voteJobId:${username}`).catch(() => null);
   if (jobId) {
@@ -4468,6 +4482,564 @@ router.post<
     res.status(200).json({ status: "ok" });
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Dev-only self-test harness
+//
+// Exercises the contribution / voting / wiki logic end-to-end against the live
+// dev subreddit so regressions that are tedious to reproduce by hand (author a
+// suggestion, cast / change / withdraw votes, trip a threshold, apply the
+// accepted change to the wiki, gate by permissions) can be caught with a single
+// button press. The endpoint is gated to the dev subreddit and to moderators.
+//
+// Isolation: every run uses a unique synthetic author and a dedicated throwaway
+// wiki page, and tears down every key it may have written in a `finally` block,
+// so a self-test never collides with or leaks into real contribution data.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SELFTEST_WIKI_PAGE = "echowiki/selftest";
+
+async function runDevSelfTests(caller: string): Promise<DevSelfTestResponse> {
+  const results: DevTestResult[] = [];
+  const nonce = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  const u = `__selftest_${nonce}`;
+  const fakePostId = `${SELFTEST_POST_PREFIX}${nonce}`;
+  const subreddit = context.subredditName ?? "";
+  const baseConfig = await getConfig();
+
+  // Per-test execution context. `log`/`step` record the real actions taken;
+  // `ok`/`eq` record the real observed value alongside the PASS/FAIL verdict and
+  // throw on failure. Every line is produced from live runtime data, so the
+  // expandable log is an honest trace of what actually happened: not a script.
+  type TestCtx = {
+    /** Free-form trace line (an action taken, or a value observed). */
+    step: (line: string) => void;
+    /** Assert a boolean; logs PASS/FAIL with the claim. Throws on failure. */
+    ok: (cond: boolean, claim: string) => void;
+    /** Assert equality; logs PASS/FAIL with expected-vs-got. Throws on failure. */
+    eq: (actual: unknown, expected: unknown, claim: string) => void;
+  };
+
+  const show = (v: unknown): string => {
+    const s = typeof v === "string" ? v : JSON.stringify(v);
+    if (s == null) return String(v);
+    return s.length > 200 ? `${s.slice(0, 200)}... (${s.length} chars)` : s;
+  };
+
+  const run = async (
+    group: string,
+    name: string,
+    fn: (t: TestCtx) => Promise<void> | void,
+  ): Promise<void> => {
+    const started = Date.now();
+    const log: string[] = [];
+    const t: TestCtx = {
+      step: (line) => log.push(line),
+      ok: (cond, claim) => {
+        log.push(`${cond ? "✓ PASS" : "✗ FAIL"}: ${claim}`);
+        if (!cond) throw new Error(claim);
+      },
+      eq: (actual, expected, claim) => {
+        const cond = actual === expected;
+        log.push(
+          `${cond ? "✓ PASS" : "✗ FAIL"}: ${claim} · expected ${show(expected)}, got ${show(actual)}`,
+        );
+        if (!cond)
+          throw new Error(
+            `${claim} (expected ${show(expected)}, got ${show(actual)})`,
+          );
+      },
+    };
+    try {
+      await fn(t);
+      results.push({
+        group,
+        name,
+        passed: true,
+        detail: "ok",
+        durationMs: Date.now() - started,
+        log,
+      });
+    } catch (err) {
+      results.push({
+        group,
+        name,
+        passed: false,
+        detail: err instanceof Error ? err.message : String(err),
+        durationMs: Date.now() - started,
+        log,
+      });
+    }
+  };
+
+  const activeStatus = () =>
+    JSON.stringify({
+      status: "active",
+      decidedAt: null,
+      deadlineAt: null,
+      reason: null,
+    });
+
+  try {
+    // ── Permissions ──────────────────────────────────────────────────────────
+    await run("Permissions", "Caller resolves as a moderator", async (t) => {
+      t.step(
+        `Calling getModLevel("${caller}") against r/${subreddit}: this hits the live Reddit moderator list + permission API.`,
+      );
+      const level = await getModLevel(caller);
+      t.step(`Reddit reported moderator level: ${show(level)}`);
+      t.ok(
+        level !== null,
+        `u/${caller} is recognised as a moderator (level must be non-null)`,
+      );
+    });
+    await run(
+      "Permissions",
+      "Open eligibility passes with no requirements",
+      async (t) => {
+        t.step(
+          "checkEligibility(caller, minKarma=0, minAccountAgeDays=0): with no gate, it must short-circuit to eligible.",
+        );
+        const ok = await checkEligibility(caller, 0, 0);
+        t.eq(ok, true, "no requirements => eligible");
+      },
+    );
+    await run(
+      "Permissions",
+      "Impossible karma requirement blocks a voter",
+      async (t) => {
+        t.step(
+          `getVoterEligibilityInfo("${caller}", { votingVoterMinKarma: ${Number.MAX_SAFE_INTEGER} }): reads the caller's real karma from Reddit and compares.`,
+        );
+        const info = await getVoterEligibilityInfo(caller, {
+          ...baseConfig,
+          votingVoterMinKarma: Number.MAX_SAFE_INTEGER,
+          votingVoterMinAccountAgeDays: 0,
+        });
+        t.step(
+          `Result: eligible=${info.eligible}, reason=${show(info.reason)}`,
+        );
+        t.eq(
+          info.eligible,
+          false,
+          "a karma floor of MAX_SAFE_INTEGER rejects any real account",
+        );
+        t.ok(!!info.reason, "the rejection carries a human-readable reason");
+      },
+    );
+
+    // ── Storage ──────────────────────────────────────────────────────────────
+    await run("Storage", "Redis string round-trips", async (t) => {
+      const k = `__selftest_kv_${nonce}`;
+      t.step(`redis.set("${k}", "pong")`);
+      await redis.set(k, "pong");
+      const v = await redis.get(k);
+      t.step(`redis.get("${k}") -> ${show(v)}`);
+      await redis.del(k);
+      t.step(`redis.del("${k}") (cleaned up)`);
+      t.eq(v, "pong", "the value read back equals the value written");
+    });
+    await run("Storage", "Suggestions index add / remove", async (t) => {
+      t.step(`redis.zAdd("suggestions", { member: "${u}" })`);
+      await redis.zAdd("suggestions", { member: u, score: Date.now() });
+      const present = (await redis.zRange("suggestions", 0, -1)).map(
+        (e) => e.member,
+      );
+      t.step(
+        `Index holds ${present.length} member(s); contains "${u}": ${present.includes(u)}`,
+      );
+      t.ok(present.includes(u), "the new suggestion appears in the index");
+      t.step(`redis.zRem("suggestions", ["${u}"])`);
+      await redis.zRem("suggestions", [u]);
+      const absent = (await redis.zRange("suggestions", 0, -1)).map(
+        (e) => e.member,
+      );
+      t.step(`After removal, contains "${u}": ${absent.includes(u)}`);
+      t.ok(!absent.includes(u), "the withdrawn suggestion leaves the index");
+    });
+
+    // ── Voting tally ─────────────────────────────────────────────────────────
+    await run("Voting", "Vote is created", async (t) => {
+      await redis.del(`votes:${u}`);
+      t.step(`redis.hSet votes:${u} { alice: "accept:<ts>" }`);
+      await redis.hSet(`votes:${u}`, { alice: `accept:${Date.now()}` });
+      const raw = await redis.hGetAll(`votes:${u}`);
+      t.step(`Raw vote hash from Redis: ${show(raw)}`);
+      const entries = parseVoteEntries(raw);
+      t.step(`parseVoteEntries() -> ${show(entries)}`);
+      t.eq(entries.length, 1, "exactly one parsed vote");
+      t.eq(entries[0]?.vote, "accept", "the parsed vote type is accept");
+    });
+    await run(
+      "Voting",
+      "Vote is updated in place (same voter, accept->reject)",
+      async (t) => {
+        t.step(
+          `redis.hSet votes:${u} { alice: "reject:<ts>" }: same hash field, so it overwrites rather than appends.`,
+        );
+        await redis.hSet(`votes:${u}`, { alice: `reject:${Date.now()}` });
+        const entries = parseVoteEntries(await redis.hGetAll(`votes:${u}`));
+        t.step(`parseVoteEntries() -> ${show(entries)}`);
+        t.eq(entries.length, 1, "changing a vote does not add a second voter");
+        t.eq(entries[0]?.vote, "reject", "the vote now reads reject");
+      },
+    );
+    await run("Voting", "Vote is removed", async (t) => {
+      t.step(`redis.hDel votes:${u} ["alice"]`);
+      await redis.hDel(`votes:${u}`, ["alice"]);
+      const entries = parseVoteEntries(await redis.hGetAll(`votes:${u}`));
+      t.step(`parseVoteEntries() -> ${show(entries)}`);
+      t.eq(entries.length, 0, "no votes remain after removal");
+    });
+    await run("Voting", "Tally counts multiple voters", async (t) => {
+      await redis.del(`votes:${u}`);
+      const ts = Date.now();
+      t.step("Seeding votes: alice=accept, bob=accept, carol=reject");
+      await redis.hSet(`votes:${u}`, {
+        alice: `accept:${ts}`,
+        bob: `accept:${ts}`,
+        carol: `reject:${ts}`,
+      });
+      await redis.set(`voteStatus:${u}`, activeStatus());
+      const status = await getVoteStatus(u, baseConfig, caller, true);
+      t.step(
+        `getVoteStatus() -> accept=${status.acceptCount}, reject=${status.rejectCount}, total=${status.totalVoters}`,
+      );
+      t.eq(status.acceptCount, 2, "accept tally");
+      t.eq(status.rejectCount, 1, "reject tally");
+      t.eq(status.totalVoters, 3, "total voters");
+    });
+    await run(
+      "Voting",
+      "Voter names are redacted when not permitted",
+      async (t) => {
+        t.step(
+          "getVoteStatus(votingShowVoterNames=false, caller=outsider, isMod=false): names must be stripped.",
+        );
+        const hidden = await getVoteStatus(
+          u,
+          { ...baseConfig, votingShowVoterNames: false },
+          "outsider",
+          false,
+        );
+        t.step(
+          `Usernames returned to the outsider: ${show(hidden.votes.map((v) => v.username))}`,
+        );
+        t.ok(
+          hidden.votes.length > 0 &&
+            hidden.votes.every((v) => v.username === ""),
+          "every voter name is blank for a non-mod outsider",
+        );
+        t.step("Same config but isMod=true: names must be visible again.");
+        const shown = await getVoteStatus(
+          u,
+          { ...baseConfig, votingShowVoterNames: false },
+          "outsider",
+          true,
+        );
+        t.step(
+          `Usernames returned to a moderator: ${show(shown.votes.map((v) => v.username))}`,
+        );
+        t.ok(
+          shown.votes.some((v) => v.username !== ""),
+          "a moderator still sees the real voter names",
+        );
+      },
+    );
+
+    // ── Threshold conclusion + wiki apply ────────────────────────────────────
+    await run(
+      "Voting + Wiki",
+      "Accept threshold applies the suggestion to the wiki page",
+      async (t) => {
+        const baseText = `EchoWiki self-test base ${nonce}`;
+        const proposed = `EchoWiki self-test applied ${nonce}`;
+        t.step(
+          `Writing baseline to the real wiki page "${SELFTEST_WIKI_PAGE}": ${show(baseText)}`,
+        );
+        await reddit.updateWikiPage({
+          subredditName: subreddit,
+          page: SELFTEST_WIKI_PAGE,
+          content: baseText,
+          reason: "echowiki self-test setup",
+        });
+        const before = await readPageContent(subreddit, SELFTEST_WIKI_PAGE);
+        t.step(`Re-read page from Reddit before voting: ${show(before)}`);
+        t.eq(before, baseText, "the baseline actually landed on the wiki page");
+
+        const suggestion: WikiSuggestion = {
+          username: u,
+          page: SELFTEST_WIKI_PAGE,
+          content: proposed,
+          description: "self-test accept",
+          createdAt: Date.now(),
+          baseContent: baseText,
+        };
+        const ts = Date.now();
+        t.step(
+          `Storing a pending suggestion (proposes ${show(proposed)}) and seeding 2 accept votes.`,
+        );
+        await Promise.all([
+          redis.set(`suggestion:${u}`, JSON.stringify(suggestion)),
+          redis.set(`votingPostId:${u}`, fakePostId),
+          redis.del(`votes:${u}`),
+          redis.set(`voteStatus:${u}`, activeStatus()),
+        ]);
+        await redis.hSet(`votes:${u}`, {
+          alice: `accept:${ts}`,
+          bob: `accept:${ts}`,
+        });
+        t.step(
+          "Calling the real checkAndMaybeFinalize() with votingAcceptThreshold=2: the same engine the live vote route uses.",
+        );
+        await checkAndMaybeFinalize(
+          u,
+          { ...baseConfig, votingAcceptThreshold: 2, votingRejectThreshold: 0 },
+          fakePostId,
+          subreddit,
+        );
+        const statusRaw = await redis.get(`voteStatus:${u}`);
+        const concluded = statusRaw
+          ? (JSON.parse(statusRaw) as VoteStatusData).status
+          : null;
+        t.step(`voteStatus:${u} after finalize -> ${show(concluded)}`);
+        t.eq(concluded, "accepted", "the vote concluded as accepted");
+
+        const after = await readPageContent(subreddit, SELFTEST_WIKI_PAGE);
+        t.step(
+          `Re-read the wiki page from Reddit after accept: ${show(after)}`,
+        );
+        t.eq(
+          after,
+          proposed,
+          "the real wiki page now holds the proposed content (proves the full vote->apply path)",
+        );
+        const leftover = await redis.get(`suggestion:${u}`);
+        t.step(`suggestion:${u} after accept -> ${show(leftover)}`);
+        t.ok(
+          leftover == null,
+          "the accepted suggestion was cleared from the queue",
+        );
+      },
+    );
+    await run(
+      "Voting + Wiki",
+      "Reject threshold concludes without changing the page",
+      async (t) => {
+        const baseText = `EchoWiki self-test reject-base ${nonce}`;
+        const proposed = `EchoWiki self-test should-not-apply ${nonce}`;
+        t.step(
+          `Writing baseline to "${SELFTEST_WIKI_PAGE}": ${show(baseText)}`,
+        );
+        await reddit.updateWikiPage({
+          subredditName: subreddit,
+          page: SELFTEST_WIKI_PAGE,
+          content: baseText,
+          reason: "echowiki self-test setup",
+        });
+        const suggestion: WikiSuggestion = {
+          username: u,
+          page: SELFTEST_WIKI_PAGE,
+          content: proposed,
+          description: "self-test reject",
+          createdAt: Date.now(),
+          baseContent: baseText,
+        };
+        const ts = Date.now();
+        t.step(
+          `Storing a pending suggestion (proposes ${show(proposed)}) and seeding 2 reject votes.`,
+        );
+        await Promise.all([
+          redis.set(`suggestion:${u}`, JSON.stringify(suggestion)),
+          redis.set(`votingPostId:${u}`, fakePostId),
+          redis.del(`votes:${u}`),
+          redis.set(`voteStatus:${u}`, activeStatus()),
+        ]);
+        await redis.hSet(`votes:${u}`, {
+          alice: `reject:${ts}`,
+          bob: `reject:${ts}`,
+        });
+        t.step("Calling checkAndMaybeFinalize() with votingRejectThreshold=2.");
+        await checkAndMaybeFinalize(
+          u,
+          { ...baseConfig, votingAcceptThreshold: 0, votingRejectThreshold: 2 },
+          fakePostId,
+          subreddit,
+        );
+        const statusRaw = await redis.get(`voteStatus:${u}`);
+        const concluded = statusRaw
+          ? (JSON.parse(statusRaw) as VoteStatusData).status
+          : null;
+        t.step(`voteStatus:${u} after finalize -> ${show(concluded)}`);
+        t.eq(concluded, "rejected", "the vote concluded as rejected");
+        const after = await readPageContent(subreddit, SELFTEST_WIKI_PAGE);
+        t.step(
+          `Re-read the wiki page from Reddit after reject: ${show(after)}`,
+        );
+        t.eq(
+          after,
+          baseText,
+          "a rejected suggestion left the real wiki page unchanged",
+        );
+      },
+    );
+
+    // ── History audit trail ──────────────────────────────────────────────────
+    await run("History", "Decision is recorded and retrievable", async (t) => {
+      const createdAt = Date.now();
+      const id = historyEntryId(u, createdAt);
+      const suggestion: WikiSuggestion = {
+        username: u,
+        page: SELFTEST_WIKI_PAGE,
+        content: "x",
+        description: "self-test audit",
+        createdAt,
+        baseContent: "base",
+      };
+      t.step(
+        `recordDecision(approved, by=${caller}) for history id "${id}": writes the audit entry + indexes it.`,
+      );
+      await recordDecision(
+        suggestion,
+        "base",
+        "approved",
+        caller,
+        false,
+        "self-test",
+      );
+      const entry = await loadHistoryEntry(id);
+      t.step(
+        `loadHistoryEntry("${id}") -> ${
+          entry
+            ? `status=${entry.status}, author=${entry.author}, ${entry.events.length} event(s)`
+            : "null"
+        }`,
+      );
+      t.ok(entry != null, "the entry is retrievable from the audit trail");
+      t.eq(entry?.status, "approved", "the recorded status is approved");
+    });
+
+    // ── Merge engine ─────────────────────────────────────────────────────────
+    await run("Merge", "Non-overlapping edits merge cleanly", (t) => {
+      const base = "a\nb\nc";
+      const ours = "A\nb\nc";
+      const theirs = "a\nb\nC";
+      t.step(
+        `threeWayMerge(base=${show(base)}, ours=${show(ours)}, theirs=${show(theirs)})`,
+      );
+      const r = threeWayMerge(base, ours, theirs);
+      t.step(`-> conflict=${r.conflict}, merged=${show(r.merged)}`);
+      t.eq(r.conflict, false, "disjoint edits merge without a conflict");
+      t.ok(
+        r.merged.includes("A") && r.merged.includes("C"),
+        "both sides' edits survive in the merged output",
+      );
+    });
+    await run("Merge", "Conflicting edits are flagged", (t) => {
+      const base = "a\nb\nc";
+      const ours = "a\nX\nc";
+      const theirs = "a\nY\nc";
+      t.step(
+        `threeWayMerge(base=${show(base)}, ours=${show(ours)}, theirs=${show(theirs)}): both change the same line differently.`,
+      );
+      const r = threeWayMerge(base, ours, theirs);
+      t.step(`-> conflict=${r.conflict}, merged=${show(r.merged)}`);
+      t.eq(r.conflict, true, "divergent edits to the same line conflict");
+      t.ok(
+        r.merged.includes("<<<<<<<"),
+        "git-style conflict markers are emitted",
+      );
+    });
+    await run("Merge", "Identical sides are a no-op", (t) => {
+      const r = threeWayMerge("a\nb", "a\nb", "a\nb");
+      t.step(`threeWayMerge of identical sides -> ${show(r)}`);
+      t.eq(r.conflict, false, "identical content never conflicts");
+      t.eq(r.merged, "a\nb", "identical content passes straight through");
+    });
+  } finally {
+    // Best-effort teardown of everything the suite may have written.
+    await Promise.all(
+      [
+        redis.del(`suggestion:${u}`),
+        redis.del(`votes:${u}`),
+        redis.del(`voteStatus:${u}`),
+        redis.del(`votingPostId:${u}`),
+        redis.del(`voteJobId:${u}`),
+        redis.del(`acceptedCount:${u}`),
+        redis.del(`earnedFlairIds:${u}`),
+        redis.del(`votingPost:${fakePostId}`),
+        redis.del(`votingBotCommentId:${fakePostId}`),
+        redis.del(`votingBotCommentList:${fakePostId}`),
+        redis.del(`votingBotCommentStatus:${fakePostId}`),
+        redis.zRem("suggestions", [u]),
+      ].map((p) => Promise.resolve(p).catch(() => {})),
+    );
+    // History: drop the per-user index plus every entry it referenced, and
+    // un-list those entries from the global index.
+    try {
+      const userKey = `history:user:${u}`;
+      const ids = (await redis.zRange(userKey, 0, -1)).map((e) => e.member);
+      await Promise.all(
+        ids.map((id) => redis.del(`history:entry:${id}`).catch(() => {})),
+      );
+      if (ids.length > 0)
+        await redis.zRem(HISTORY_GLOBAL_KEY, ids).catch(() => {});
+      await redis.del(userKey).catch(() => {});
+    } catch {}
+    // Leave the throwaway wiki page in a clearly-labelled idle state.
+    try {
+      await reddit.updateWikiPage({
+        subredditName: subreddit,
+        page: SELFTEST_WIKI_PAGE,
+        content: `EchoWiki self-test scratch page: safe to ignore. Overwritten on each run.\n\nLast run: ${new Date().toISOString()}`,
+        reason: "echowiki self-test teardown",
+      });
+    } catch {}
+  }
+
+  const failed = results.filter((r) => !r.passed).length;
+  return {
+    type: "dev-selftest",
+    ranAt: Date.now(),
+    passed: results.length - failed,
+    failed,
+    results,
+  };
+}
+
+// Run the dev-only self-test suite. Gated twice: the running subreddit must be
+// the configured dev subreddit, and the caller must be a moderator there.
+router.post<Record<string, never>, DevSelfTestResponse | ErrorResponse>(
+  "/api/dev/selftest",
+  async (_req, res): Promise<void> => {
+    try {
+      if (context.subredditName !== DEV_SUBREDDIT) {
+        res.status(403).json({
+          status: "error",
+          message:
+            "Self-tests are only available on the development subreddit.",
+        });
+        return;
+      }
+      const username = await getCurrentUsername();
+      if (!username) {
+        res.status(401).json({ status: "error", message: "Not logged in" });
+        return;
+      }
+      if (!(await checkIsMod(username))) {
+        res.status(403).json({ status: "error", message: "Not authorized" });
+        return;
+      }
+      res.json(await runDevSelfTests(username));
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? `Self-test run failed: ${error.message}`
+          : "Unknown error";
+      res.status(400).json({ status: "error", message });
+    }
+  },
+);
 
 app.use(router);
 

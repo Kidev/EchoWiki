@@ -211,7 +211,9 @@ function highlightSourceLines(src: string): string[] {
       const mo = BLOCK_OPEN_RE.exec(raw);
       if (mo) {
         inBlock = true;
-        out.push(span(COLOR.fence, ":::" + mo[2]) + highlightAttrs(esc(mo[3]!)));
+        out.push(
+          span(COLOR.fence, ":::" + mo[2]) + highlightAttrs(esc(mo[3]!)),
+        );
         continue;
       }
       out.push(highlightMarkdownLine(raw));

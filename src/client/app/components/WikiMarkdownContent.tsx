@@ -48,8 +48,7 @@ function getFencedCode(
   const classes = codeEl.properties?.className;
   const langClass = Array.isArray(classes)
     ? classes.find(
-        (c): c is string =>
-          typeof c === "string" && c.startsWith("language-"),
+        (c): c is string => typeof c === "string" && c.startsWith("language-"),
       )
     : undefined;
   const lang = langClass ? langClass.slice("language-".length) : null;

@@ -13,6 +13,8 @@ import type {
   CardSize,
   CollabInfoResponse,
   ColorTheme,
+  DevSelfTestResponse,
+  DevTestResult,
   EngineType,
   ErrorResponse,
   FlairTemplateInfo,
@@ -29,6 +31,7 @@ import type {
   WikiBanRequest,
   WikiFontSize,
 } from "../../../shared/types/api";
+import { DEV_SUBREDDIT } from "../../../shared/types/api";
 import { navigateTo } from "@devvit/web/client";
 import { darkenHex } from "../appTypes";
 import { ColorPickerRow, MappingPanel } from "./MappingPanel";
@@ -42,7 +45,8 @@ type SettingsTab =
   | "theme"
   | "mapping"
   | "collaborative"
-  | "voting";
+  | "voting"
+  | "dev";
 
 // Small "?" badge that reveals a help bubble on hover. Lets settings rows stay
 // terse while keeping a full explanation one hover away. The bubble opens
@@ -1262,7 +1266,12 @@ export function SettingsView({
     { value: "mapping", label: "Mapping" },
     { value: "collaborative", label: "Collaborative" },
     { value: "voting", label: "Voting" },
-  ] as const;
+    // The self-test harness is only meaningful (and only authorized server-side)
+    // on the dev subreddit, so the tab is hidden everywhere else.
+    ...(subredditName === DEV_SUBREDDIT
+      ? [{ value: "dev" as const, label: "Dev" }]
+      : []),
+  ];
 
   return (
     <>
@@ -1719,7 +1728,193 @@ return { path: parent + '/' + name.toLowerCase(), data: await file.arrayBuffer()
             saveRef={votingSaveRef}
           />
         )}
+
+        {settingsTab === "dev" && <DevTestsPanel />}
       </div>
     </>
+  );
+}
+
+// Dev-only in-situ regression harness. Runs the server-side `/api/dev/selftest`
+// suite (contribution / voting / wiki / permission checks) against the live dev
+// subreddit and renders a grouped pass/fail report. Only rendered on the dev
+// subreddit; the endpoint independently re-checks that and moderator status.
+const testKey = (group: string, name: string) => `${group}::${name}`;
+
+function DevTestsPanel() {
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [report, setReport] = useState<DevSelfTestResponse | null>(null);
+  // Which test logs are expanded, keyed by `${group}::${name}`.
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+
+  const toggle = useCallback((key: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
+  const handleRun = useCallback(async () => {
+    setRunning(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/dev/selftest", { method: "POST" });
+      const data = (await res.json()) as DevSelfTestResponse | ErrorResponse;
+      if (!res.ok || "status" in data) {
+        setError("message" in data ? data.message : "Self-test run failed.");
+        setReport(null);
+        return;
+      }
+      setReport(data);
+      // Surface anything that failed straight away; passing tests stay collapsed.
+      setExpanded(
+        new Set(
+          data.results
+            .filter((r) => !r.passed)
+            .map((r) => testKey(r.group, r.name)),
+        ),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Self-test run failed.");
+      setReport(null);
+    } finally {
+      setRunning(false);
+    }
+  }, []);
+
+  const groups = useMemo(() => {
+    if (!report) return [];
+    const order: string[] = [];
+    const byGroup = new Map<string, DevTestResult[]>();
+    for (const r of report.results) {
+      if (!byGroup.has(r.group)) {
+        byGroup.set(r.group, []);
+        order.push(r.group);
+      }
+      byGroup.get(r.group)!.push(r);
+    }
+    return order.map((g) => ({ group: g, tests: byGroup.get(g)! }));
+  }, [report]);
+
+  return (
+    <div className="flex flex-col gap-4 max-w-2xl">
+      <div className="flex flex-col gap-1">
+        <span className="text-sm font-semibold">Self-tests</span>
+        <span className="text-[11px] text-[var(--text-muted)] leading-snug">
+          Exercises the contribution pipeline end-to-end on this dev subreddit:
+          vote create / update / remove, threshold conclusion, wiki apply,
+          permission gating and the merge engine. Each run uses a throwaway
+          author and the{" "}
+          <code className="px-1 rounded bg-[var(--thumb-bg)]">
+            echowiki/selftest
+          </code>{" "}
+          scratch page, and cleans up after itself. Click any test to expand its
+          live log: the real actions taken and values observed.
+        </span>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => void handleRun()}
+          disabled={running}
+          className="self-start text-xs px-3 py-1.5 rounded-lg bg-[var(--accent)] text-white transition-opacity cursor-pointer disabled:opacity-40"
+        >
+          {running ? "Running tests..." : "Run self-tests"}
+        </button>
+        {report && (
+          <span className="text-xs font-medium">
+            <span
+              className={
+                report.failed === 0 ? "text-emerald-600" : "text-[var(--text)]"
+              }
+            >
+              {report.passed} passed
+            </span>
+            {report.failed > 0 && (
+              <span className="text-red-600">, {report.failed} failed</span>
+            )}
+          </span>
+        )}
+      </div>
+
+      {error && (
+        <div className="text-xs text-red-600 border border-red-200 rounded-lg px-3 py-2 bg-red-50">
+          {error}
+        </div>
+      )}
+
+      {groups.length > 0 && (
+        <div className="flex flex-col gap-4">
+          {groups.map(({ group, tests }) => (
+            <div key={group} className="flex flex-col gap-1.5">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+                {group}
+              </span>
+              <div className="flex flex-col gap-1">
+                {tests.map((t) => {
+                  const key = testKey(t.group, t.name);
+                  const isOpen = expanded.has(key);
+                  return (
+                    <div
+                      key={key}
+                      className="text-xs rounded-md overflow-hidden"
+                      style={{ backgroundColor: "var(--thumb-bg)" }}
+                    >
+                      <button
+                        onClick={() => toggle(key)}
+                        aria-expanded={isOpen}
+                        className="w-full flex items-center gap-2 px-2 py-1.5 text-left cursor-pointer"
+                      >
+                        <span
+                          className={`shrink-0 w-3 text-[var(--text-muted)] transition-transform ${
+                            isOpen ? "rotate-90" : ""
+                          }`}
+                          aria-hidden
+                        >
+                          '
+                        </span>
+                        <span
+                          className={`shrink-0 font-bold ${
+                            t.passed ? "text-emerald-600" : "text-red-600"
+                          }`}
+                          aria-hidden
+                        >
+                          {t.passed ? "✓" : "✕"}
+                        </span>
+                        <span className="min-w-0 flex-1 text-[var(--text)]">
+                          {t.name}
+                        </span>
+                        <span className="shrink-0 text-[10px] text-[var(--text-muted)]">
+                          {t.durationMs}ms
+                        </span>
+                      </button>
+                      {isOpen && (
+                        <div className="px-2 pb-2 pl-7">
+                          <pre
+                            className="whitespace-pre-wrap break-words font-mono text-[10px] leading-relaxed rounded p-2 m-0"
+                            style={{
+                              backgroundColor: "var(--bg)",
+                              color: "var(--text)",
+                            }}
+                          >
+                            {t.log.length > 0
+                              ? t.log.join("\n")
+                              : "(no log captured)"}
+                            {!t.passed ? `\n\nError: ${t.detail}` : ""}
+                          </pre>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
