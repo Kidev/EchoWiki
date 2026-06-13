@@ -63,6 +63,7 @@ export default defineConfig([
       "**/node_modules/**",
       "**/dist/**",
       "**/build/**",
+      "docs/**",
       "eslint.config.js",
       "**/vite.config.ts",
       "devvit.config.ts",

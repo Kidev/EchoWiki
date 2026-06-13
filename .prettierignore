@@ -1,0 +1,8 @@
+# Documentation is authored by hand (and contains EchoWiki markdown samples the
+# formatter would mangle), so keep it out of `prettier --write .`.
+docs/
+
+# Build artifacts
+dist/
+build/
+webroot/
