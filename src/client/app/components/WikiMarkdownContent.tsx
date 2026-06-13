@@ -24,8 +24,39 @@ import {
   EchoSceneFrame,
 } from "./EchoInlineAsset";
 import { getFileName, isModelPath, slugify } from "../assetUtils";
+import { highlightEchoCode } from "../wikiHighlight";
 
 const ModelViewer = lazy(() => import("./ModelViewer"));
+
+// Minimal shape of the hast nodes react-markdown hands a `pre` renderer: a
+// single `code` child carrying the language class and one text node with the
+// raw fenced content. Used to detect ```echo blocks and pull their source out.
+type HastElement = {
+  tagName?: string;
+  properties?: { className?: unknown };
+  children?: { type?: string; value?: string }[];
+};
+
+function getFencedCode(
+  node: unknown,
+): { lang: string | null; source: string } | null {
+  const codeEl = (node as { children?: HastElement[] } | undefined)
+    ?.children?.[0];
+  if (!codeEl || codeEl.tagName !== "code") return null;
+  const classes = codeEl.properties?.className;
+  const langClass = Array.isArray(classes)
+    ? classes.find(
+        (c): c is string =>
+          typeof c === "string" && c.startsWith("language-"),
+      )
+    : undefined;
+  const lang = langClass ? langClass.slice("language-".length) : null;
+  const source = (codeEl.children ?? [])
+    .filter((c) => c.type === "text")
+    .map((c) => c.value ?? "")
+    .join("");
+  return { lang, source };
+}
 
 function extractWikiPage(href: string, subredditName: string): string | null {
   const sub = subredditName.toLowerCase();
@@ -493,6 +524,36 @@ export function WikiMarkdownContent({
                   {linkChildren}
                 </a>
               );
+            },
+            pre: ({
+              node,
+              children,
+            }: {
+              node?: unknown;
+              children?: ReactNode;
+            }) => {
+              // ```echo fenced blocks are the EchoWiki showcase snippets: render
+              // them through the same dialect highlighter the editor uses so the
+              // :::blocks, echo:// links, and key=value params show up in color.
+              const fenced = getFencedCode(node);
+              if (fenced && fenced.lang === "echo") {
+                return (
+                  <pre
+                    className="echo-code-block overflow-x-auto font-mono text-sm leading-relaxed"
+                    style={{
+                      background: "var(--thumb-bg)",
+                      color: "var(--text)",
+                      border: "1px solid var(--text-muted)",
+                      borderRadius: "8px",
+                      padding: "1rem",
+                    }}
+                    dangerouslySetInnerHTML={{
+                      __html: highlightEchoCode(fenced.source),
+                    }}
+                  />
+                );
+              }
+              return <pre>{children}</pre>;
             },
             style: ({ children }: { children?: ReactNode }) => {
               const css =

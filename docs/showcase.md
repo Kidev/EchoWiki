@@ -23,7 +23,7 @@ This page demonstrates every visual feature the echo system supports. Assets are
 
 Embed any game image with the standard markdown image syntax.
 
-```
+```echo
 ![Ashley](echo://img/faces/ashley_(content).png)
 ```
 
@@ -31,7 +31,7 @@ Embed any game image with the standard markdown image syntax.
 
 Use `>>> <<<` to center images or any other content:
 
-```
+```echo
 >>>![Ashley](echo://img/faces/ashley_(content).png)<<<
 ```
 
@@ -43,7 +43,7 @@ Use `>>> <<<` to center images or any other content:
 
 Link to a sound or music file to embed a native audio player.
 
-```
+```echo
 ![Twisted Clowns](echo://audio/bgm/twisted_clowns.ogg)
 ```
 
@@ -51,7 +51,7 @@ Link to a sound or music file to embed a native audio player.
 
 Combine `?speed=` and `?pitch=` to shift playback:
 
-```
+```echo
 ![Normal](echo://audio/bgm/twisted_clowns.ogg)  
 ![x1.5 speed](echo://audio/bgm/twisted_clowns.ogg?speed=1.5)  
 ![+5 semitones](echo://audio/bgm/twisted_clowns.ogg?pitch=5)  
@@ -69,7 +69,7 @@ Combine `?speed=` and `?pitch=` to shift playback:
 
 Interactive 3D models embed with the **same image syntax** as a picture. The model loads in a small WebGL viewer: drag to orbit, scroll to zoom, and use the buttons in the corner to auto-rotate or reset the view.
 
-```
+```echo
 ![Bananaplant Mesh.glb](echo://meshes/bananaplant_mesh.glb)
 ```
 ![Bananaplant Mesh.glb](echo://meshes/bananaplant_mesh.glb)
@@ -87,7 +87,7 @@ Append display hints to the path, combined with `&`:
 | `?bg` | `?bg=111` | Background color (hex, `#` is added for you) |
 | `?texture` (alias `?tex`) | `?texture=img/diffuse.png` | Use an imported image as the model's texture |
 
-```
+```echo
 ![Bananaplant Mesh.glb](echo://meshes/bananaplant_mesh.glb?spin&height=420px&bg=ffffff)
 ```
 ![Bananaplant Mesh.glb](echo://meshes/bananaplant_mesh.glb?spin&height=420px&bg=ffffff)
@@ -96,7 +96,7 @@ Append display hints to the path, combined with `&`:
 
 When a model loads untextured (e.g. an OBJ whose materials live in external files), give it one with `?texture=`, pointing at any imported image asset:
 
-```
+```echo
 ![King statue](echo://meshes/king.obj?texture=img/king_diffuse.png)
 ```
 
@@ -110,7 +110,7 @@ The viewer is lazy-loaded: the three.js runtime and the loader for a given forma
 
 Extract one cell from a grid spritesheet with `?sprite=cols,rows,index`. Index counts left-to-right, top-to-bottom, zero-based.
 
-```
+```echo
 ![frame](echo://img/characters/spritessheet_12x8_characters_7.png?sprite=12,8,6)
 ```
 
@@ -146,7 +146,7 @@ Two display hints can be appended to any image path.
 
 Renders the image inline with surrounding text at `1.2em` height, vertically aligned like an emoji.
 
-```
+```echo
 Ashley ![Ashley](echo://img/faces/ashley_(content).png?emoji) is the protagonist.
 ```
 
@@ -154,7 +154,7 @@ Ashley ![Ashley](echo://img/faces/ashley_(content).png?emoji) is the protagonist
 
 Combine with `?sprite` and other params using `&`:
 
-```
+```echo
 ![icon](echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,0&emoji)
 ```
 
@@ -172,7 +172,7 @@ Draws a dashed accent-color outline around the image. Useful to highlight or con
 
 You can combine `?outline` with `?crop`, `?sprite`, and `?emoji`:
 
-```
+```echo
 ![outlined sprite](echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,6&outline)
 ```
 
@@ -188,7 +188,7 @@ You can combine `?outline` with `?crop`, `?sprite`, and `?emoji`:
 
 Use `:::card` to float an image beside free-form markdown content (headings, tables, prose). `image=` is the echo path, `size=` sets the image width (default `30%`), and `align=` places it `right` (default), `left`, or `center`. Add `fit=true` to shrink the card so it hugs the image: ideal for a captioned illustration rather than a body-wrapping float.
 
-```
+```echo
 :::card image=echo://img/pictures/pictures_13.png?crop size=50% fit=true align=center
 >>>*The siblings are unsettled*<<<
 :::
@@ -200,7 +200,7 @@ Use `:::card` to float an image beside free-form markdown content (headings, tab
 
 Without `fit`, the card spans the full width and the image floats inside it while the markdown body wraps alongside:
 
-```
+```echo
 :::card image=echo://img/faces/ashley_(content).png size=120px align=left
 ## Ashley
 
@@ -226,7 +226,7 @@ The younger Graves sibling. Manipulative, impulsive, and fiercely possessive of 
 
 Use `:::infobox` to build a Wikipedia-style character infobox: a colored header, portrait, and a key-value table floated beside page content. Below is a full example of what a real character page looks like.
 
-```
+```echo
 # Ashley Graves
 
 :::infobox title="Ashley Graves" image=echo://img/faces/ashley_(content).png align=right
@@ -308,7 +308,7 @@ Use `:::scene` to stack images at absolute positions in a fixed-size container.
 - `layer:` places a sprite at custom coordinates: append CSS position params (`bottom=`, `left=`, `height=`, etc.), or `size=` to pin its width as a fraction (`%`) of the background so it scales with the scene
 - `fg:` covers everything on top with `pointer-events: none` (foreground overlay)
 
-```
+```echo
 :::scene
 bg: echo://img/parallaxes/backgrounds_156.png?crop
 layer: echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,0 bottom=10% left=48% height=20%
@@ -332,7 +332,7 @@ Use `:::fbf` to cycle through sprite frames using CSS opacity animation. Each li
 
 An optional `alias=name` names the block so it can be referenced by `:::anim` blocks elsewhere on the page.
 
-```
+```echo
 :::fbf fps=4 size=100%
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,24
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,25
@@ -384,7 +384,7 @@ Use `:::anim` to move a sprite across a scene. You can either reference an `:::f
 
 The `:::fbf alias=ashley-right` block defines a looping walk animation (facing right) and also renders where it appears. The `:::anim ref=ashley-right` block reuses those frames inside a moving scene.
 
-```
+```echo
 :::fbf alias=ashley-right fps=6 size=7%
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,24
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,25
@@ -416,7 +416,7 @@ echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,25
 
 Lines starting with `echo://` are treated as frames; lines starting with a number are movement keyframes. Everything goes inside a single `:::anim` block.
 
-```
+```echo
 :::anim fps=6 spritesize=7% duration=2.5s width=75% height=75% bg=echo://img/parallaxes/backgrounds_66.png?crop bgopacity=1
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,24
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,25
@@ -442,7 +442,7 @@ Use `---` separators inside `:::anim` to switch sprites mid-cycle. Each phase ha
 
 Phase 1 uses the right-facing walk cycle (indices 24-25-26-25) moving left to right. Phase 2 uses the left-facing walk cycle (indices 12-13-14-13) moving right to left. The result is a seamless loop where the character always faces the direction she is walking.
 
-```
+```echo
 :::anim width=75% height=75% bg=echo://img/parallaxes/backgrounds_66.png?crop bgopacity=1 spritesize=7%
 --- duration=2s fps=6 
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,24
@@ -478,7 +478,7 @@ echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,13
 100% left=10% bottom=10%
 :::
 
-```
+```echo
 :::anim width=75% height=75% bg=echo://img/parallaxes/backgrounds_66.png?crop bgopacity=1 spritesize=7%
 --- duration=2s fps=6 
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,24
@@ -574,7 +574,7 @@ echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,13
 
 Define short names for long `echo://` paths and reference them anywhere on the page:
 
-```
+```echo
 :::def
 ashley = echo://img/faces/ashley_(content).png
 bg     = echo://img/parallaxes/backgrounds_66.png?crop
@@ -584,7 +584,7 @@ sheet  = echo://img/characters/spritessheet_12x8_characters_8.png
 
 Then use `echo://~ashley`, `echo://~bg`, or `echo://~sheet` anywhere an echo path appears: in markdown images, block params, and inside other blocks.
 
-```
+```echo
 ![Ashley face](echo://~ashley)
 
 :::scene width=80% height=120px
