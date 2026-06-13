@@ -42,6 +42,7 @@ import type {
   WikiSuggestionsResponse,
   ErrorResponse,
 } from "../../shared/types/api";
+import { DEV_SUBREDDIT } from "../../shared/types/api";
 import {
   hasAssets,
   getMeta,
@@ -871,6 +872,9 @@ export const App = () => {
           engineOverride: config?.engine,
           keyOverride: config?.encryptionKey || undefined,
           customTransformCode: config?.customTransformCode || undefined,
+          // Dev subreddit only (the "Dev" gate): allow TCOAAL's www/models/
+          // 3D assets into the browser / echo links.
+          enableTcoaalModels: subredditName === DEV_SUBREDDIT,
           onProgress: (p) => {
             progressRef.current = p;
 
@@ -969,7 +973,7 @@ export const App = () => {
         }
       }
     },
-    [config],
+    [config, subredditName],
   );
 
   const handleCopied = useCallback((_path: string) => {

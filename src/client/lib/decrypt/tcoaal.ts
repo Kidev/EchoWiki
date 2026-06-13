@@ -24,6 +24,35 @@ const MIME_MAP: Record<string, string> = {
   ".png": "image/png",
 };
 
+// 3D model formats the asset browser / ModelViewer can render (mirrors
+// isModelPath in assetUtils.ts). TCOAAL is a 2D RPG Maker MV game, so its
+// `www/models/` directory is only scanned on the dev subreddit (see the
+// includeModels gate in processTcoaalFiles). Files there may be plain or
+// wrapped in the TCOAAL container; both are handled.
+const MODEL_MIME_MAP: Record<string, string> = {
+  ".glb": "model/gltf-binary",
+  ".gltf": "model/gltf+json",
+  ".obj": "text/plain",
+  ".stl": "model/stl",
+  ".ply": "application/octet-stream",
+  ".fbx": "application/octet-stream",
+  ".dae": "model/vnd.collada+xml",
+  ".3mf": "application/octet-stream",
+};
+
+// Returns the model extension carried by an on-disk path, looking past an
+// optional `.k9a` container suffix (e.g. `models/king.glb.k9a` -> `.glb`).
+// Empty string when the path doesn't end in a known model format.
+function getModelExtension(lowerInner: string): string {
+  const base = lowerInner.endsWith(".k9a")
+    ? lowerInner.slice(0, -4)
+    : lowerInner;
+  for (const ext of Object.keys(MODEL_MIME_MAP)) {
+    if (base.endsWith(ext)) return ext;
+  }
+  return "";
+}
+
 function getExtensionForPath(relativePath: string): string {
   const topDir = relativePath.split("/")[0]!.toLowerCase();
   switch (topDir) {
@@ -91,6 +120,7 @@ function decryptTcoaal(rawBytes: Uint8Array, idFilePath: string): Uint8Array {
 export async function* processTcoaalFiles(
   files: File[],
   dataRoot: string,
+  includeModels = false,
 ): AsyncGenerator<ProcessedAsset> {
   const hasK9a = files.some((f) => f.name.toLowerCase().endsWith(".k9a"));
   if (hasK9a && !dataRoot) {
@@ -106,6 +136,37 @@ export async function* processTcoaalFiles(
     if (dataRoot && inner.toLowerCase().startsWith(dataRoot.toLowerCase())) {
       inner = inner.slice(dataRoot.length);
     } else {
+      continue;
+    }
+
+    const lowerInner = inner.toLowerCase();
+
+    // Dev-subreddit only: surface 3D models shipped under www/models/. Unlike
+    // the fixed-extension asset dirs below, model files keep their own format
+    // (.glb/.obj/...) and may be stored plain or in the TCOAAL container, so we
+    // derive the extension from the name and only decrypt when the signature
+    // is present.
+    if (lowerInner.startsWith("models/")) {
+      if (!includeModels) continue;
+
+      const modelExt = getModelExtension(lowerInner);
+      if (!modelExt) continue;
+
+      const rawBytes = new Uint8Array(await file.arrayBuffer());
+      const data = hasTcoaalSignature(rawBytes)
+        ? decryptTcoaal(rawBytes, inner)
+        : rawBytes;
+
+      const mime = MODEL_MIME_MAP[modelExt] ?? "application/octet-stream";
+      const canonical = lowerInner.endsWith(".k9a")
+        ? lowerInner.slice(0, -4)
+        : lowerInner;
+
+      yield {
+        path: canonical,
+        blob: new Blob([data], { type: mime }),
+        mimeType: mime,
+      };
       continue;
     }
 

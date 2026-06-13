@@ -30,6 +30,9 @@ export type ImportOptions = {
   engineOverride?: EngineType | undefined;
   keyOverride?: string | undefined;
   customTransformCode?: string | undefined;
+  // Dev-subreddit only: also extract 3D models from a TCOAAL `www/models/`
+  // folder into the asset browser / echo links. Ignored for other engines.
+  enableTcoaalModels?: boolean | undefined;
   onProgress: (progress: ImportProgress) => void;
   signal?: AbortSignal | undefined;
 };
@@ -97,6 +100,7 @@ function getAssetGenerator(
   detection: DetectionResult,
   keyOverride?: string,
   customTransformCode?: string,
+  enableTcoaalModels?: boolean,
 ): AsyncGenerator<ProcessedAsset> | null {
   switch (engine) {
     case "rmmv":
@@ -111,7 +115,11 @@ function getAssetGenerator(
       return processRm2k3Files(files);
 
     case "tcoaal":
-      return processTcoaalFiles(files, detection.dataRoot);
+      return processTcoaalFiles(
+        files,
+        detection.dataRoot,
+        enableTcoaalModels ?? false,
+      );
 
     case "rmxp":
     case "rmvx": {
@@ -149,6 +157,7 @@ export async function importGameFiles(options: ImportOptions): Promise<void> {
     engineOverride,
     keyOverride,
     customTransformCode,
+    enableTcoaalModels,
     onProgress,
     signal,
   } = options;
@@ -185,6 +194,7 @@ export async function importGameFiles(options: ImportOptions): Promise<void> {
         : detection,
       keyOverride,
       customTransformCode,
+      enableTcoaalModels,
     );
 
     if (eng === "rmxp" || eng === "rmvx" || eng === "rmvxace") {

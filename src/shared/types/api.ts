@@ -1,3 +1,5 @@
+import devvitConfig from "../../../devvit.json";
+
 export type EngineType =
   | "rm2k3"
   | "rmxp"
@@ -536,12 +538,13 @@ export type ErrorResponse = {
 };
 
 /**
- * The development subreddit. Must stay in sync with `dev.subreddit` in
- * devvit.json. Dev-only affordances (e.g. the in-app self-test harness) are
- * gated on the running subreddit matching this value, on both the client (to
- * decide whether to surface the UI) and the server (to authorize the endpoint).
+ * The development subreddit, sourced directly from `dev.subreddit` in
+ * devvit.json so the two never drift. Dev-only affordances (e.g. the in-app
+ * self-test harness, the TCOAAL model importer) are gated on the running
+ * subreddit matching this value, on both the client (to decide whether to
+ * surface the UI) and the server (to authorize the endpoint).
  */
-export const DEV_SUBREDDIT = "echo_wiki_dev";
+export const DEV_SUBREDDIT = devvitConfig.dev.subreddit;
 
 /** Outcome of a single self-test assertion in the dev-only test harness. */
 export type DevTestResult = {
