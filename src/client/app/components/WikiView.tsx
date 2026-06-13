@@ -154,8 +154,8 @@ export const WikiView = memo(function WikiView({
   const lockGuardRef = useRef(false);
 
   // Cumulative offsetTop of `el` up to (but excluding) `container`. Uses layout
-  // offsets (not getBoundingClientRect) so it is unaffected by the half-scale
-  // `zoom` the panes use when both are visible.
+  // offsets (not getBoundingClientRect) so it stays correct regardless of any
+  // transform/scale applied to the surrounding panes.
   const offsetWithin = (el: HTMLElement, container: HTMLElement): number => {
     let y = 0;
     let n: HTMLElement | null = el;
@@ -833,15 +833,15 @@ export const WikiView = memo(function WikiView({
       ) : isEditing ? (
         <div className="flex-1 flex flex-col overflow-hidden">
           {}
-          <div className="px-3 h-8 text-xs bg-[var(--thumb-bg)] border-b border-gray-100 shrink-0 select-none flex items-stretch z-10">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-2 py-1 min-h-8 text-xs bg-[var(--thumb-bg)] border-b border-gray-100 shrink-0 select-none z-10">
             {}
-            <div className="flex-1 flex items-center justify-center gap-1 min-w-0">
+            <div className="flex items-center gap-1 min-w-0">
               {isProposeMode ? (
                 (["normal", "source", "diff"] as const).map((m) => (
                   <button
                     key={m}
                     onClick={() => setProposeViewMode(m)}
-                    className={`text-[10px] px-2 py-0.5 rounded transition-colors cursor-pointer ${
+                    className={`text-[10px] px-2 py-0.5 rounded transition-colors cursor-pointer shrink-0 ${
                       proposeViewMode === m
                         ? m === "diff"
                           ? "bg-amber-500 text-white"
@@ -862,21 +862,22 @@ export const WikiView = memo(function WikiView({
                 </span>
               )}
             </div>
+
             {}
-            <div className="flex items-center justify-center px-2">
-              {proposeViewMode !== "diff" && (
-                <ScrollLockToggle
-                  locked={scrollLocked}
-                  onToggle={() => setScrollLocked((v) => !v)}
-                />
-              )}
-            </div>
+            {proposeViewMode !== "diff" && (
+              <ScrollLockToggle
+                locked={scrollLocked}
+                onToggle={() => setScrollLocked((v) => !v)}
+              />
+            )}
+
             {}
-            <div className="flex-1 relative flex items-center justify-center min-w-0">
-              <span className="font-mono text-[var(--text-muted)] truncate min-w-0 px-2">
-                {isProposeMode ? "Suggesting changes" : "Source"}
-              </span>
-              <div className="absolute right-0 inset-y-0 flex items-center gap-1.5">
+            <span className="hidden min-[480px]:inline font-mono text-[var(--text-muted)] truncate min-w-0">
+              {isProposeMode ? "Suggesting changes" : "Source"}
+            </span>
+
+            {}
+            <div className="ml-auto flex items-center gap-1.5 shrink-0">
               {isMod && !isProposeMode && currentPage !== "index" && (
                 <button
                   onPointerDown={(e) => {
@@ -929,7 +930,6 @@ export const WikiView = memo(function WikiView({
                   Save
                 </button>
               )}
-              </div>
             </div>
           </div>
 
@@ -947,17 +947,7 @@ export const WikiView = memo(function WikiView({
               }}
               className="flex flex-col"
             >
-              <div
-                className="flex-1 overflow-hidden"
-                style={{
-                  zoom:
-                    isProposeMode &&
-                    proposeHiddenPane === null &&
-                    proposeViewMode !== "diff"
-                      ? 0.5
-                      : 1,
-                }}
-              >
+              <div className="flex-1 overflow-hidden">
                 {isProposeMode && proposeViewMode === "diff" ? (
                   <SideBySideDiffView
                     original={content ?? ""}

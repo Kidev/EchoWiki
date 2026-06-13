@@ -1246,7 +1246,12 @@ export const App = () => {
     // `assetsBypassed` is an intentional "ready without assets" state (a voter
     // chose "continue without assets"), so re-acquiring focus must not treat the
     // absence of imported assets as a reason to bounce back to the import prompt.
-    if (!isInline || appState !== "ready" || isGameIndependent || assetsBypassed)
+    if (
+      !isInline ||
+      appState !== "ready" ||
+      isGameIndependent ||
+      assetsBypassed
+    )
       return;
     const onFocus = () => {
       void hasAssets().then((still) => {
