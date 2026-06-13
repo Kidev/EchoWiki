@@ -20,6 +20,7 @@ const COLOR = {
   attrKey: "#3b9eff", // key in key=value params
   attrVal: "#22c55e", // value in key=value params
   echo: "var(--link-color, #0079d3)", // echo:// asset links
+  alias: "#eab308", // ~name in echo://~alias references
   prefix: "#ef8e4b", // bg:/fg:/layer: prefixes, move-line percentages
   heading: "#e0567a", // # headings
   emphasis: "#d98b3c", // **bold** / *italic*
@@ -34,6 +35,54 @@ function esc(s: string): string {
 
 function span(color: string, text: string, extra = ""): string {
   return `<span style="color:${color};${extra}">${text}</span>`;
+}
+
+// Matches an `echo://` URL. A run of "normal" chars (anything but whitespace,
+// the markdown/quote terminators, or a closing paren) plus, crucially, balanced
+// `(...)` groups so filenames like `ashley_(content).png` aren't truncated at
+// the first `)`. The chars consumed here are already HTML-escaped, so `&` shows
+// up as `&amp;` and is matched as part of the normal run.
+const ECHO_URL_RE = /echo:\/\/(?:[^\s()"'\]]|\([^\s()"'\]]*\))+/g;
+
+/**
+ * Highlight a single (HTML-escaped) `echo://` URL: the base link in the echo
+ * color, an `~alias` reference in the alias color, and any `?key&key=value`
+ * query params like a `:::` block's `key=value` attributes (key blue, value
+ * green). The query separators (`?`, escaped `&`, `=`) are muted.
+ */
+function highlightEchoUrl(escUrl: string): string {
+  const qIdx = escUrl.indexOf("?");
+  const base = qIdx === -1 ? escUrl : escUrl.slice(0, qIdx);
+
+  // `echo://~name` reference: tint the `~name` so aliases stand out from paths.
+  const aliasM = /^(echo:\/\/)(~[A-Za-z0-9_-]+)(.*)$/.exec(base);
+  const baseHtml = aliasM
+    ? span(COLOR.echo, aliasM[1]!) +
+      span(COLOR.alias, aliasM[2]!) +
+      (aliasM[3] ? span(COLOR.echo, aliasM[3]) : "")
+    : span(COLOR.echo, base);
+
+  if (qIdx === -1) return baseHtml;
+
+  // Query string: params are `&`-separated (escaped to `&amp;` here), each
+  // either a bare flag (`emoji`) or `key=value`.
+  const amp = span(COLOR.muted, "&amp;");
+  const query = escUrl
+    .slice(qIdx + 1)
+    .split("&amp;")
+    .map((seg) => {
+      if (seg === "") return "";
+      const eq = seg.indexOf("=");
+      if (eq === -1) return span(COLOR.attrKey, seg);
+      return (
+        span(COLOR.attrKey, seg.slice(0, eq)) +
+        span(COLOR.muted, "=") +
+        span(COLOR.attrVal, seg.slice(eq + 1))
+      );
+    })
+    .join(amp);
+
+  return baseHtml + span(COLOR.muted, "?") + query;
 }
 
 // Private-use sentinels delimiting a held slot. They never occur in wiki source,
@@ -83,15 +132,18 @@ function highlightInline(escaped: string): string {
       ),
     ),
   );
-  // echo:// asset links (and echo://~alias references)
-  s = s.replace(/echo:\/\/[^\s)"'\]]+/g, (m) => hold(span(COLOR.echo, m)));
-  // [text](url)
-  s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, t: string, u: string) =>
-    hold(
-      span(COLOR.muted, "[") +
-        span(COLOR.link, t) +
-        span(COLOR.muted, "](" + u + ")"),
-    ),
+  // echo:// asset links (alias + query params colored by highlightEchoUrl)
+  s = s.replace(ECHO_URL_RE, (m) => hold(highlightEchoUrl(m)));
+  // [text](url): the url destination allows balanced `(...)` (e.g. a held echo
+  // link whose filename contained parens), so it isn't truncated at the first `)`
+  s = s.replace(
+    /\[([^\]]+)\]\(((?:[^()]|\([^()]*\))*)\)/g,
+    (_m, t: string, u: string) =>
+      hold(
+        span(COLOR.muted, "[") +
+          span(COLOR.link, t) +
+          span(COLOR.muted, "](" + u + ")"),
+      ),
   );
   // **bold**
   s = s.replace(/\*\*([^*\n]+)\*\*/g, (_m, c: string) =>
@@ -116,14 +168,30 @@ function highlightAttrs(escaped: string): string {
 /** Color echo links first, then remaining `key=value` params (block bodies). */
 function highlightEchoAndAttrs(escaped: string): string {
   const { hold, restore } = makeSlots();
-  let s = escaped.replace(/echo:\/\/[^\s)"'\]]+/g, (m) =>
-    hold(span(COLOR.echo, m)),
-  );
+  let s = escaped.replace(ECHO_URL_RE, (m) => hold(highlightEchoUrl(m)));
   s = highlightAttrs(s);
   return restore(s);
 }
 
 const BLOCK_OPEN_RE = /^(:::)(def|fbf|scene|anim|card|infobox)\b(.*)$/;
+
+// GitHub-style alert callouts: `> [!NOTE]` and the `>` quote lines that follow
+// it form one block. Each type tints in its own semantic color (matching the
+// rendered preview's alert colors), so the whole callout reads as a unit instead
+// of the body lines falling back to the generic muted blockquote color.
+const ALERT_COLOR: Record<string, string> = {
+  NOTE: "var(--link-color, #0079d3)",
+  TIP: "#22c55e",
+  IMPORTANT: "#a855f7",
+  WARNING: "#eab308",
+  CAUTION: "#ef4444",
+};
+// Header line. Only the five known types start a callout (a plain `> [!foo]`
+// stays an ordinary quote), mirroring the renderer's `preprocessAlerts`.
+const ALERT_HEAD_RE =
+  /^(\s*>\s*)(\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\])(.*)$/;
+// A blockquote line; while a callout is open, each such line continues it.
+const QUOTE_RE = /^(\s*>\s?)(.*)$/;
 
 /** Highlight a line that lives inside a `:::...:::` block body. */
 function highlightBlockLine(raw: string): string {
@@ -160,9 +228,25 @@ function highlightBlockLine(raw: string): string {
 
 /** Highlight an ordinary (outside-of-block) markdown line. */
 function highlightMarkdownLine(raw: string): string {
-  const t = raw.trim();
-  // standalone center markers
-  if (t === ">>>" || t === "<<<") return span(COLOR.fence, esc(raw));
+  // `>>> ... <<<` center markers. A line may open with `>>>`, close with `<<<`,
+  // or both (wrapping inline content on one line). Handled before the blockquote
+  // rule so the leading `>>>` isn't mistaken for a `>` quote and cut short.
+  const openM = /^(\s*)>>>/.exec(raw);
+  if (openM || /<<<\s*$/.test(raw)) {
+    let prefix = "";
+    let body = raw;
+    if (openM) {
+      prefix = esc(openM[1]!) + span(COLOR.fence, ">>>");
+      body = raw.slice(openM[0].length);
+    }
+    let suffix = "";
+    const closeM = /<<<(\s*)$/.exec(body);
+    if (closeM) {
+      suffix = span(COLOR.fence, "<<<") + esc(closeM[1]!);
+      body = body.slice(0, body.length - closeM[0].length);
+    }
+    return prefix + highlightInline(esc(body)) + suffix;
+  }
 
   // # headings
   const hm = /^(\s*)(#{1,6})(\s.*)?$/.exec(raw);
@@ -170,18 +254,9 @@ function highlightMarkdownLine(raw: string): string {
     return esc(hm[1]!) + span(COLOR.heading, esc(hm[2]! + (hm[3] ?? "")));
   }
 
-  // > [!NOTE] style alert callouts
-  const am = /^(\s*>\s*)(\[![A-Za-z]+\])(.*)$/.exec(raw);
-  if (am) {
-    return (
-      esc(am[1]!) +
-      span(COLOR.heading, esc(am[2]!)) +
-      highlightInline(esc(am[3]!))
-    );
-  }
-
-  // > blockquote
-  const bm = /^(\s*>\s?)(.*)$/.exec(raw);
+  // > blockquote (alert callouts are handled, with their multi-line grouping,
+  // up in highlightSourceLines before this per-line fallback runs).
+  const bm = QUOTE_RE.exec(raw);
   if (bm) {
     return span(COLOR.muted, esc(bm[1]!)) + highlightInline(esc(bm[2]!));
   }
@@ -205,16 +280,40 @@ function highlightSourceLines(src: string): string[] {
   const lines = src.split("\n");
   const out: string[] = [];
   let inBlock = false;
+  // Color of the currently-open GitHub alert callout (null when not in one).
+  let alertColor: string | null = null;
 
   for (const raw of lines) {
     if (!inBlock) {
       const mo = BLOCK_OPEN_RE.exec(raw);
       if (mo) {
+        alertColor = null;
         inBlock = true;
         out.push(
           span(COLOR.fence, ":::" + mo[2]) + highlightAttrs(esc(mo[3]!)),
         );
         continue;
+      }
+      // Start of a `> [!TYPE]` alert callout: tint the marker in its type color.
+      const ah = ALERT_HEAD_RE.exec(raw);
+      if (ah) {
+        alertColor = ALERT_COLOR[ah[3]!] ?? COLOR.heading;
+        out.push(
+          span(alertColor, esc(ah[1]! + ah[2]!)) + highlightInline(esc(ah[4]!)),
+        );
+        continue;
+      }
+      // Continuation `>` line of an open callout: tint the quote marker the same
+      // color so the whole callout reads as one group. A non-quote line ends it.
+      if (alertColor) {
+        const qm = QUOTE_RE.exec(raw);
+        if (qm) {
+          out.push(
+            span(alertColor, esc(qm[1]!)) + highlightInline(esc(qm[2]!)),
+          );
+          continue;
+        }
+        alertColor = null;
       }
       out.push(highlightMarkdownLine(raw));
       continue;
