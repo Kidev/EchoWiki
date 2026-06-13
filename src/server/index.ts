@@ -603,7 +603,10 @@ async function recordDecision(
   // withdrawal, not a moderator decision; flag it so the audit trail reads
   // "Withdrawn by user" for both mods and the author (whose `by` is redacted).
   const isWithdrawal =
-    outcome === "denied" && !viaVote && by != null && by === suggestion.username;
+    outcome === "denied" &&
+    !viaVote &&
+    by != null &&
+    by === suggestion.username;
   const decisionEvent: WikiHistoryEvent = {
     state: outcome,
     by: viaVote ? null : by,

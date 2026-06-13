@@ -28,20 +28,20 @@ function MiniAssetPickerItem({
   return (
     <div
       onClick={onClick}
-      className="flex flex-col items-center p-1 rounded cursor-pointer hover:bg-[var(--thumb-bg)] shrink-0"
+      className="flex flex-col items-center p-1.5 rounded-lg cursor-pointer hover:bg-[var(--accent)]/10 border border-transparent hover:border-[var(--accent)]/40 transition-colors shrink-0"
       title={path}
-      style={{ width: "56px" }}
+      style={{ width: "92px" }}
     >
-      <div className="w-10 h-10 flex items-center justify-center rounded overflow-hidden bg-[var(--thumb-bg)]">
+      <div className="w-20 h-20 flex items-center justify-center rounded-md overflow-hidden bg-[var(--thumb-bg)]">
         {isImg ? (
           url ? (
             <img src={url} alt="" className="w-full h-full object-contain" />
           ) : (
-            <div className="w-4 h-4 border border-gray-300 border-t-gray-500 rounded-full animate-spin" />
+            <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin" />
           )
         ) : isModel ? (
           <svg
-            className="w-5 h-5 text-violet-400"
+            className="w-9 h-9 text-violet-400"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -55,7 +55,7 @@ function MiniAssetPickerItem({
           </svg>
         ) : (
           <svg
-            className="w-5 h-5 text-blue-400"
+            className="w-9 h-9 text-blue-400"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -69,7 +69,7 @@ function MiniAssetPickerItem({
           </svg>
         )}
       </div>
-      <span className="text-[8px] text-[var(--text-muted)] truncate w-full text-center mt-0.5 leading-tight">
+      <span className="text-[11px] text-[var(--text)] truncate w-full text-center mt-1 leading-tight">
         {getFileName(path)}
       </span>
     </div>
@@ -98,7 +98,7 @@ function MiniAssetPicker({
       const filtered = all.filter(predicate);
       setAllPaths(filtered);
       setLoadingPaths(false);
-      if (type === "images") await preloadPaths(filtered.slice(0, 60));
+      if (type === "images") await preloadPaths(filtered.slice(0, 80));
     });
   }, [type]);
 
@@ -136,15 +136,15 @@ function MiniAssetPicker({
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         placeholder="Search assets..."
-        className="w-full text-xs px-2 py-1 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none"
+        className="w-full text-sm px-3 py-2 rounded-lg border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none focus:border-[var(--accent)]"
       />
-      <div className="flex flex-wrap gap-1 max-h-44 overflow-auto">
+      <div className="flex flex-wrap gap-1.5 justify-center max-h-60 overflow-auto py-1">
         {visible.map((p) => (
           <MiniAssetPickerItem key={p} path={p} onClick={() => onSelect(p)} />
         ))}
       </div>
       {allPaths.length > 60 && !search && (
-        <p className="text-[10px] text-[var(--text-muted)] text-center">
+        <p className="text-xs text-[var(--text-muted)] text-center">
           Showing first 60. Use search to find more.
         </p>
       )}
@@ -168,7 +168,7 @@ function InsertDialogShell({
     >
       <div
         className="bg-[var(--bg)] rounded-xl shadow-2xl flex flex-col overflow-hidden"
-        style={{ width: "min(90vw, 560px)", maxHeight: "85vh" }}
+        style={{ width: "min(94vw, 680px)", maxHeight: "88vh" }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 shrink-0">
@@ -243,7 +243,6 @@ function ImageInsertDialog({
                 value={alt}
                 onChange={(e) => setAlt(e.target.value)}
                 className="w-full text-xs px-2 py-1.5 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none"
-                placeholder="Image description"
               />
             </div>
             <div>
@@ -344,7 +343,6 @@ function ModelInsertDialog({
                 value={alt}
                 onChange={(e) => setAlt(e.target.value)}
                 className="w-full text-xs px-2 py-1.5 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none"
-                placeholder="Model name"
               />
             </div>
             <div className="flex items-center gap-4">
@@ -362,7 +360,6 @@ function ModelInsertDialog({
                   type="text"
                   value={height}
                   onChange={(e) => setHeight(e.target.value)}
-                  placeholder="340px"
                   className="w-20 text-xs px-2 py-1 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none"
                 />
               </label>
@@ -375,7 +372,6 @@ function ModelInsertDialog({
                 type="text"
                 value={texture}
                 onChange={(e) => setTexture(e.target.value)}
-                placeholder="echo://img/diffuse.png"
                 className="w-full text-xs px-2 py-1.5 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none"
               />
               <p className="text-[10px] text-[var(--text-muted)] mt-1">
@@ -403,6 +399,140 @@ function ModelInsertDialog({
             </button>
           </div>
         )}
+      </div>
+    </InsertDialogShell>
+  );
+}
+
+function CardInsertDialog({
+  onInsert,
+  onDismiss,
+}: {
+  onInsert: (text: string) => void;
+  onDismiss: () => void;
+}) {
+  const [imagePath, setImagePath] = useState("");
+  const [size, setSize] = useState("30%");
+  const [align, setAlign] = useState<"right" | "left" | "center">("right");
+  const [fit, setFit] = useState(false);
+  const [body, setBody] = useState("");
+  const [showPicker, setShowPicker] = useState(false);
+
+  const generate = () => {
+    const paramParts: string[] = [];
+    if (imagePath) paramParts.push(`image=echo://${imagePath}`);
+    paramParts.push(`size=${size}`);
+    paramParts.push(`align=${align}`);
+    if (fit && imagePath) paramParts.push("fit");
+    const header = `:::card ${paramParts.join(" ")}`;
+    return `${header}\n${body.trim()}\n:::`;
+  };
+
+  return (
+    <InsertDialogShell title="Insert Card" onDismiss={onDismiss}>
+      <div className="flex flex-col gap-3">
+        <p className="text-xs text-[var(--text-muted)]">
+          A boxed callout with an optional floated image and markdown body text
+          wrapping alongside it.
+        </p>
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <label className="text-xs font-medium text-[var(--text-muted)]">
+              Image (optional)
+            </label>
+            {imagePath ? (
+              <button
+                onClick={() => setImagePath("")}
+                className="text-[10px] text-red-400 cursor-pointer hover:underline"
+              >
+                Clear
+              </button>
+            ) : (
+              <button
+                onClick={() => setShowPicker((v) => !v)}
+                className="text-[10px] text-[var(--accent)] cursor-pointer hover:underline"
+              >
+                {showPicker ? "Hide picker" : "Pick image..."}
+              </button>
+            )}
+          </div>
+          {imagePath && (
+            <code className="text-[10px] bg-[var(--thumb-bg)] px-2 py-1 rounded block break-all">
+              {imagePath}
+            </code>
+          )}
+          {showPicker && !imagePath && (
+            <div className="mt-2">
+              <MiniAssetPicker
+                type="images"
+                onSelect={(p) => {
+                  setImagePath(p);
+                  setShowPicker(false);
+                }}
+              />
+            </div>
+          )}
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-medium text-[var(--text-muted)] block mb-1">
+              Image size
+            </label>
+            <input
+              type="text"
+              value={size}
+              onChange={(e) => setSize(e.target.value)}
+              className="w-full text-xs px-2 py-1.5 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-[var(--text-muted)] block mb-1">
+              Image align
+            </label>
+            <div className="flex gap-1.5">
+              {(["right", "left", "center"] as const).map((a) => (
+                <button
+                  key={a}
+                  onClick={() => setAlign(a)}
+                  className={`text-xs px-2.5 py-1 rounded cursor-pointer border transition-colors ${align === a ? "bg-[var(--accent)] text-white border-transparent" : "border-gray-300 text-[var(--text-muted)] hover:bg-[var(--control-bg)]"}`}
+                >
+                  {a}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <label className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] cursor-pointer">
+          <input
+            type="checkbox"
+            checked={fit}
+            onChange={(e) => setFit(e.target.checked)}
+            className="cursor-pointer"
+            disabled={!imagePath}
+          />
+          Fit card to image (card hugs the image instead of spanning full width)
+        </label>
+        <div>
+          <label className="text-xs font-medium text-[var(--text-muted)] block mb-1">
+            Body (markdown)
+          </label>
+          <textarea
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            rows={4}
+            className="w-full text-xs px-2 py-1.5 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none resize-none"
+          />
+        </div>
+        <button
+          onClick={() => {
+            onInsert(generate());
+            onDismiss();
+          }}
+          disabled={!body.trim() && !imagePath}
+          className="self-end text-sm px-4 py-1.5 rounded bg-[var(--accent)] text-white hover:opacity-90 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          Insert Card
+        </button>
       </div>
     </InsertDialogShell>
   );
@@ -454,7 +584,6 @@ function InfoboxInsertDialog({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className="w-full text-xs px-2 py-1.5 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none"
-              placeholder="e.g. Ashley Graves"
             />
           </div>
           <div>
@@ -529,7 +658,6 @@ function InfoboxInsertDialog({
                   type="text"
                   value={row.key}
                   onChange={(e) => updateRow(i, "key", e.target.value)}
-                  placeholder="Key"
                   className="text-xs px-2 py-1 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none w-28 shrink-0"
                 />
                 <span className="text-[var(--text-muted)] text-xs">|</span>
@@ -537,7 +665,6 @@ function InfoboxInsertDialog({
                   type="text"
                   value={row.value}
                   onChange={(e) => updateRow(i, "value", e.target.value)}
-                  placeholder="Value (supports [links](url) and <br>)"
                   className="text-xs px-2 py-1 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none flex-1 min-w-0"
                 />
                 <button
@@ -617,7 +744,6 @@ function SceneInsertDialog({
               value={width}
               onChange={(e) => setWidth(e.target.value)}
               className="w-full text-xs px-2 py-1.5 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none"
-              placeholder="100%"
             />
           </div>
           <div>
@@ -629,7 +755,6 @@ function SceneInsertDialog({
               value={height}
               onChange={(e) => setHeight(e.target.value)}
               className="w-full text-xs px-2 py-1.5 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none"
-              placeholder="200px"
             />
           </div>
         </div>
@@ -692,7 +817,6 @@ function SceneInsertDialog({
                     type="text"
                     value={layer.extra}
                     onChange={(e) => updateLayer(i, "extra", e.target.value)}
-                    placeholder="bottom=5% left=48% height=25%"
                     className="text-xs px-2 py-1 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none font-mono"
                   />
                 )}
@@ -766,7 +890,6 @@ function FbfInsertDialog({
               value={fps}
               onChange={(e) => setFps(e.target.value)}
               className="w-full text-xs px-2 py-1.5 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none"
-              placeholder="7.5"
             />
           </div>
           <div>
@@ -778,7 +901,6 @@ function FbfInsertDialog({
               value={size}
               onChange={(e) => setSize(e.target.value)}
               className="w-full text-xs px-2 py-1.5 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none"
-              placeholder="64"
             />
           </div>
           <div>
@@ -790,7 +912,6 @@ function FbfInsertDialog({
               value={alias}
               onChange={(e) => setAlias(e.target.value)}
               className="w-full text-xs px-2 py-1.5 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none"
-              placeholder="hero"
             />
           </div>
         </div>
@@ -866,7 +987,6 @@ function FbfInsertDialog({
                     value={indexRange}
                     onChange={(e) => setIndexRange(e.target.value)}
                     className="w-full text-xs px-2 py-1 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none mt-0.5"
-                    placeholder="0-3"
                   />
                 </div>
               </div>
@@ -999,7 +1119,6 @@ function AnimInsertDialog({
               type="text"
               value={refAlias}
               onChange={(e) => setRefAlias(e.target.value)}
-              placeholder="Alias name from :::fbf alias=..."
               className="w-full text-xs px-2 py-1.5 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none"
             />
           ) : (
@@ -1061,7 +1180,6 @@ function AnimInsertDialog({
               value={duration}
               onChange={(e) => setDuration(e.target.value)}
               className="w-full text-xs px-2 py-1 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none mt-0.5"
-              placeholder="3s"
             />
           </div>
           <div>
@@ -1073,7 +1191,6 @@ function AnimInsertDialog({
               value={width}
               onChange={(e) => setWidth(e.target.value)}
               className="w-full text-xs px-2 py-1 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none mt-0.5"
-              placeholder="50%"
             />
           </div>
           <div>
@@ -1085,7 +1202,6 @@ function AnimInsertDialog({
               value={height}
               onChange={(e) => setHeight(e.target.value)}
               className="w-full text-xs px-2 py-1 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none mt-0.5"
-              placeholder="120px"
             />
           </div>
           <div className="flex items-end pb-0.5">
@@ -1131,7 +1247,6 @@ function AnimInsertDialog({
                 value={bgOpacity}
                 onChange={(e) => setBgOpacity(e.target.value)}
                 className="w-14 text-xs px-2 py-1 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none shrink-0"
-                placeholder="opacity"
               />
             </div>
           )}
@@ -1154,9 +1269,6 @@ function AnimInsertDialog({
             onChange={(e) => setKeyframes(e.target.value)}
             rows={3}
             className="w-full text-xs px-2 py-1.5 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none font-mono resize-none"
-            placeholder={
-              '0% left=8px bottom=24px\n100% left="calc(100% - 56px)" bottom=24px'
-            }
           />
         </div>
         <button
@@ -1224,7 +1336,6 @@ function DefInsertDialog({
                   type="text"
                   value={entry.name}
                   onChange={(e) => updateEntry(i, "name", e.target.value)}
-                  placeholder="alias name (e.g. hero)"
                   className="text-xs px-2 py-1 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none w-32 shrink-0"
                 />
                 <span className="text-xs text-[var(--text-muted)]">=</span>
@@ -1280,6 +1391,7 @@ function DefInsertDialog({
 export type ToolbarDialog =
   | "image"
   | "model"
+  | "card"
   | "infobox"
   | "scene"
   | "fbf"
@@ -1317,6 +1429,41 @@ function WikiToolbar({
   const [dialog, setDialog] = useState<ToolbarDialog>(null);
   const [open, setOpen] = useState(false);
 
+  // Apply an edit to the textarea over the range [start, end), preferring
+  // document.execCommand("insertText") so the change joins the browser's native
+  // undo stack: that's what lets the user Ctrl+Z a toolbar action. execCommand
+  // fires an input event, so the controlled `value` stays in sync via onChange.
+  // `selectAfter` returns the [start, end] selection to restore once applied.
+  const applyEdit = useCallback(
+    (
+      start: number,
+      end: number,
+      text: string,
+      selectAfter: (insertedStart: number) => [number, number],
+    ) => {
+      const ta = textareaRef.current;
+      if (!ta) return;
+      ta.focus();
+      ta.setSelectionRange(start, end);
+      const inserted = document.execCommand("insertText", false, text);
+      const [selStart, selEnd] = selectAfter(start);
+      if (inserted) {
+        requestAnimationFrame(() => ta.setSelectionRange(selStart, selEnd));
+      } else {
+        // Fallback (no execCommand support): replace value directly. This loses
+        // the native undo entry, but keeps the editor functional.
+        const current = ta.value;
+        onInsert(current.slice(0, start) + text + current.slice(end));
+        requestAnimationFrame(() => {
+          ta.setSelectionRange(selStart, selEnd);
+          ta.focus();
+        });
+      }
+    },
+    [onInsert, textareaRef],
+  );
+
+  // Insert a full snippet (block dialogs) at the cursor, replacing any selection.
   const insertAtCursor = useCallback(
     (toInsert: string) => {
       const ta = textareaRef.current;
@@ -1326,24 +1473,36 @@ function WikiToolbar({
       }
       const start = ta.selectionStart;
       const end = ta.selectionEnd;
-      const current = ta.value;
-
       const needsNewlineBefore =
-        start > 0 && current[start - 1] !== "\n" && toInsert.startsWith(":::");
-      const prefix = needsNewlineBefore ? "\n" : "";
-      const newValue =
-        current.slice(0, start) + prefix + toInsert + current.slice(end);
-      onInsert(newValue);
-      const newCursor = start + prefix.length + toInsert.length;
-      requestAnimationFrame(() => {
-        ta.selectionStart = ta.selectionEnd = newCursor;
-        ta.focus();
+        start > 0 && ta.value[start - 1] !== "\n" && toInsert.startsWith(":::");
+      const text = (needsNewlineBefore ? "\n" : "") + toInsert;
+      applyEdit(start, end, text, (s) => {
+        const caret = s + text.length;
+        return [caret, caret];
       });
     },
-    [onInsert, textareaRef],
+    [applyEdit, onInsert, textareaRef],
   );
 
-  const quickInsert = (snippet: string) => insertAtCursor(snippet);
+  // Wrap the current selection in `before`/`after`. With a selection, the
+  // wrapped text stays selected; with none, the caret lands between the markers.
+  const wrapSelection = useCallback(
+    (before: string, after: string) => {
+      const ta = textareaRef.current;
+      if (!ta) {
+        onInsert(before + after);
+        return;
+      }
+      const start = ta.selectionStart;
+      const end = ta.selectionEnd;
+      const selected = ta.value.slice(start, end);
+      applyEdit(start, end, before + selected + after, (s) => [
+        s + before.length,
+        s + before.length + selected.length,
+      ]);
+    },
+    [applyEdit, onInsert, textareaRef],
+  );
 
   return (
     <>
@@ -1374,70 +1533,80 @@ function WikiToolbar({
 
         {}
         {open && (
-          <div className="flex items-center gap-1 px-2 pb-1.5 flex-wrap">
-            <ToolbarBtn
-              label="Image"
-              title="Insert echo:// image or audio"
-              onClick={() => setDialog("image")}
-            />
-            <ToolbarBtn
-              label="3D"
-              title="Insert interactive 3D model"
-              onClick={() => setDialog("model")}
-            />
-            <ToolbarBtn
-              label="Infobox"
-              title="Insert Wikipedia-style infobox"
-              onClick={() => setDialog("infobox")}
-            />
-            <ToolbarBtn
-              label="Scene"
-              title="Insert layered scene"
-              onClick={() => setDialog("scene")}
-            />
-            <ToolbarBtn
-              label="FBF"
-              title="Insert frame-by-frame animation"
-              onClick={() => setDialog("fbf")}
-            />
-            <ToolbarBtn
-              label="Anim"
-              title="Insert moving animation"
-              onClick={() => setDialog("anim")}
-            />
-            <ToolbarBtn
-              label="Alias"
-              title="Define echo:// path aliases (:::def)"
-              onClick={() => setDialog("def")}
-            />
-            <div className="w-px h-3 bg-gray-200 mx-0.5 shrink-0" />
-            <ToolbarBtn
-              label="Center"
-              title="Wrap selection in >>>...<<<"
-              onClick={() => quickInsert(">>>content<<<")}
-            />
-            <ToolbarBtn
-              label="Bold"
-              title="Bold"
-              onClick={() => quickInsert("**text**")}
-            />
-            <ToolbarBtn
-              label="Italic"
-              title="Italic"
-              onClick={() => quickInsert("*text*")}
-            />
-            <ToolbarBtn
-              label="Code"
-              title="Inline code"
-              onClick={() => quickInsert("`code`")}
-            />
-            <ToolbarBtn
-              label="Table"
-              title="Insert table template"
-              onClick={() =>
-                quickInsert("| Col A | Col B |\n|---|---|\n| val | val |")
-              }
-            />
+          <div className="flex flex-col gap-1 px-2 pb-1.5">
+            {/* Block inserts */}
+            <div className="flex items-center gap-1 flex-wrap">
+              <ToolbarBtn
+                label="Image"
+                title="Insert echo:// image or audio"
+                onClick={() => setDialog("image")}
+              />
+              <ToolbarBtn
+                label="3D"
+                title="Insert interactive 3D model"
+                onClick={() => setDialog("model")}
+              />
+              <ToolbarBtn
+                label="Card"
+                title="Insert a boxed card with floated image + text"
+                onClick={() => setDialog("card")}
+              />
+              <ToolbarBtn
+                label="Infobox"
+                title="Insert Wikipedia-style infobox"
+                onClick={() => setDialog("infobox")}
+              />
+              <ToolbarBtn
+                label="Scene"
+                title="Insert layered scene"
+                onClick={() => setDialog("scene")}
+              />
+              <ToolbarBtn
+                label="FBF"
+                title="Insert frame-by-frame animation"
+                onClick={() => setDialog("fbf")}
+              />
+              <ToolbarBtn
+                label="Anim"
+                title="Insert moving animation"
+                onClick={() => setDialog("anim")}
+              />
+              <ToolbarBtn
+                label="Alias"
+                title="Define echo:// path aliases (:::def)"
+                onClick={() => setDialog("def")}
+              />
+            </div>
+            {/* Text modifiers: wrap the current selection */}
+            <div className="flex items-center gap-1 flex-wrap">
+              <ToolbarBtn
+                label="Center"
+                title="Center selected text"
+                onClick={() => wrapSelection(">>>", "<<<")}
+              />
+              <ToolbarBtn
+                label="Bold"
+                title="Bold selected text"
+                onClick={() => wrapSelection("**", "**")}
+              />
+              <ToolbarBtn
+                label="Italic"
+                title="Italicize selected text"
+                onClick={() => wrapSelection("*", "*")}
+              />
+              <ToolbarBtn
+                label="Code"
+                title="Inline code"
+                onClick={() => wrapSelection("`", "`")}
+              />
+              <ToolbarBtn
+                label="Table"
+                title="Insert table template"
+                onClick={() =>
+                  insertAtCursor("|  |  |\n| --- | --- |\n|  |  |")
+                }
+              />
+            </div>
           </div>
         )}
       </div>
@@ -1450,6 +1619,12 @@ function WikiToolbar({
       )}
       {dialog === "model" && (
         <ModelInsertDialog
+          onInsert={insertAtCursor}
+          onDismiss={() => setDialog(null)}
+        />
+      )}
+      {dialog === "card" && (
+        <CardInsertDialog
           onInsert={insertAtCursor}
           onDismiss={() => setDialog(null)}
         />
