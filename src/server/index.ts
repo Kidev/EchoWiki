@@ -583,14 +583,17 @@ async function recordDecision(
   outcome: "approved" | "denied",
   by: string | null,
   viaVote: boolean,
+  reason?: string | null,
 ): Promise<void> {
   const now = Date.now();
   const id = historyEntryId(suggestion.username, suggestion.createdAt);
+  const trimmedReason = reason?.trim();
   const decisionEvent: WikiHistoryEvent = {
     state: outcome,
     by: viaVote ? null : by,
     at: now,
     ...(viaVote ? { viaVote: true } : {}),
+    ...(trimmedReason ? { reason: trimmedReason } : {}),
   };
   // If this suggestion already has a history entry (e.g. it was re-opened via
   // "restart vote"), append the new decision so the full state log accumulates
@@ -602,7 +605,14 @@ async function recordDecision(
     existing.status = outcome;
     existing.updatedAt = now;
     existing.proposedContent = suggestion.content;
-    existing.baseContent = baseContent;
+    // Keep the ORIGINAL baseline. Re-deciding a re-opened suggestion would
+    // otherwise clobber it with the current page (which already holds the
+    // proposed change from the first approval), corrupting later reverts and
+    // making a subsequent vote-restart diff empty. Prefer the suggestion's
+    // carried baseline, then the entry's existing one, falling back to the
+    // freshly-read page only for legacy entries that never stored a base.
+    existing.baseContent =
+      suggestion.baseContent ?? existing.baseContent ?? baseContent;
     existing.canRevert = true;
     existing.canRestartVote = true;
     entry = existing;
@@ -625,7 +635,9 @@ async function recordDecision(
       canRevert: true,
       canRestartVote: true,
       proposedContent: suggestion.content,
-      baseContent,
+      // Prefer the suggestion's authored baseline; fall back to the page read
+      // at apply time for legacy suggestions submitted before baseContent existed.
+      baseContent: suggestion.baseContent ?? baseContent,
     };
   }
   await saveHistoryEntry(entry).catch((err) =>
@@ -702,6 +714,22 @@ async function performAcceptCore(
   } catch {}
 }
 
+// Parse the raw `votes:<user>` hash (member = voter, value = `accept|reject:ts`)
+// into structured entries. Shared by the live tally and the conclusion snapshot.
+function parseVoteEntries(
+  votesRaw: Record<string, string> | null | undefined,
+): VoteEntry[] {
+  const entries: VoteEntry[] = [];
+  for (const [voter, raw] of Object.entries(votesRaw ?? {})) {
+    const colonIdx = raw.indexOf(":");
+    if (colonIdx === -1) continue;
+    const vote = raw.slice(0, colonIdx) as VoteValue;
+    const votedAt = parseInt(raw.slice(colonIdx + 1), 10);
+    entries.push({ username: voter, vote, votedAt });
+  }
+  return entries;
+}
+
 async function cleanupVotingPost(
   username: string,
   outcome: "accepted" | "rejected",
@@ -710,11 +738,22 @@ async function cleanupVotingPost(
   concludedSuggestion?: WikiSuggestion | null | undefined,
   concludedAcceptCount?: number | undefined,
   concludedRejectCount?: number | undefined,
+  concludedVoters?: VoteEntry[] | undefined,
+  decidedBy?: string | null,
+  decisionNote?: string | null,
 ): Promise<void> {
   const decidedAt = Date.now();
+  const trimmedNote = decisionNote?.trim() || null;
   await redis.set(
     `voteStatus:${username}`,
-    JSON.stringify({ status: outcome, decidedAt, deadlineAt: null, reason }),
+    JSON.stringify({
+      status: outcome,
+      decidedAt,
+      deadlineAt: null,
+      reason,
+      decidedBy: decidedBy ?? null,
+      decisionNote: trimmedNote,
+    }),
   );
 
   const existingRaw = await redis
@@ -733,6 +772,8 @@ async function cleanupVotingPost(
         status: outcome,
         decidedAt,
         reason,
+        decidedBy: decidedBy ?? null,
+        decisionNote: trimmedNote,
         ...(concludedSuggestion
           ? {
               suggestion: {
@@ -741,6 +782,7 @@ async function cleanupVotingPost(
                 description: concludedSuggestion.description,
                 createdAt: concludedSuggestion.createdAt,
                 previousDescriptions: concludedSuggestion.previousDescriptions,
+                baseContent: concludedSuggestion.baseContent,
               },
             }
           : {}),
@@ -750,6 +792,10 @@ async function cleanupVotingPost(
         ...(concludedRejectCount !== undefined
           ? { rejectCount: concludedRejectCount }
           : {}),
+        // Snapshot the full voter list (with names) before `votes:<user>` is
+        // deleted below, so a concluded vote can still show who voted. The read
+        // path redacts names when the config / caller isn't allowed to see them.
+        ...(concludedVoters !== undefined ? { voters: concludedVoters } : {}),
       }),
     ),
     redis.del(`votingPostId:${username}`),
@@ -757,7 +803,10 @@ async function cleanupVotingPost(
   ]);
 
   const outcomeText = outcome === "accepted" ? "**ACCEPTED**" : "**REJECTED**";
-  const reasonText = getVoteReasonText(reason);
+  const reasonText =
+    decidedBy && reason === "mod_override"
+      ? `decided by u/${decidedBy}`
+      : getVoteReasonText(reason);
   const dateStr = new Date().toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
@@ -765,7 +814,9 @@ async function cleanupVotingPost(
   });
   await appendBotComment(
     votingPostId,
-    `**Vote decided** on ${dateStr}: **${reasonText}**`,
+    `**Vote decided** on ${dateStr}: **${reasonText}**${
+      trimmedNote ? `\n\n> ${trimmedNote}` : ""
+    }`,
     outcomeText,
   );
   try {
@@ -783,6 +834,109 @@ async function cleanupVotingPost(
   }
 }
 
+// Create a fresh voting post for a suggestion: submit the custom post, apply the
+// vote flair, seed the vote-tracking keys (votingPost/votingPostId/voteStatus),
+// post the "Vote started" bot comment, and schedule the deadline job. Shared by
+// the suggestion submit flow and the "restart vote" history action so a
+// restarted vote is wired up identically to a brand-new one.
+async function createVotingPost(
+  username: string,
+  suggestion: WikiSuggestion,
+  config: GameConfig,
+  subreddit: string,
+  now: number,
+): Promise<void> {
+  try {
+    const user = await reddit.getUserByUsername(username).catch(() => null);
+    const karma = user ? user.linkKarma + user.commentKarma : 0;
+    const ageMs = user ? Date.now() - user.createdAt.getTime() : 0;
+    const ageDays = Math.floor(ageMs / 86400000);
+    const acceptedCount =
+      parseInt(
+        (await redis.get(`acceptedCount:${username}`).catch(() => null)) ?? "0",
+        10,
+      ) || 0;
+    const pageLabel = suggestion.page
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+    const dateStr = new Date(suggestion.createdAt).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+
+    const votingPost = await reddit.submitCustomPost({
+      subredditName: subreddit,
+      title: expandVotingTitle(
+        config.votingPostTitle,
+        username,
+        suggestion.page,
+      ),
+      entry: "default",
+      userGeneratedContent: {
+        text: `u/${username} (${karma.toLocaleString()} karma, account ${ageDays} days old, ${acceptedCount} contribution${acceptedCount !== 1 ? "s" : ""}) suggested changes to the "${pageLabel}" page on ${dateStr}. Vote to accept or reject below.`,
+      },
+    });
+
+    const newPostId = votingPost.id.startsWith("t3_")
+      ? votingPost.id
+      : `t3_${votingPost.id}`;
+
+    if (config.votingFlairTemplateId) {
+      try {
+        await reddit.setPostFlair({
+          subredditName: subreddit,
+          postId: newPostId as `t3_${string}`,
+          flairTemplateId: config.votingFlairTemplateId,
+        });
+      } catch {}
+    }
+
+    await Promise.all([
+      redis.set(
+        `votingPost:${newPostId}`,
+        JSON.stringify({ username, subredditName: subreddit }),
+      ),
+      redis.set(`votingPostId:${username}`, newPostId),
+      redis.set(
+        `voteStatus:${username}`,
+        JSON.stringify({
+          status: "active",
+          decidedAt: null,
+          deadlineAt:
+            config.votingDurationDays > 0
+              ? now + config.votingDurationDays * 86400 * 1000
+              : null,
+          reason: null,
+        }),
+      ),
+    ]);
+
+    const startDateStr = new Date().toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+    await appendBotComment(
+      newPostId,
+      `**Vote started** on ${startDateStr}`,
+      "Active",
+    );
+
+    if (config.votingDurationDays > 0) {
+      const jobId = await scheduler.runJob({
+        id: `vote-deadline-${username}-${Date.now()}`,
+        name: "vote-deadline",
+        data: { username, postId: newPostId },
+        runAt: new Date(now + config.votingDurationDays * 86400 * 1000),
+      } as ScheduledJob);
+      await redis.set(`voteJobId:${username}`, jobId);
+    }
+  } catch (err) {
+    console.error("Failed to create voting post:", err);
+  }
+}
+
 async function finalizeVote(
   username: string,
   outcome: "accepted" | "rejected",
@@ -797,15 +951,13 @@ async function finalizeVote(
   const concludedSuggestion = suggestionRaw
     ? (JSON.parse(suggestionRaw) as WikiSuggestion)
     : null;
-  let concludedAcceptCount = 0;
-  let concludedRejectCount = 0;
-  for (const v of Object.values(votesRaw ?? {})) {
-    const colonIdx = v.indexOf(":");
-    if (colonIdx < 0) continue;
-    const voteType = v.slice(0, colonIdx);
-    if (voteType === "accept") concludedAcceptCount++;
-    else if (voteType === "reject") concludedRejectCount++;
-  }
+  const concludedVoters = parseVoteEntries(votesRaw);
+  const concludedAcceptCount = concludedVoters.filter(
+    (v) => v.vote === "accept",
+  ).length;
+  const concludedRejectCount = concludedVoters.filter(
+    (v) => v.vote === "reject",
+  ).length;
 
   if (outcome === "accepted") {
     await performAcceptCore(username, subredditName, "vote");
@@ -830,6 +982,7 @@ async function finalizeVote(
     concludedSuggestion,
     concludedAcceptCount,
     concludedRejectCount,
+    concludedVoters,
   );
 }
 
@@ -1070,15 +1223,19 @@ router.get<
         status?: "accepted" | "rejected" | "cancelled";
         decidedAt?: number;
         reason?: VoteStatusData["reason"];
+        decidedBy?: string | null;
+        decisionNote?: string | null;
         suggestion?: {
           page: string;
           content: string;
           description: string;
           createdAt: number;
           previousDescriptions?: string[];
+          baseContent?: string;
         };
         acceptCount?: number;
         rejectCount?: number;
+        voters?: VoteEntry[];
       };
       const votingPostData = JSON.parse(votingPostRaw) as VotingPostData;
       const { username: suggestionUsername } = votingPostData;
@@ -1110,14 +1267,26 @@ router.get<
         if (votingPostData.concluded && votingPostData.status) {
           const storedAccept = votingPostData.acceptCount ?? 0;
           const storedReject = votingPostData.rejectCount ?? 0;
+          // Surface the snapshotted voter list when names are allowed; otherwise
+          // keep the entries (for counts/anonymity) but strip the usernames,
+          // mirroring the live `getVoteStatus` redaction rule.
+          const showVoter =
+            config.votingShowVoterNames ||
+            isMod ||
+            (!!username && username === suggestionUsername);
+          const storedVotes: VoteEntry[] = (votingPostData.voters ?? []).map(
+            (v) => ({ ...v, username: showVoter ? v.username : "" }),
+          );
           voteStatus = {
             status: votingPostData.status,
             decidedAt: votingPostData.decidedAt ?? null,
             reason: votingPostData.reason ?? null,
+            decidedBy: votingPostData.decidedBy ?? null,
+            decisionNote: votingPostData.decisionNote ?? null,
             acceptCount: storedAccept,
             rejectCount: storedReject,
             totalVoters: storedAccept + storedReject,
-            votes: [],
+            votes: storedVotes,
           };
         } else {
           voteStatus = await getVoteStatus(
@@ -1144,13 +1313,20 @@ router.get<
                 }
               : {}),
           };
-          try {
-            const wikiPage = await reddit.getWikiPage(
-              subreddit,
-              placeholder.page,
-            );
-            concludedContent = wikiPage.content;
-          } catch {}
+          // Diff baseline: prefer the suggestion's authored baseline (snapshot
+          // at conclusion) so the change shows even when already applied to the
+          // live page; fall back to the live page for legacy snapshots.
+          if (votingPostData.suggestion.baseContent !== undefined) {
+            concludedContent = votingPostData.suggestion.baseContent;
+          } else {
+            try {
+              const wikiPage = await reddit.getWikiPage(
+                subreddit,
+                placeholder.page,
+              );
+              concludedContent = wikiPage.content;
+            } catch {}
+          }
         } else {
           placeholder = {
             username: suggestionUsername,
@@ -1190,11 +1366,17 @@ router.get<
         subreddit,
       ).catch(() => {});
 
-      let currentContent = "";
-      try {
-        const wikiPage = await reddit.getWikiPage(subreddit, suggestion.page);
-        currentContent = wikiPage.content;
-      } catch {}
+      // Diff baseline: prefer the suggestion's authored baseline so the change
+      // is shown relative to its original base even when it's already live on
+      // the page (e.g. a restarted vote on a previously-applied contribution).
+      // Fall back to the live page for legacy suggestions without a stored base.
+      let currentContent = suggestion.baseContent ?? "";
+      if (suggestion.baseContent === undefined) {
+        try {
+          const wikiPage = await reddit.getWikiPage(subreddit, suggestion.page);
+          currentContent = wikiPage.content;
+        } catch {}
+      }
 
       const voteStatus = await getVoteStatus(
         suggestionUsername,
@@ -2389,12 +2571,19 @@ router.post<
         return;
       }
     }
+    // Capture the diff baseline once, when the suggestion is first authored.
+    // On edits the change hasn't been applied yet, so the original baseline
+    // still holds: preserve it rather than re-reading the live page.
+    const baseContent =
+      existingSuggestion?.baseContent ??
+      (await readPageContent(subreddit, body.page));
     const suggestion: WikiSuggestion = {
       username,
       page: body.page,
       content: body.content,
       description: body.description,
       createdAt: existingSuggestion ? existingSuggestion.createdAt : now,
+      baseContent,
       ...(existingSuggestion
         ? {
             editCount: (existingSuggestion.editCount ?? 0) + 1,
@@ -2461,102 +2650,7 @@ router.post<
         }
       } else {
         // New suggestion: create voting post
-        try {
-          const user = await reddit
-            .getUserByUsername(username)
-            .catch(() => null);
-          const karma = user ? user.linkKarma + user.commentKarma : 0;
-          const ageMs = user ? Date.now() - user.createdAt.getTime() : 0;
-          const ageDays = Math.floor(ageMs / 86400000);
-          const acceptedCount =
-            parseInt(
-              (await redis
-                .get(`acceptedCount:${username}`)
-                .catch(() => null)) ?? "0",
-              10,
-            ) || 0;
-          const pageLabel = suggestion.page
-            .replace(/_/g, " ")
-            .replace(/\b\w/g, (c) => c.toUpperCase());
-          const dateStr = new Date(suggestion.createdAt).toLocaleDateString(
-            "en-US",
-            {
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-            },
-          );
-
-          const votingPost = await reddit.submitCustomPost({
-            subredditName: subreddit,
-            title: expandVotingTitle(
-              config.votingPostTitle,
-              username,
-              suggestion.page,
-            ),
-            entry: "default",
-            userGeneratedContent: {
-              text: `u/${username} (${karma.toLocaleString()} karma, account ${ageDays} days old, ${acceptedCount} contribution${acceptedCount !== 1 ? "s" : ""}) suggested changes to the "${pageLabel}" page on ${dateStr}. Vote to accept or reject below.`,
-            },
-          });
-
-          const newPostId = votingPost.id.startsWith("t3_")
-            ? votingPost.id
-            : `t3_${votingPost.id}`;
-
-          if (config.votingFlairTemplateId) {
-            try {
-              await reddit.setPostFlair({
-                subredditName: subreddit,
-                postId: newPostId as `t3_${string}`,
-                flairTemplateId: config.votingFlairTemplateId,
-              });
-            } catch {}
-          }
-
-          await Promise.all([
-            redis.set(
-              `votingPost:${newPostId}`,
-              JSON.stringify({ username, subredditName: subreddit }),
-            ),
-            redis.set(`votingPostId:${username}`, newPostId),
-            redis.set(
-              `voteStatus:${username}`,
-              JSON.stringify({
-                status: "active",
-                decidedAt: null,
-                deadlineAt:
-                  config.votingDurationDays > 0
-                    ? now + config.votingDurationDays * 86400 * 1000
-                    : null,
-                reason: null,
-              }),
-            ),
-          ]);
-
-          const startDateStr = new Date().toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-          });
-          await appendBotComment(
-            newPostId,
-            `**Vote started** on ${startDateStr}`,
-            "Active",
-          );
-
-          if (config.votingDurationDays > 0) {
-            const jobId = await scheduler.runJob({
-              id: `vote-deadline-${username}-${Date.now()}`,
-              name: "vote-deadline",
-              data: { username, postId: newPostId },
-              runAt: new Date(now + config.votingDurationDays * 86400 * 1000),
-            } as ScheduledJob);
-            await redis.set(`voteJobId:${username}`, jobId);
-          }
-        } catch (err) {
-          console.error("Failed to create voting post:", err);
-        }
+        await createVotingPost(username, suggestion, config, subreddit, now);
       }
     }
 
@@ -2593,15 +2687,13 @@ router.delete<
     const withdrawnSuggestion = withdrawnRaw
       ? (JSON.parse(withdrawnRaw) as WikiSuggestion)
       : null;
-    let withdrawnAcceptCount = 0;
-    let withdrawnRejectCount = 0;
-    for (const v of Object.values(withdrawnVotesRaw ?? {})) {
-      const colonIdx = v.indexOf(":");
-      if (colonIdx < 0) continue;
-      const voteType = v.slice(0, colonIdx);
-      if (voteType === "accept") withdrawnAcceptCount++;
-      else if (voteType === "reject") withdrawnRejectCount++;
-    }
+    const withdrawnVoters = parseVoteEntries(withdrawnVotesRaw);
+    const withdrawnAcceptCount = withdrawnVoters.filter(
+      (v) => v.vote === "accept",
+    ).length;
+    const withdrawnRejectCount = withdrawnVoters.filter(
+      (v) => v.vote === "reject",
+    ).length;
 
     await Promise.all([
       redis.del(`suggestion:${username}`),
@@ -2646,6 +2738,7 @@ router.delete<
               : {}),
             acceptCount: withdrawnAcceptCount,
             rejectCount: withdrawnRejectCount,
+            voters: withdrawnVoters,
           }),
         ),
         redis.del(`votingPostId:${username}`),
@@ -2882,6 +2975,8 @@ router.post<
       return;
     }
     const suggestion = JSON.parse(raw) as WikiSuggestion;
+    // Reason is optional for an approval.
+    const acceptReason = body.reason?.trim() || null;
     const acceptBaseContent = await readPageContent(subreddit, suggestion.page);
     await reddit.updateWikiPage({
       subredditName: subreddit,
@@ -2895,6 +2990,7 @@ router.post<
       "approved",
       modUsername,
       false,
+      acceptReason,
     );
     const [, , newCount, basicFlairId, advCountRaw, advFlairId] =
       await Promise.all([
@@ -2956,6 +3052,9 @@ router.post<
         suggestion,
         modAcceptCount,
         modRejectCount,
+        undefined,
+        modUsername,
+        acceptReason,
       );
     }
 
@@ -2994,6 +3093,16 @@ router.post<
     }
     const body = req.body as WikiSuggestionActionRequest;
 
+    // A reason is mandatory when denying a contribution.
+    const denyReason = body.reason?.trim();
+    if (!denyReason) {
+      res.status(400).json({
+        status: "error",
+        message: "A reason is required to deny a contribution.",
+      });
+      return;
+    }
+
     const denyVotingPostId = await redis
       .get(`votingPostId:${body.username}`)
       .catch(() => null);
@@ -3024,6 +3133,7 @@ router.post<
         "denied",
         modUsername,
         false,
+        denyReason,
       );
     }
 
@@ -3042,6 +3152,9 @@ router.post<
         deniedSuggestion,
         denyAcceptCount,
         denyRejectCount,
+        undefined,
+        modUsername,
+        denyReason,
       );
     }
 
@@ -3174,6 +3287,30 @@ router.post<
         });
         return;
       }
+      // If the contribution is currently APPROVED, its change is live on the
+      // page. Re-voting on something that's already applied is contradictory, so
+      // first revert the page back to the pre-suggestion baseline; the fresh
+      // vote then decides whether to (re-)apply it. A DENIED contribution isn't
+      // applied, so there's nothing to revert: just reopen the vote.
+      let revertedOnRestart = false;
+      if (entry.status === "approved") {
+        const ours = await readPageContent(subreddit, entry.page);
+        const { merged } = threeWayMerge(
+          entry.proposedContent,
+          ours,
+          entry.baseContent,
+          { ours: "current page", theirs: "pre-suggestion" },
+        );
+        if (merged !== ours) {
+          await reddit.updateWikiPage({
+            subredditName: subreddit,
+            page: entry.page,
+            content: merged,
+            reason: `${modUsername} reverted ${entry.author}'s suggestion to restart its vote`,
+          });
+          revertedOnRestart = true;
+        }
+      }
       // Keep the original createdAt so the eventual re-decision appends to THIS
       // history entry (id = `author:createdAt`) rather than starting a new one.
       const sepIdx = entry.id.lastIndexOf(":");
@@ -3184,13 +3321,31 @@ router.post<
         content: entry.proposedContent,
         description: entry.description,
         createdAt: originalCreatedAt,
+        // Preserve the original pre-suggestion baseline so the re-opened vote
+        // diffs proposed-vs-base, not proposed-vs-live-page. The change may
+        // already be applied to the page (e.g. a previously-approved
+        // contribution being re-voted), which would otherwise show an empty diff.
+        baseContent: entry.baseContent,
       };
       await Promise.all([
         redis.set(`suggestion:${entry.author}`, JSON.stringify(reopened)),
         redis.zAdd("suggestions", { member: entry.author, score: now }),
       ]);
+      // Re-open the actual vote: when voting is enabled in collaborative mode a
+      // restarted suggestion needs a fresh voting post (and "Go to vote" link),
+      // just like a newly submitted one. Without this the suggestion only
+      // reappears in the mod pending list with no vote attached.
+      const config = await getConfig();
+      if (config.votingEnabled && config.collaborativeMode) {
+        await createVotingPost(entry.author, reopened, config, subreddit, now);
+      }
       entry.status = "pending";
-      entry.events.push({ state: "vote-restarted", by: modUsername, at: now });
+      entry.events.push({
+        state: "vote-restarted",
+        by: modUsername,
+        at: now,
+        ...(revertedOnRestart ? { note: "reverted prior approval" } : {}),
+      });
       entry.updatedAt = now;
       await saveHistoryEntry(entry);
       res.json({ type: "wiki-history-action" });
@@ -3248,12 +3403,17 @@ router.post<
       : changedSince
         ? "auto-merged"
         : undefined;
+    // A post-mortem approval is a decision and may carry the mod's reason
+    // (optional, like a regular approval); a revert is an undo and carries none.
+    const postMortemReason =
+      body.action === "approve-postmortem" ? body.reason?.trim() : undefined;
     entry.status = body.action === "revert" ? "denied" : "approved";
     entry.events.push({
       state: body.action === "revert" ? "reverted" : "approved-postmortem",
       by: modUsername,
       at: now,
       ...(note ? { note } : {}),
+      ...(postMortemReason ? { reason: postMortemReason } : {}),
     });
     entry.updatedAt = now;
     await saveHistoryEntry(entry);

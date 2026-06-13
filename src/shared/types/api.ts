@@ -259,6 +259,13 @@ export type WikiSuggestion = {
   editCount?: number;
   lastEditAt?: number;
   previousDescriptions?: string[];
+  // Page content this suggestion was authored against, captured at submit time
+  // and preserved across vote restarts. Used as the diff baseline so the
+  // proposed change is always shown relative to its original base: even when
+  // the change is already live on the page (e.g. a restarted vote on a
+  // previously-applied contribution), where diffing the live page would yield
+  // an empty diff.
+  baseContent?: string;
 };
 
 export type WikiSuggestionRequest = {
@@ -318,6 +325,11 @@ export type VoteStatusData = {
     | "mod_override"
     | "cancelled"
     | null;
+  // When a vote is concluded by a moderator override (accept/deny), the mod who
+  // decided and their free-form justification. Surfaced on the voting post so
+  // voters see why the moderator stepped in. Null/absent for automatic outcomes.
+  decidedBy?: string | null;
+  decisionNote?: string | null;
 };
 
 export type VoteStatus = VoteStatusData & {
@@ -372,6 +384,8 @@ export type CastVoteResponse = {
 
 export type WikiSuggestionActionRequest = {
   username: string;
+  /** Moderator's justification. Required when denying, optional when accepting. */
+  reason?: string;
 };
 
 export type WikiHistoryState =
@@ -391,6 +405,12 @@ export type WikiHistoryEvent = {
   viaVote?: boolean;
   /** Free-form note, e.g. "auto-merged" or "merge conflict". */
   note?: string;
+  /**
+   * Moderator's justification for an approve/deny decision. Mandatory for
+   * denials, optional for approvals. Shown in the history to other mods and to
+   * the contribution's author (never redacted, unlike `by`).
+   */
+  reason?: string;
 };
 
 export type WikiHistoryEntry = {
@@ -419,6 +439,8 @@ export type WikiHistoryActionRequest = {
   action: "approve-postmortem" | "revert" | "restart-vote";
   /** Proceed despite a merge-conflict warning (applies the auto-merged content). */
   force?: boolean;
+  /** Moderator's justification, recorded on the post-mortem approval event. */
+  reason?: string;
 };
 
 export type WikiHistoryActionResponse = {

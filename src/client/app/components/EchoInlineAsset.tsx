@@ -78,6 +78,56 @@ export function EchoRawImage({
   );
 }
 
+// Wraps a :::scene block that has BOTH a background and a foreground. The block
+// renderer grid-stacks the two images and sizes them via the `--echo-bg-w` /
+// `--echo-fg-w` CSS variables (defaulting to 100%). Here we measure the decoded
+// natural widths and resolve those variables so the box tracks the LARGER image
+// (it stays 100%) while the smaller one is scaled by the same factor: keeping
+// their top-left corners aligned. Widths stay percentages, so the result remains
+// responsive without re-measuring on resize.
+export function EchoSceneFrame({
+  style,
+  className,
+  children,
+}: {
+  style?: CSSProperties | undefined;
+  className?: string | undefined;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const bg = el.querySelector<HTMLImageElement>("img.echo-scene-bg");
+    const fg = el.querySelector<HTMLImageElement>("img.echo-scene-fg");
+    if (!bg || !fg) return;
+
+    const apply = () => {
+      const bw = bg.naturalWidth;
+      const fw = fg.naturalWidth;
+      if (!bw || !fw) return;
+      const max = Math.max(bw, fw);
+      el.style.setProperty("--echo-bg-w", `${((bw / max) * 100).toFixed(4)}%`);
+      el.style.setProperty("--echo-fg-w", `${((fw / max) * 100).toFixed(4)}%`);
+    };
+
+    apply();
+    bg.addEventListener("load", apply);
+    fg.addEventListener("load", apply);
+    return () => {
+      bg.removeEventListener("load", apply);
+      fg.removeEventListener("load", apply);
+    };
+  }, [children]);
+
+  return (
+    <div ref={ref} className={className} style={style}>
+      {children}
+    </div>
+  );
+}
+
 export function EchoInlineImage({
   url,
   alt,

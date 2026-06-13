@@ -213,9 +213,18 @@ function VotingView({
             <span className="text-xs ml-2">
               on {decidedDateStr}
               {voteStatus.reason
-                ? `: ${voteReasonLabel(voteStatus.reason)}`
+                ? `: ${
+                    voteStatus.decidedBy && voteStatus.reason === "mod_override"
+                      ? `decided by u/${voteStatus.decidedBy}`
+                      : voteReasonLabel(voteStatus.reason)
+                  }`
                 : ""}
             </span>
+          )}
+          {voteStatus.decisionNote && (
+            <p className="text-xs mt-1 italic opacity-90">
+              &ldquo;{voteStatus.decisionNote}&rdquo;
+            </p>
           )}
         </div>
       )}
@@ -240,7 +249,11 @@ function VotingView({
                   : "text-[var(--text-muted)] hover:bg-[var(--control-bg)]"
               }`}
             >
-              {m === "normal" ? "Normal" : m === "source" ? "Source" : "Diff"}
+              {m === "normal"
+                ? "Preview"
+                : m === "source"
+                  ? "Source"
+                  : "Changes"}
             </button>
           ))}
         </div>

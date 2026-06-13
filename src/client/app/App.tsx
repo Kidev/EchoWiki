@@ -96,7 +96,7 @@ function matchesFilter(p: string, f: FilterType): boolean {
 }
 import { extractEchoPathsFromMarkdown } from "./echoRender";
 import { EchoLinkDialog } from "./components/EchoLinkDialog";
-import { SideBySideDiffView } from "./components/DiffView";
+import { CompareView } from "./components/DiffView";
 import { parseEchoLink } from "./wikiLinks";
 import { WikiView } from "./components/WikiView";
 import {
@@ -1554,12 +1554,12 @@ export const App = () => {
           onClick={closeHistory}
         >
           <div
-            className={`bg-[var(--bg)] rounded-lg shadow-2xl w-full mx-4 max-h-[85vh] flex flex-col ${
-              diffRev ? "max-w-3xl" : "max-w-md"
+            className={`bg-[var(--bg)] rounded-lg shadow-2xl w-full mx-4 max-h-[85vh] flex flex-col overflow-hidden ${
+              diffRev ? "max-w-3xl h-[85vh]" : "max-w-md"
             }`}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between gap-2">
+            <div className="shrink-0 px-5 py-3 border-b border-gray-100 flex items-center justify-between gap-2">
               {diffRev ? (
                 <button
                   onClick={() => {
@@ -1591,7 +1591,7 @@ export const App = () => {
 
             {diffRev ? (
               <div className="flex-1 min-h-0 flex flex-col">
-                <div className="px-5 py-2 border-b border-gray-100 text-[11px] text-[var(--text-muted)]">
+                <div className="shrink-0 px-5 py-2 border-b border-gray-100 text-[11px] text-[var(--text-muted)]">
                   <span className="font-medium text-[var(--text)]">
                     u/{diffRev.author}
                   </span>
@@ -1608,15 +1608,21 @@ export const App = () => {
                       <div className="w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
                     </div>
                   ) : (
-                    <SideBySideDiffView
+                    <CompareView
                       original={diffOriginal}
                       proposed={diffProposed}
+                      subredditName={subredditName}
+                      currentPage={historyPage ?? ""}
+                      wikiFontSize={style.wikiFontSize}
+                      leftLabel="Before"
+                      rightLabel="After"
+                      initialMode="diff"
                     />
                   )}
                 </div>
               </div>
             ) : (
-              <div className="overflow-auto p-2">
+              <div className="flex-1 min-h-0 overflow-auto p-2">
                 {historyRevisions === null ? (
                   <div className="flex justify-center py-8">
                     <div className="w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
@@ -1663,7 +1669,7 @@ export const App = () => {
                           }
                           className="shrink-0 text-[11px] px-2 py-0.5 rounded border border-gray-300 text-[var(--text-muted)] hover:bg-[var(--control-bg)] hover:text-[var(--text)] transition-colors cursor-pointer"
                         >
-                          Diff
+                          Changes
                         </button>
                       </li>
                     ))}
@@ -1672,7 +1678,7 @@ export const App = () => {
               </div>
             )}
 
-            <div className="px-5 py-3 border-t border-gray-100 flex justify-end">
+            <div className="shrink-0 px-5 py-3 border-t border-gray-100 flex justify-end">
               <button
                 onClick={closeHistory}
                 className="text-sm px-3 py-1.5 rounded border border-gray-300 text-[var(--text-muted)] hover:bg-[var(--control-bg)] transition-colors cursor-pointer"

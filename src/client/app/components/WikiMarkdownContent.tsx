@@ -18,7 +18,11 @@ import {
   preprocessEchoBlocks,
   extractDisplayHints,
 } from "../echoRender";
-import { EchoInlineAsset, EchoRawImage } from "./EchoInlineAsset";
+import {
+  EchoInlineAsset,
+  EchoRawImage,
+  EchoSceneFrame,
+} from "./EchoInlineAsset";
 import { getFileName, isModelPath, slugify } from "../assetUtils";
 
 const ModelViewer = lazy(() => import("./ModelViewer"));
@@ -153,6 +157,34 @@ export function WikiMarkdownContent({
             url.startsWith("echo://") ? url : defaultUrlTransform(url)
           }
           components={{
+            div: ({
+              node: _node,
+              className: divClass,
+              style: divStyle,
+              children: divChildren,
+              ...rest
+            }: {
+              node?: unknown;
+              className?: string | undefined;
+              style?: CSSProperties | undefined;
+              children?: ReactNode | undefined;
+            }) => {
+              // :::scene blocks with both a bg and fg render as an
+              // `echo-scene-frame` div whose two images must be measured at
+              // runtime to size the box to the larger one (see EchoSceneFrame).
+              if (divClass?.split(/\s+/).includes("echo-scene-frame")) {
+                return (
+                  <EchoSceneFrame className={divClass} style={divStyle}>
+                    {divChildren}
+                  </EchoSceneFrame>
+                );
+              }
+              return (
+                <div className={divClass} style={divStyle} {...rest}>
+                  {divChildren}
+                </div>
+              );
+            },
             h1: ({ children: c }: { children?: ReactNode }) => {
               const text = typeof c === "string" ? c : "";
               const id = slugify(text);

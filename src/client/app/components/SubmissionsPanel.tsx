@@ -33,12 +33,14 @@ function SuggestionReviewModal({
   currentContent: string | null;
   subredditName: string;
   wikiFontSize: WikiFontSize;
-  onAccept: () => void;
-  onDeny: () => void;
+  onAccept: (reason: string) => void;
+  onDeny: (reason: string) => void;
   onClose: () => void;
   isActing: boolean;
   actError: string | null;
 }) {
+  const [reason, setReason] = useState("");
+  const canDeny = reason.trim().length > 0;
   const pageLabel = suggestion.page
     .replace(/_/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
@@ -49,56 +51,72 @@ function SuggestionReviewModal({
   });
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-[var(--bg)]">
-      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100 shrink-0">
-        <div className="flex flex-col min-w-0">
-          <span className="text-sm font-semibold text-[var(--text)] truncate">
-            Suggestion by{" "}
-            <span className="text-[var(--accent)]">
-              u/{suggestion.username}
-            </span>{" "}
-            on <span className="italic">{pageLabel}</span>
-          </span>
-          <span className="text-xs text-[var(--text-muted)] truncate">
-            &ldquo;{suggestion.description}&rdquo; &middot; {dateStr}
-          </span>
-        </div>
-        <div className="flex items-center gap-2 shrink-0 ml-4">
-          {actError && <span className="text-xs text-red-500">{actError}</span>}
-          <button
-            onClick={onDeny}
-            disabled={isActing}
-            className="text-xs px-3 py-1.5 rounded border border-red-300 text-red-600 hover:bg-red-50 transition-colors cursor-pointer disabled:opacity-50"
-          >
-            Deny
-          </button>
-          <button
-            onClick={onAccept}
-            disabled={isActing}
-            className="text-xs px-3 py-1.5 rounded bg-[var(--accent)] text-white hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50"
-          >
-            {isActing ? "Applying..." : "Accept"}
-          </button>
-          <button
-            onClick={onClose}
-            disabled={isActing}
-            className="text-xs px-2 py-1.5 rounded border border-gray-300 text-[var(--text-muted)] hover:bg-[var(--control-bg)] transition-colors cursor-pointer disabled:opacity-50"
-            title="Close"
-          >
-            <svg
-              className="w-3.5 h-3.5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
+      <div className="flex flex-col gap-2 px-4 py-2 border-b border-gray-100 shrink-0">
+        <div className="flex items-center justify-between">
+          <div className="flex flex-col min-w-0">
+            <span className="text-sm font-semibold text-[var(--text)] truncate">
+              Suggestion by{" "}
+              <span className="text-[var(--accent)]">
+                u/{suggestion.username}
+              </span>{" "}
+              on <span className="italic">{pageLabel}</span>
+            </span>
+            <span className="text-xs text-[var(--text-muted)] truncate">
+              &ldquo;{suggestion.description}&rdquo; &middot; {dateStr}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0 ml-4">
+            {actError && (
+              <span className="text-xs text-red-500">{actError}</span>
+            )}
+            <button
+              onClick={() => onDeny(reason)}
+              disabled={isActing || !canDeny}
+              title={canDeny ? undefined : "A reason is required to deny"}
+              className="text-xs px-3 py-1.5 rounded border border-red-300 text-red-600 hover:bg-red-50 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          </button>
+              Deny
+            </button>
+            <button
+              onClick={() => onAccept(reason)}
+              disabled={isActing}
+              className="text-xs px-3 py-1.5 rounded bg-[var(--accent)] text-white hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50"
+            >
+              {isActing ? "Applying..." : "Accept"}
+            </button>
+            <button
+              onClick={onClose}
+              disabled={isActing}
+              className="text-xs px-2 py-1.5 rounded border border-gray-300 text-[var(--text-muted)] hover:bg-[var(--control-bg)] transition-colors cursor-pointer disabled:opacity-50"
+              title="Close"
+            >
+              <svg
+                className="w-3.5 h-3.5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          </div>
         </div>
+        <input
+          type="text"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder="Reason (required to deny, optional to accept)..."
+          className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)]"
+          style={{
+            backgroundColor: "var(--control-bg)",
+            color: "var(--control-text)",
+          }}
+        />
       </div>
       <div className="flex-1 overflow-hidden">
         <CompareView
@@ -314,10 +332,17 @@ function ContribHistoryView() {
                 {e.events.map((ev, i) => (
                   <li
                     key={i}
-                    className="text-[11px] text-[var(--text-muted)] flex items-center gap-1.5"
+                    className="text-[11px] text-[var(--text-muted)] flex flex-col gap-0.5"
                   >
-                    <span className="w-1 h-1 rounded-full bg-[var(--text-muted)] shrink-0" />
-                    {historyEventLine(ev)}
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-1 h-1 rounded-full bg-[var(--text-muted)] shrink-0" />
+                      {historyEventLine(ev)}
+                    </span>
+                    {ev.reason && (
+                      <span className="ml-2.5 pl-2 border-l-2 border-gray-200 italic text-[var(--text-muted)]">
+                        &ldquo;{ev.reason}&rdquo;
+                      </span>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -398,6 +423,13 @@ function SubmissionsPanel({
   const [isActing, setIsActing] = useState(false);
   const [actError, setActError] = useState<string | null>(null);
 
+  // Quick-deny prompt: deny straight from the list, but still collect the
+  // mandatory reason via a compact dialog.
+  const [denyPromptUser, setDenyPromptUser] = useState<string | null>(null);
+  const [denyPromptReason, setDenyPromptReason] = useState("");
+  const [denyPromptError, setDenyPromptError] = useState<string | null>(null);
+  const [denyPromptBusy, setDenyPromptBusy] = useState(false);
+
   const [editSuggestion, setEditSuggestion] =
     useState<WikiSuggestionWithVoting | null>(null);
   const [editContent, setEditContent] = useState("");
@@ -407,11 +439,12 @@ function SubmissionsPanel({
 
   const [tab, setTab] = useState<"pending" | "history">("pending");
 
-  // `report` is only set when the user explicitly refreshes: the Contributions
-  // tab badge is otherwise a snapshot taken at app load, so it stays stable when
-  // the panel is opened (which triggers this mount load without reporting).
+  // Every load reports the fresh count to the parent so the Contributions tab
+  // badge always matches the Pending list. The badge is seeded from a snapshot
+  // at app load; opening the panel (this mount load) reconciles it with the
+  // current data without needing the Refresh button.
   const loadSuggestions = useCallback(
-    async (report = false) => {
+    async (report = true) => {
       setLoading(true);
       try {
         const res = await fetch("/api/wiki/suggestions");
@@ -436,6 +469,14 @@ function SubmissionsPanel({
     async (suggestion: WikiSuggestionWithVoting) => {
       setReviewSuggestion(suggestion);
       setActError(null);
+      // Prefer the suggestion's authored baseline so the diff reflects the
+      // proposed change even when it's already live on the page (e.g. a
+      // restarted vote on a previously-applied contribution). Fall back to the
+      // live page for legacy suggestions submitted before baseContent existed.
+      if (suggestion.baseContent !== undefined) {
+        setReviewCurrentContent(suggestion.baseContent);
+        return;
+      }
       try {
         const res = await fetch(
           `/api/wiki?page=${encodeURIComponent(suggestion.page)}`,
@@ -453,75 +494,97 @@ function SubmissionsPanel({
     [],
   );
 
-  const handleAccept = useCallback(async () => {
-    if (!reviewSuggestion) return;
-    setIsActing(true);
-    setActError(null);
-    try {
-      const body: WikiSuggestionActionRequest = {
-        username: reviewSuggestion.username,
-      };
-      const res = await fetch("/api/wiki/suggestion/accept", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        const err = (await res.json()) as ErrorResponse;
-        setActError(err.message ?? "Failed to accept");
+  // Shared decision call for both the review modal and the quick-deny prompt.
+  // `reason` is mandatory for deny (enforced by the server) and optional for
+  // accept. Returns the error message on failure, or null on success.
+  const submitDecision = useCallback(
+    async (
+      decision: "accept" | "deny",
+      decisionUsername: string,
+      reason: string,
+    ): Promise<string | null> => {
+      try {
+        const body: WikiSuggestionActionRequest = {
+          username: decisionUsername,
+          ...(reason.trim() ? { reason: reason.trim() } : {}),
+        };
+        const res = await fetch(`/api/wiki/suggestion/${decision}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const err = (await res.json()) as ErrorResponse;
+          return err.message ?? `Failed to ${decision}`;
+        }
+        setSuggestions((prev) => {
+          const next = prev.filter((s) => s.username !== decisionUsername);
+          onPendingCountChange?.(next.length);
+          return next;
+        });
+        return null;
+      } catch {
+        return "Network error";
+      }
+    },
+    [onPendingCountChange],
+  );
+
+  const handleAccept = useCallback(
+    async (reason: string) => {
+      if (!reviewSuggestion) return;
+      setIsActing(true);
+      setActError(null);
+      const err = await submitDecision(
+        "accept",
+        reviewSuggestion.username,
+        reason,
+      );
+      if (err) setActError(err);
+      else setReviewSuggestion(null);
+      setIsActing(false);
+    },
+    [reviewSuggestion, submitDecision],
+  );
+
+  const handleDeny = useCallback(
+    async (reason: string) => {
+      if (!reviewSuggestion) return;
+      if (!reason.trim()) {
+        setActError("A reason is required to deny.");
         return;
       }
-      setReviewSuggestion(null);
-      setSuggestions((prev) =>
-        prev.filter((s) => s.username !== reviewSuggestion.username),
+      setIsActing(true);
+      setActError(null);
+      const err = await submitDecision(
+        "deny",
+        reviewSuggestion.username,
+        reason,
       );
-    } catch {
-      setActError("Network error");
-    } finally {
+      if (err) setActError(err);
+      else setReviewSuggestion(null);
       setIsActing(false);
-    }
-  }, [reviewSuggestion]);
+    },
+    [reviewSuggestion, submitDecision],
+  );
 
-  const handleDeny = useCallback(async () => {
-    if (!reviewSuggestion) return;
-    setIsActing(true);
-    setActError(null);
-    try {
-      const body: WikiSuggestionActionRequest = {
-        username: reviewSuggestion.username,
-      };
-      const res = await fetch("/api/wiki/suggestion/deny", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        const err = (await res.json()) as ErrorResponse;
-        setActError(err.message ?? "Failed to deny");
-        return;
-      }
-      setReviewSuggestion(null);
-      setSuggestions((prev) =>
-        prev.filter((s) => s.username !== reviewSuggestion.username),
-      );
-    } catch {
-      setActError("Network error");
-    } finally {
-      setIsActing(false);
+  const confirmQuickDeny = useCallback(async () => {
+    if (!denyPromptUser) return;
+    if (!denyPromptReason.trim()) {
+      setDenyPromptError("A reason is required to deny.");
+      return;
     }
-  }, [reviewSuggestion]);
-
-  const handleQuickDeny = useCallback(async (denyUsername: string) => {
-    try {
-      const body: WikiSuggestionActionRequest = { username: denyUsername };
-      await fetch("/api/wiki/suggestion/deny", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      setSuggestions((prev) => prev.filter((s) => s.username !== denyUsername));
-    } catch {}
-  }, []);
+    setDenyPromptBusy(true);
+    setDenyPromptError(null);
+    const err = await submitDecision("deny", denyPromptUser, denyPromptReason);
+    setDenyPromptBusy(false);
+    if (err) {
+      setDenyPromptError(err);
+      return;
+    }
+    setDenyPromptUser(null);
+    setDenyPromptReason("");
+  }, [denyPromptUser, denyPromptReason, submitDecision]);
 
   const handleOpenEdit = useCallback((s: WikiSuggestionWithVoting) => {
     setEditSuggestion(s);
@@ -672,12 +735,62 @@ function SubmissionsPanel({
           currentContent={reviewCurrentContent}
           subredditName={subredditName}
           wikiFontSize={wikiFontSize}
-          onAccept={() => void handleAccept()}
-          onDeny={() => void handleDeny()}
+          onAccept={(reason) => void handleAccept(reason)}
+          onDeny={(reason) => void handleDeny(reason)}
           onClose={() => setReviewSuggestion(null)}
           isActing={isActing}
           actError={actError}
         />
+      )}
+      {denyPromptUser && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={() => !denyPromptBusy && setDenyPromptUser(null)}
+        >
+          <div
+            className="bg-[var(--bg)] rounded-lg shadow-2xl p-5 max-w-sm w-full mx-4"
+            onClick={(ev) => ev.stopPropagation()}
+          >
+            <h3 className="font-semibold text-[var(--text)] mb-1">
+              Deny u/{denyPromptUser}&apos;s contribution
+            </h3>
+            <p className="text-xs text-[var(--text-muted)] mb-3">
+              A reason is required. It&apos;s shown to the contributor and other
+              moderators in the history.
+            </p>
+            <textarea
+              value={denyPromptReason}
+              onChange={(e) => setDenyPromptReason(e.target.value)}
+              autoFocus
+              rows={3}
+              placeholder="Reason for denial..."
+              className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)] resize-none font-mono"
+              style={{
+                backgroundColor: "var(--control-bg)",
+                color: "var(--control-text)",
+              }}
+            />
+            {denyPromptError && (
+              <p className="text-xs text-red-500 mt-1">{denyPromptError}</p>
+            )}
+            <div className="flex justify-end gap-2 mt-3">
+              <button
+                onClick={() => setDenyPromptUser(null)}
+                disabled={denyPromptBusy}
+                className="text-sm px-3 py-1.5 rounded border border-gray-300 text-[var(--text-muted)] hover:bg-[var(--control-bg)] transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void confirmQuickDeny()}
+                disabled={denyPromptBusy || !denyPromptReason.trim()}
+                className="text-sm px-3 py-1.5 rounded bg-red-600 text-white hover:bg-red-700 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {denyPromptBusy ? "Denying..." : "Deny"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <div className="flex flex-wrap items-center gap-2 px-3 sm:px-4 py-2 border-b border-gray-100">
@@ -816,7 +929,11 @@ function SubmissionsPanel({
                           Review
                         </button>
                         <button
-                          onClick={() => void handleQuickDeny(p.username)}
+                          onClick={() => {
+                            setDenyPromptUser(p.username);
+                            setDenyPromptReason("");
+                            setDenyPromptError(null);
+                          }}
                           className="text-xs px-2 py-1 rounded border border-red-300 text-red-600 hover:bg-red-50 cursor-pointer"
                         >
                           Deny

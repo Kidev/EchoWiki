@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { WikiFontSize } from "../../../shared/types/api";
 import { WikiMarkdownContent } from "./WikiMarkdownContent";
+import { WikiSourceHighlight } from "./WikiSource";
 
 export type DiffLine = { type: "equal" | "add" | "remove"; line: string };
 
@@ -370,6 +371,7 @@ export function CompareView({
   leftLabel = "Current",
   rightLabel = "Suggested",
   mode: controlledMode,
+  initialMode = "normal",
 }: {
   original: string;
   proposed: string;
@@ -379,10 +381,11 @@ export function CompareView({
   leftLabel?: string;
   rightLabel?: string;
   mode?: "normal" | "source" | "diff";
+  initialMode?: "normal" | "source" | "diff";
 }) {
   const [internalMode, setInternalMode] = useState<
     "normal" | "source" | "diff"
-  >("normal");
+  >(initialMode);
   const mode = controlledMode ?? internalMode;
   const [hiddenCol, setHiddenCol] = useState<null | "left" | "right">(null);
   useEffect(() => {
@@ -402,13 +405,17 @@ export function CompareView({
             <button
               key={m}
               onClick={() => setInternalMode(m)}
-              className={`text-[10px] px-2.5 py-1 rounded transition-colors cursor-pointer capitalize ${
+              className={`text-[10px] px-2.5 py-1 rounded transition-colors cursor-pointer ${
                 mode === m
                   ? "bg-[var(--accent)] text-white"
                   : "text-[var(--text-muted)] hover:bg-[var(--control-bg)]"
               }`}
             >
-              {m === "normal" ? "Normal" : m === "source" ? "Source" : "Diff"}
+              {m === "normal"
+                ? "Preview"
+                : m === "source"
+                  ? "Source"
+                  : "Changes"}
             </button>
           ))}
         </div>
@@ -455,12 +462,11 @@ export function CompareView({
                     </div>
                   )
                 ) : (
-                  <pre
+                  <WikiSourceHighlight
+                    source={original}
                     className="p-4 text-xs font-mono whitespace-pre-wrap leading-relaxed"
                     style={{ color: "var(--text)" }}
-                  >
-                    {original || "(empty)"}
-                  </pre>
+                  />
                 )}
               </div>
             </div>
@@ -491,12 +497,11 @@ export function CompareView({
                     onCopyEchoLink={() => undefined}
                   />
                 ) : (
-                  <pre
+                  <WikiSourceHighlight
+                    source={proposed}
                     className="p-4 text-xs font-mono whitespace-pre-wrap leading-relaxed"
                     style={{ color: "var(--text)" }}
-                  >
-                    {proposed || "(empty)"}
-                  </pre>
+                  />
                 )}
               </div>
             </div>

@@ -8,7 +8,6 @@ import {
   useCallback,
   useRef,
   type MutableRefObject,
-  type ChangeEvent,
 } from "react";
 import { showToast } from "@devvit/web/client";
 import type {
@@ -27,8 +26,10 @@ import type {
 } from "../../../shared/types/api";
 import { preloadPaths } from "../../lib/echo";
 import { extractEchoPathsFromMarkdown } from "../echoRender";
+import { slugify } from "../assetUtils";
 import { WikiMarkdownContent } from "./WikiMarkdownContent";
 import { SideBySideDiffView } from "./DiffView";
+import { WikiSourceEditor, WikiSourceHighlight } from "./WikiSource";
 import {
   ConfirmDialog,
   WikiSaveDialog,
@@ -137,6 +138,117 @@ export const WikiView = memo(function WikiView({
     null | "left" | "right"
   >(null);
   const [createVotePost, setCreateVotePost] = useState(true);
+
+  // Optional scroll lock between the preview pane (left) and the source editor
+  // (right). Rather than just yoking the two scrollbars proportionally, it keeps
+  // each source section *facing* its rendered counterpart: it pairs the headings
+  // that exist on both sides (matched by their slug id) into anchor points and
+  // interpolates linearly between them. Headings are the one landmark that
+  // survives markdown preprocessing intact on both sides, so they give a stable,
+  // line-accurate mapping; between anchors we fall back to a proportional ratio.
+  // `lockGuardRef` breaks the feedback loop so a programmatic scroll doesn't
+  // bounce back and fight the user.
+  const [scrollLocked, setScrollLocked] = useState(true);
+  const leftScrollRef = useRef<HTMLDivElement>(null);
+  const rightScrollRef = useRef<HTMLDivElement>(null);
+  const lockGuardRef = useRef(false);
+
+  // Cumulative offsetTop of `el` up to (but excluding) `container`. Uses layout
+  // offsets (not getBoundingClientRect) so it is unaffected by the half-scale
+  // `zoom` the panes use when both are visible.
+  const offsetWithin = (el: HTMLElement, container: HTMLElement): number => {
+    let y = 0;
+    let n: HTMLElement | null = el;
+    while (n && n !== container && container.contains(n)) {
+      y += n.offsetTop;
+      n = n.offsetParent as HTMLElement | null;
+    }
+    return y;
+  };
+
+  // Build monotonic [sourceTop, previewTop] anchor pairs from matched headings,
+  // bracketed by (0,0) and (fullHeight,fullHeight) sentinels.
+  const buildScrollAnchors = useCallback((): { s: number; p: number }[] => {
+    const left = leftScrollRef.current;
+    const right = rightScrollRef.current;
+    if (!left || !right) return [];
+    const previewBySlug = new Map<string, number>();
+    left
+      .querySelectorAll<HTMLElement>(
+        "h1[id],h2[id],h3[id],h4[id],h5[id],h6[id]",
+      )
+      .forEach((h) => {
+        if (h.id && !previewBySlug.has(h.id))
+          previewBySlug.set(h.id, offsetWithin(h, left));
+      });
+
+    const pairs: { s: number; p: number }[] = [{ s: 0, p: 0 }];
+    const lines = editContent.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const m = /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(lines[i]!);
+      if (!m) continue;
+      const slug = slugify(m[2]!);
+      const previewTop = slug ? previewBySlug.get(slug) : undefined;
+      if (previewTop === undefined) continue;
+      const span = right.querySelector<HTMLElement>(`[data-ln="${i}"]`);
+      if (!span) continue;
+      const s = offsetWithin(span, right);
+      const last = pairs[pairs.length - 1]!;
+      // Keep the sequence strictly increasing on both axes so interpolation
+      // never divides by zero or jumps backwards.
+      if (s > last.s + 1 && previewTop > last.p + 1)
+        pairs.push({ s, p: previewTop });
+    }
+    const last = pairs[pairs.length - 1]!;
+    pairs.push({
+      s: Math.max(right.scrollHeight, last.s + 1),
+      p: Math.max(left.scrollHeight, last.p + 1),
+    });
+    return pairs;
+  }, [editContent]);
+
+  const syncFrom = useCallback(
+    (from: "left" | "right") => {
+      if (!scrollLocked || lockGuardRef.current) return;
+      const left = leftScrollRef.current;
+      const right = rightScrollRef.current;
+      if (!left || !right) return;
+      const src = from === "left" ? left : right;
+      const dst = from === "left" ? right : left;
+      const pos = src.scrollTop;
+      const anchors = buildScrollAnchors();
+
+      let target: number;
+      if (anchors.length < 2) {
+        const fromMax = src.scrollHeight - src.clientHeight;
+        const toMax = dst.scrollHeight - dst.clientHeight;
+        if (fromMax <= 0 || toMax <= 0) return;
+        target = (pos / fromMax) * toMax;
+      } else {
+        const keyOf = (a: { s: number; p: number }) =>
+          from === "left" ? a.p : a.s;
+        const valOf = (a: { s: number; p: number }) =>
+          from === "left" ? a.s : a.p;
+        let i = 0;
+        while (i < anchors.length - 2 && keyOf(anchors[i + 1]!) <= pos) i++;
+        const a = anchors[i]!;
+        const b = anchors[i + 1]!;
+        const span = keyOf(b) - keyOf(a);
+        const frac = span > 0 ? (pos - keyOf(a)) / span : 0;
+        target = valOf(a) + frac * (valOf(b) - valOf(a));
+      }
+
+      lockGuardRef.current = true;
+      dst.scrollTop = target;
+      requestAnimationFrame(() => {
+        lockGuardRef.current = false;
+      });
+    },
+    [scrollLocked, buildScrollAnchors],
+  );
+
+  const handleLeftScroll = useCallback(() => syncFrom("left"), [syncFrom]);
+  const handleRightScroll = useCallback(() => syncFrom("right"), [syncFrom]);
 
   // Delete-page flow (mods, direct-edit mode only). Requires typing the page
   // path to confirm, since Reddit can't truly undo a wiki deletion.
@@ -748,10 +860,10 @@ export const WikiView = memo(function WikiView({
                       }`}
                     >
                       {m === "normal"
-                        ? "Normal"
+                        ? "Preview"
                         : m === "source"
                           ? "Source"
-                          : "Diff"}
+                          : "Changes"}
                     </button>
                   ))}
                 </div>
@@ -774,19 +886,22 @@ export const WikiView = memo(function WikiView({
                   />
                 ) : isProposeMode && proposeViewMode === "source" ? (
                   <div
-                    className="h-full overflow-auto"
+                    ref={leftScrollRef}
+                    onScroll={handleLeftScroll}
+                    className="relative h-full overflow-auto"
                     style={{ scrollbarGutter: "stable both-edges" }}
                   >
-                    <pre
+                    <WikiSourceHighlight
+                      source={editContent}
                       className="p-4 text-xs font-mono whitespace-pre-wrap leading-relaxed"
                       style={{ color: "var(--text)" }}
-                    >
-                      {editContent || "(empty)"}
-                    </pre>
+                    />
                   </div>
                 ) : (
                   <div
-                    className="h-full overflow-auto"
+                    ref={leftScrollRef}
+                    onScroll={handleLeftScroll}
+                    className="relative h-full overflow-auto"
                     style={{ scrollbarGutter: "stable both-edges" }}
                   >
                     <WikiMarkdownContent
@@ -813,11 +928,48 @@ export const WikiView = memo(function WikiView({
               }}
               className="flex flex-col"
             >
-              <div className="px-3 py-1.5 text-xs bg-[var(--thumb-bg)] border-b border-gray-100 shrink-0 select-none flex items-center justify-between sticky top-0 z-10">
-                <span className="font-mono text-[var(--text-muted)] min-w-0 truncate">
+              <div className="px-3 py-1.5 text-xs bg-[var(--thumb-bg)] border-b border-gray-100 shrink-0 select-none grid grid-cols-[1fr_auto_1fr] items-center gap-2 sticky top-0 z-10">
+                <div className="flex items-center min-w-0">
+                  {proposeViewMode !== "diff" && (
+                    <button
+                      onClick={() => setScrollLocked((v) => !v)}
+                      title={
+                        scrollLocked
+                          ? "Scroll lock on: source stays aligned with the preview"
+                          : "Scroll lock off: panes scroll independently"
+                      }
+                      aria-pressed={scrollLocked}
+                      className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors cursor-pointer text-[var(--text-muted)] hover:bg-[var(--control-bg)]"
+                    >
+                      <span className="font-mono whitespace-nowrap">
+                        Scroll lock
+                      </span>
+                      {scrollLocked ? (
+                        <svg
+                          className="w-3.5 h-3.5 text-green-500"
+                          viewBox="0 0 16 16"
+                          fill="currentColor"
+                          aria-hidden="true"
+                        >
+                          <path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z" />
+                        </svg>
+                      ) : (
+                        <svg
+                          className="w-3.5 h-3.5 text-red-500"
+                          viewBox="0 0 16 16"
+                          fill="currentColor"
+                          aria-hidden="true"
+                        >
+                          <path d="M4.78 3.72a.75.75 0 0 0-1.06 1.06L6.94 8l-3.22 3.22a.75.75 0 1 0 1.06 1.06L8 9.06l3.22 3.22a.75.75 0 1 0 1.06-1.06L9.06 8l3.22-3.22a.75.75 0 0 0-1.06-1.06L8 6.94 4.78 3.72Z" />
+                        </svg>
+                      )}
+                    </button>
+                  )}
+                </div>
+                <span className="font-mono text-[var(--text-muted)] text-center truncate">
                   {isProposeMode ? "Suggesting changes" : "Source"}
                 </span>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center justify-end gap-1.5">
                   {isMod && !isProposeMode && currentPage !== "index" && (
                     <button
                       onPointerDown={(e) => {
@@ -880,14 +1032,14 @@ export const WikiView = memo(function WikiView({
                   }
                 />
               </Suspense>
-              <textarea
-                ref={textareaRef}
-                className="flex-1 resize-none p-4 font-mono text-sm bg-[var(--bg)] text-[var(--text)] placeholder:text-[var(--text-muted)] outline-none"
+              <WikiSourceEditor
                 value={editContent}
-                onChange={(e: ChangeEvent<HTMLTextAreaElement>) =>
-                  setEditContent(e.target.value)
+                onChange={setEditContent}
+                textareaRef={
+                  textareaRef as MutableRefObject<HTMLTextAreaElement | null>
                 }
-                spellCheck={false}
+                scrollRef={rightScrollRef}
+                onScroll={handleRightScroll}
                 placeholder="Write wiki markdown here..."
               />
             </div>

@@ -259,6 +259,46 @@ export function buildScaledBg(
 }
 
 /**
+ * Build the absolutely-positioned, moving sprite element shared by the single-
+ * and multi-phase animators. `spriteSizeRaw` controls the sprite's footprint:
+ *
+ *  - empty   -> the sprite renders at its frames' natural pixel size.
+ *  - `N%`    -> the sprite is N% of the composite's width (i.e. N% of the
+ *               background), keeping the frame aspect ratio. This stays a fixed
+ *               fraction of the background at every screen size (it no longer
+ *               drifts with the viewport like a natural-size sprite does).
+ *  - `Npx`/`N` -> a fixed square box of N pixels (legacy behavior).
+ *
+ * For the natural and `%` cases an invisible sizer image (the first frame)
+ * drives the box height from its intrinsic ratio so the absolutely-positioned
+ * frames have a real box to fill.
+ */
+export function buildSpriteDiv(
+  spriteSizeRaw: string,
+  firstFrame: string,
+  frameImgsHtml: string,
+  moveStyle: string,
+): string {
+  const sz = spriteSizeRaw.trim();
+  if (sz && !sz.endsWith("%")) {
+    const px = parseInt(sz, 10);
+    return `<div style="position:absolute;width:${px}px;height:${px}px;${moveStyle}">${frameImgsHtml}</div>`;
+  }
+  // Percentage sprite: the box is `width:N%` of the composite and the sizer
+  // (width:100% of that box) sets its height. Natural sprite: no width, the
+  // sizer sizes the box to the frame's own pixels (capped at the composite).
+  const isPercent = sz.endsWith("%");
+  const widthStyle = isPercent ? `width:${sz};` : "max-width:100%;";
+  const driverStyle = isPercent
+    ? "width:100%;height:auto;"
+    : "width:auto;height:auto;max-width:100%;";
+  const sizeDriver = firstFrame
+    ? `<img class="echo-raw" src="${firstFrame}" style="display:block;${driverStyle}visibility:hidden;pointer-events:none;" alt="">`
+    : "";
+  return `<div style="position:absolute;${widthStyle}${moveStyle}">${sizeDriver}<div style="position:absolute;inset:0;">${frameImgsHtml}</div></div>`;
+}
+
+/**
  * Resolve the duration (in seconds) of an animation phase. An explicit
  * `duration` always wins. Otherwise the duration is derived from whole walk
  * cycles: `loops × frames / fps`. This keeps the sprite's frame animation
@@ -347,36 +387,91 @@ export function renderSceneBlock(
       const src = spIdx === -1 ? rest : rest.slice(0, spIdx);
       const posStr = spIdx === -1 ? "" : rest.slice(spIdx + 1);
       const pos = parseEchoBlockParams(posStr);
-      let posStyle = "position:absolute;display:block;";
+      // Explicit, source-order stacking: the bg sits at z-index 0, the first
+      // layer at 1, the next at 2, ... so later layers always paint over earlier
+      // ones regardless of any stacking contexts a layer introduces (transform,
+      // opacity, ...). `fg` then takes the top slot (N+1) below.
+      let posStyle = `position:absolute;display:block;z-index:${layerImgs.length + 1};`;
+      // `size` keeps the layer's aspect ratio while pinning its width to a
+      // fraction of the background (`size=5%`) or a fixed pixel width
+      // (`size=40` / `size=40px`). Like `width=%`/`left=%`, percentages resolve
+      // against the background box, so the layer stays the same relative size at
+      // every screen resolution instead of rendering at its raw pixel size.
+      const sizeVal = pos["size"];
+      if (sizeVal !== undefined) {
+        delete pos["size"];
+        const s = sizeVal.trim();
+        const w = s.endsWith("%") ? s : /^\d+$/.test(s) ? `${s}px` : s;
+        posStyle += `width:${w};height:auto;`;
+      }
       for (const [pk, pv] of Object.entries(pos)) posStyle += `${pk}:${pv};`;
       layerImgs.push(
         `<img class="echo-raw" src="${src}" style="${posStyle}" alt="">`,
       );
     }
   }
-  // `fg` overlays the whole scene; fill (not cover) so it stretches with the
-  // box exactly like the background does, never cropping.
+  // `fg` overlays the whole scene on top of every layer (z-index N+1, where N is
+  // the layer count). It scales *uniformly* with the block's `width` (full
+  // container width at its own natural ratio) and is pinned to the top-left
+  // corner. It deliberately does NOT take the background's vertical `k` stretch:
+  // a `height` command fits/squishes the background canvas to its box, but the
+  // foreground must not be distorted to match: it just rides on top at the same
+  // scale, aligned with the background at the top-left.
+  const fgZ = layerImgs.length + 1;
   const fgHtml = fgSrc
-    ? `<img class="echo-raw" src="${fgSrc}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:fill;pointer-events:none;display:block;" alt="">`
+    ? `<img class="echo-raw" src="${fgSrc}" style="position:absolute;top:0;left:0;width:100%;height:auto;pointer-events:none;display:block;z-index:${fgZ};" alt="">`
     : "";
-  const overlayHtml = `<div style="position:absolute;inset:0;overflow:hidden;">${layerImgs.join("")}${fgHtml}</div>`;
+  const layersHtml = layerImgs.join("");
+  const overlay = `${layersHtml}${fgHtml}`;
   // inline-block so a wrapping `>>> <<<` (text-align:center) actually centers it.
-  const baseStyle = `position:relative;display:inline-block;width:${width};max-width:100%;border-radius:6px;overflow:hidden;line-height:0;`;
+  // `isolation:isolate` makes this container the stacking context that holds the
+  // bg/layer/fg z-index scale, so the ordering is self-contained and never
+  // affected by surrounding wiki content.
+  const baseStyle = `position:relative;display:inline-block;width:${width};max-width:100%;border-radius:6px;overflow:hidden;line-height:0;isolation:isolate;`;
+
+  if (bgSrc && fgSrc) {
+    // When the scene has BOTH a background and a foreground, neither may drive
+    // the box on its own: `width` must apply to whichever image is *larger*, and
+    // the smaller one is scaled by the same factor and pinned to the same
+    // top-left corner. Pure CSS can't size a box to the larger of two overlapping
+    // images while scaling the other proportionally (percentage widths resolve
+    // against the container, not the sibling), so we grid-stack both in one cell
+    // and let <EchoSceneFrame> fill in `--echo-bg-w` / `--echo-fg-w` once both
+    // natural widths are known: the larger gets 100%, the other its size ratio.
+    // Defaults (100%/100%) keep both full-width until measurement completes.
+    const kStretch = k > 0 && Math.abs(k - 1) > 1e-4;
+    const kStr = k.toFixed(4);
+    // inline-grid (not -block) so it still centers inside a `>>> <<<` wrapper.
+    const gridStyle = `position:relative;display:inline-grid;width:${width};max-width:100%;border-radius:6px;overflow:hidden;line-height:0;isolation:isolate;`;
+    const cell =
+      "grid-area:1/1;align-self:start;justify-self:start;display:block;height:auto;";
+    // The bg is the canvas fitted to the height box, so it alone takes the
+    // vertical `k` stretch. An invisible sizer at k× the bg width drives the cell
+    // height so the stretch is never cropped (same no-crop trick as buildScaledBg).
+    const bgSizer = kStretch
+      ? `<img class="echo-raw" aria-hidden="true" src="${bgSrc}" style="${cell}width:calc(var(--echo-bg-w,100%) * ${kStr});max-width:none;visibility:hidden;pointer-events:none;z-index:0;" alt="">`
+      : "";
+    const bgImg = `<img class="echo-raw echo-scene-bg" src="${bgSrc}" style="${cell}width:var(--echo-bg-w,100%);${kStretch ? `transform:scaleY(${kStr});transform-origin:top left;` : ""}z-index:0;" alt="">`;
+    // fg rides on top at uniform scale (no `k` stretch, per the foreground rule).
+    const fgImg = `<img class="echo-raw echo-scene-fg" src="${fgSrc}" style="${cell}width:var(--echo-fg-w,100%);pointer-events:none;z-index:${fgZ};" alt="">`;
+    return `<div class="echo-scene-frame" style="${gridStyle}">${bgSizer}${bgImg}${layersHtml}${fgImg}</div>`;
+  }
 
   if (bgSrc) {
     // The background drives the natural aspect ratio (never cropped); `width`
     // scales the whole composite and `height`, when given, stretches it
-    // vertically relative to `width` (see resolveBlockSizing).
+    // vertically relative to `width` (see resolveBlockSizing). It paints first
+    // (z-index 0 / in-flow) so it is always at the bottom.
     const bgImg = buildScaledBg(bgSrc, k);
-    return `<div style="${baseStyle}">${bgImg}${overlayHtml}</div>`;
+    return `<div style="${baseStyle}">${bgImg}${overlay}</div>`;
   }
 
   if (heightRaw?.endsWith("%")) {
     const hPct = parseFloat(heightRaw);
-    return `<div style="${baseStyle}aspect-ratio:${(100 / hPct).toFixed(4)} / 1;">${layerImgs.join("")}${fgHtml}</div>`;
+    return `<div style="${baseStyle}aspect-ratio:${(100 / hPct).toFixed(4)} / 1;">${overlay}</div>`;
   }
   const h = heightRaw ?? "200px";
-  return `<div style="${baseStyle}height:${h};">${layerImgs.join("")}${fgHtml}</div>`;
+  return `<div style="${baseStyle}height:${h};">${overlay}</div>`;
 }
 
 export function renderAnimBlock(
@@ -463,15 +558,12 @@ export function renderAnimBlock(
     )
     .join("");
 
-  const spriteNatural = !spriteSizeRaw || spriteSizeRaw.includes("%");
-  let spriteDiv: string;
-  if (spriteNatural) {
-    const sizeDriver = `<img class="echo-raw" src="${frames[0]}" style="display:block;width:auto;height:auto;max-width:100%;visibility:hidden;pointer-events:none;" alt="">`;
-    spriteDiv = `<div style="position:absolute;${moveStyle}">${sizeDriver}<div style="position:absolute;inset:0;">${frameImgs}</div></div>`;
-  } else {
-    const px = parseInt(spriteSizeRaw, 10);
-    spriteDiv = `<div style="position:absolute;width:${px}px;height:${px}px;${moveStyle}">${frameImgs}</div>`;
-  }
+  const spriteDiv = buildSpriteDiv(
+    spriteSizeRaw,
+    frames[0] ?? "",
+    frameImgs,
+    moveStyle,
+  );
 
   // inline-block so a wrapping `>>> <<<` (text-align:center) actually centers it.
   const baseStyle = `position:relative;display:inline-block;width:${width};max-width:100%;overflow:hidden;border-radius:6px;line-height:0;`;
@@ -501,16 +593,45 @@ export function renderCardBlock(
   body: string,
 ): string {
   const image = params["image"] ?? "";
-  const size = params["size"] ?? "120px";
+  const size = params["size"] ?? "30%";
   const align = params["align"] ?? "right";
-  const floatStyle =
-    align === "left"
-      ? "float:left;margin:0 1.5em 1em 0;"
-      : "float:right;margin:0 0 1em 1.5em;";
-  const imgHtml = image
-    ? `<img src="${image}" style="${floatStyle}width:${size};border-radius:6px;" alt="">`
-    : "";
-  return `<div style="overflow:hidden;padding:1em;background:var(--thumb-bg);border-radius:8px;margin:1em 0;">${imgHtml}\n\n${body.trim()}\n\n</div>`;
+  // `fit` makes the card hug the image: the card width tracks the (resized)
+  // image plus its own padding, and `align` then positions the whole card on
+  // the page. Only meaningful when there is an image to hug.
+  const fit = parseBoolParam(params["fit"], false) && image !== "";
+  const cardBg = "background:var(--thumb-bg);border-radius:8px;padding:1em;";
+  const text = body.trim();
+
+  if (fit) {
+    // box-sizing:border-box + width:calc(size + 2em) makes the content box
+    // exactly `size` (the 2em is the 1em padding on each side), so the image
+    // at width:100% renders at `size` and the card is `size` + margins wide.
+    // The image stacks above the body since the card is narrow.
+    const placement =
+      align === "left"
+        ? "float:left;margin:0 1.5em 1em 0;"
+        : align === "center"
+          ? "margin:1em auto;clear:both;"
+          : "float:right;margin:0 0 1em 1.5em;";
+    const imgHtml = `<img src="${image}" style="display:block;width:100%;border-radius:6px;margin-bottom:0.75em;" alt="">`;
+    return `<div style="box-sizing:border-box;width:calc(${size} + 2em);${placement}${cardBg}">${imgHtml}\n\n${text}\n\n</div>`;
+  }
+
+  // Full-width card; `align` positions the image *inside* it. left/right float
+  // so the body wraps alongside; center stacks the image as a centered block.
+  let imgHtml = "";
+  if (image) {
+    if (align === "center") {
+      imgHtml = `<img src="${image}" style="display:block;margin:0 auto 1em;width:${size};border-radius:6px;" alt="">`;
+    } else {
+      const floatStyle =
+        align === "left"
+          ? "float:left;margin:0 1.5em 1em 0;"
+          : "float:right;margin:0 0 1em 1.5em;";
+      imgHtml = `<img src="${image}" style="${floatStyle}width:${size};border-radius:6px;" alt="">`;
+    }
+  }
+  return `<div style="overflow:hidden;${cardBg}margin:1em 0;">${imgHtml}\n\n${text}\n\n</div>`;
 }
 
 export function renderInfoboxBlock(
@@ -692,18 +813,13 @@ export function renderMultiPhaseAnimBlock(
 
   const pSizeRaw =
     phases[0]!.params["spritesize"] ?? params["spritesize"] ?? "";
-  const spriteNatural = !pSizeRaw || pSizeRaw.includes("%");
-  let spriteDiv: string;
-  if (spriteNatural) {
-    const firstSrc = phases[0]?.frames[0] ?? "";
-    const sizeDriver = firstSrc
-      ? `<img class="echo-raw" src="${firstSrc}" style="display:block;width:auto;height:auto;max-width:100%;visibility:hidden;pointer-events:none;" alt="">`
-      : "";
-    spriteDiv = `<div style="position:absolute;animation:${uid}-move ${totalDuration.toFixed(3)}s linear infinite;">${sizeDriver}<div style="position:absolute;inset:0;">${frameEls.join("")}</div></div>`;
-  } else {
-    const pSize = parseInt(pSizeRaw, 10);
-    spriteDiv = `<div style="position:absolute;width:${pSize}px;height:${pSize}px;animation:${uid}-move ${totalDuration.toFixed(3)}s linear infinite;">${frameEls.join("")}</div>`;
-  }
+  const moveStyle = `animation:${uid}-move ${totalDuration.toFixed(3)}s linear infinite;`;
+  const spriteDiv = buildSpriteDiv(
+    pSizeRaw,
+    phases[0]?.frames[0] ?? "",
+    frameEls.join(""),
+    moveStyle,
+  );
 
   // inline-block so a wrapping `>>> <<<` (text-align:center) actually centers it.
   const baseStyle = `position:relative;display:inline-block;width:${width};max-width:100%;overflow:hidden;border-radius:6px;line-height:0;`;
