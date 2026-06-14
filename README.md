@@ -39,6 +39,8 @@ EchoWiki turns a subreddit wiki into a proper editing and reading environment. M
 
 ## Wiki
 
+![EchoWiki](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/echowiki.png)
+
 EchoWiki is a renderer on top of your subreddit's **own** native Reddit wiki, not a separate store. Every page is fetched live from the subreddit wiki (`reddit.com/r/<subreddit>/wiki`) via the Reddit API and rendered inside the app with a full Markdown engine. Saving a page from the app writes straight back to that same wiki, so the two stay in sync.
 
 Because the data lives in the real wiki, you keep everything Reddit already gives you for it: the **full revision history** of every page (with author and reason for each edit) is visible at `reddit.com/r/<subreddit>/wiki/revisions` (and now also from inside the app, see [Page Management](#page-management)). New pages can be created in-app by moderators with the **+ Add page** action, or the normal Reddit way (visit the page's wiki URL on Reddit and create it, or link to it from an existing EchoWiki page) and they show up in the app. EchoWiki never hides or replaces the underlying wiki; it just gives it a richer reading and editing surface.
@@ -66,7 +68,7 @@ Create and set up the wiki for your subreddit from the moderator menu: it create
 
 ### Live Editor
 
-![editor](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/editor.png)
+![editor](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/live-editor.gif)
 
 Moderators can edit wiki pages directly inside the app. The **Edit page** button lives on the [breadcrumb bar](#breadcrumb-navigation) (right side); it collapses to a pen icon when space is tight and follows the breadcrumb's visibility. Clicking it opens the editor, where the Markdown source sits next to a live preview that updates as you type. From the collapsed inline view the same button pops the app out to the expanded editor.
 
@@ -82,6 +84,8 @@ Inside the editor, a **Delete page** button (moderators, direct-edit mode, never
 
 ### Page Management
 
+![page-management](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/page-management.png)
+
 Several page-level tools live on the [breadcrumb bar](#breadcrumb-navigation):
 
 - **Index dropdown (everyone)**: the first breadcrumb crumb opens a scrollable list of every wiki page, including orphaned and unlisted ones, for quick navigation. Right-click any entry to copy its `echolink://`.
@@ -90,6 +94,8 @@ Several page-level tools live on the [breadcrumb bar](#breadcrumb-navigation):
 - **Delete page**: see the [Live Editor](#live-editor) above.
 
 ### Breadcrumb Navigation
+
+![breadcrumb](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/breadcrumb.png)
 
 The breadcrumb bar slides down (and fades) from the top when hovering the Wiki tab, showing the path to the current page. It packs a lot into one line:
 
@@ -101,6 +107,8 @@ The breadcrumb bar slides down (and fades) from the top when hovering the Wiki t
 Every heading has a copy-link button that appears on hover. Clicking it copies an `echolink://` URL pointing to that specific section. These links can be shared with other users of the same subreddit's EchoWiki. To open one, use the link icon in the top bar to open the EchoLink dialog, then paste the URL. When opened from a wiki page, the dialog also shows the **current page's `echolink://`** with a one-click copy button. It also accepts `echo://` asset paths to jump directly to a file in the asset browser.
 
 ### Remote Images
+
+![breadcrumb](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/remote.png)
 
 Beyond game assets, ordinary remote images embed with standard Markdown pointing at a normal URL: `![alt](https://i.imgur.com/example.png)`. These need no game import and work on any page, game-backed or not.
 
@@ -230,13 +238,15 @@ The model loads in an inline WebGL viewer (powered by three.js): drag to orbit, 
 | Hint            | Syntax                     | Description                                                 |
 | --------------- | -------------------------- | ----------------------------------------------------------- |
 | **Auto-rotate** | `?autorotate`              | Start the model slowly spinning (alias `?spin`)             |
-| **Height**      | `?height=400px`            | Viewer height (alias `?h`)                                  |
-| **Width**       | `?width=80%`               | Viewer width (alias `?w`)                                   |
+| **Width**       | `?width=60%`               | Viewer width as a share of the container (alias `?w`)       |
+| **Height**      | `?height=75%`              | Viewer height as a share of its width (alias `?h`)          |
 | **Background**  | `?bg=111`                  | Background color, hex (the `#` is added for you)            |
 | **Texture**     | `?texture=img/diffuse.png` | Use an imported image as the model's texture (alias `?tex`) |
 
+Percentages keep the viewer responsive (`100%` height is square, `50%` a 2:1 landscape, `200%` a 1:2 portrait); fixed pixel sizes like `?width=350px&height=400px` also work for an exact footprint.
+
 ```markdown
-![King statue](echo://meshes/king.glb?spin&height=420px&bg=151515)
+![King statue](echo://meshes/king.glb?spin&width=60%&bg=151515)
 ```
 
 Supported formats are `glb`, `gltf`, `obj`, `stl`, `ply`, `fbx`, `dae` (Collada), and `3mf`. GLB is recommended because it packs geometry and textures into a single self-contained file; formats that rely on sibling `.mtl` or texture files render geometry only. When a model loads untextured, the `?texture=` hint, or the **Texture** field in the asset browser's model preview, applies any imported image as its texture. That field also accepts a Markdown link pasted straight from another asset's copy button (e.g. `![diffuse](echo://img/diffuse.png)`), stripping it down to the `echo://` path automatically, so a texture can be grabbed from the browser and dropped onto a model without hand-editing the path.
@@ -281,11 +291,11 @@ Weapon | Echo Blade
 
 **`:::fbf`** (frame by frame) cycles through sprite frames using CSS opacity animation. List one `echo://` path per line. Use `fps` to set playback speed, `size` for the box pixel dimensions, and `alias=name` to name the block for use in `:::anim`.
 
-![Scene](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/animations.gif)
+![Scene](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/fbf.gif)
 
 **`:::anim`** moves a sprite across a background scene. Reference an `:::fbf` block via `ref=alias`, or supply frames inline. Define the movement path as one or more keyframe lines (`N% key=value ...`).
 
-![Scene](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/animate.gif)
+![Scene](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/animation.gif)
 
 | Param              | Default | Description                                                                                                                                                                                                                                                                                           |
 | ------------------ | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -315,7 +325,7 @@ echo://img/characters/actor.png?sprite=12,8,1
 
 **Multi-phase animations** swap the sprite mid-loop: add `---` separators inside `:::anim`, each with its own frames and movement keyframes (and optional `fps`, `spritesize`, `loops`, `duration`, `hold`). They composite into one seamless loop: e.g. a right-facing walk left-to-right, then a left-facing walk back: so the character always faces the way it is walking.
 
-![Scene](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/animate-blocs.gif)
+![Scene](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/animations.gif)
 
 ```
 :::anim width=75% height=50% bg=echo://img/parallaxes/bg.png?crop bgopacity=1

@@ -73,9 +73,9 @@ Combine `?speed=` and `?pitch=` to shift playback:
 Interactive 3D models embed with the **same image syntax** as a picture. The model loads in a small WebGL viewer: drag to orbit, scroll to zoom, and use the buttons in the corner to auto-rotate or reset the view.
 
 ```echo
-![1.glb](echo://models/1.glb?autorotate&width=350px)
+![1.glb](echo://models/1.glb?autorotate&width=60%)
 ```
->>>![1.glb](echo://models/1.glb?autorotate&width=350px)<<<
+>>>![1.glb](echo://models/1.glb?autorotate&width=60%)<<<
 
 > [!NOTE]
 > Unlike the image examples on this page, 3D models only appear for games that actually ship 3D assets (Unity, Unreal, Godot). *The Coffin of Andy and Leyley* is a 2D RPG Maker game, so the model paths in this section will not resolve in its demo. Swap in an `echo://` model path from your own asset browser.
@@ -85,10 +85,12 @@ Append display hints to the path, combined with `&`:
 | Param | Example | Effect |
 |---|---|---|
 | `?autorotate` (alias `?spin`) | `?autorotate` | Start with the model slowly spinning |
-| `?height` (alias `?h`) | `?height=400px` | Set the viewer height |
-| `?width` (alias `?w`) | `?width=80%` | Set the viewer width |
+| `?width` (alias `?w`) | `?width=60%` | Viewer width as a share of the container |
+| `?height` (alias `?h`) | `?height=75%` | Viewer height as a share of its width (`100%` is square, `50%` a 2:1 landscape, `200%` a 1:2 portrait) |
 | `?bg` | `?bg=111` | Background color (hex, `#` is added for you) |
 | `?texture` (alias `?tex`) | `?texture=img/diffuse.png` | Use an imported image as the model's texture |
+
+Percentages keep the viewer responsive as the page resizes. Fixed pixel sizes also work (`?width=350px`, `?height=400px`) when you need an exact footprint.
 
 **Supported formats:** `glb`, `gltf`, `obj`, `stl`, `ply`, `fbx`, `dae` (Collada), `3mf`. GLB is recommended because it packs geometry and textures into a single self-contained file; OBJ/Collada that rely on sibling `.mtl` or texture files render geometry only. Unity games are special-cased: their meshes ship as raw GPU buffers rather than model files, so EchoWiki rebuilds each one into a self-contained GLB and links it to its base-color texture.
 
@@ -96,14 +98,14 @@ When a model loads untextured (e.g. an OBJ whose materials live in external file
 
 ```echo
 >>>
-![](echo://models/obelisk_1_polysurface17_2.glb?width=450px&spin)
-![](echo://models/obelisk_1_polysurface17_2.glb?texture=echo://textures/obeliskkingsky_dif.png&width=450px&bg=#99ffff&spin)
+![](echo://models/obelisk_1_polysurface17_2.glb?width=45%&spin)
+![](echo://models/obelisk_1_polysurface17_2.glb?texture=echo://textures/obeliskkingsky_dif.png&width=45%&bg=#99ffff&spin)
 <<<
 ```
 
 >>>
-![](echo://models/obelisk_1_polysurface17_2.glb?width=450px&spin)
-![](echo://models/obelisk_1_polysurface17_2.glb?texture=echo://textures/obeliskkingsky_dif.png&width=450px&bg=#99ffff&spin)
+![](echo://models/obelisk_1_polysurface17_2.glb?width=45%&spin)
+![](echo://models/obelisk_1_polysurface17_2.glb?texture=echo://textures/obeliskkingsky_dif.png&width=45%&bg=#99ffff&spin)
 <<<
 
 The asset browser's model preview has a matching **Texture** field; whatever you set there is baked into the link it copies. You don't have to type the path by hand: open an image in the asset browser, hit its copy button, and paste the result straight into the Texture field. A pasted Markdown link like `![diffuse](echo://img/king_diffuse.png)` is trimmed down to its `echo://` path automatically and applied right away, so retexturing a model is a copy-then-paste.
@@ -567,7 +569,7 @@ Reddit's webview can't load external images directly, so EchoWiki fetches them t
 | Audio player | `![label](echo://path/to/sound.ogg)` |
 | Interactive 3D model | `![alt](echo://path/to/model.glb)` |
 | Model: auto-rotate | `?autorotate` (alias `?spin`) appended to a model path |
-| Model: size / background | `?height=400px`, `?width=80%`, `?bg=111` |
+| Model: size / background | `?width=60%`, `?height=75%` (px also works), `?bg=111` |
 | Model: texture | `?texture=img/diffuse.png` (alias `?tex`); the preview's Texture field also accepts a pasted `![](echo://...)` link |
 | Sprite cell | `?sprite=cols,rows,index` appended to an image path |
 | Crop transparent padding | `?crop` appended to an image path |
