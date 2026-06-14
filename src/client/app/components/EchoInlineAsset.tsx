@@ -42,6 +42,15 @@ const RAW_PLACEHOLDER = `data:image/svg+xml;utf8,${encodeURIComponent(
   RAW_PLACEHOLDER_SVG,
 )}`;
 
+// URLs whose <img> has already fired `load` at least once this session. Echo
+// blob URLs are stable (cached by base path in lib/echo.ts), so once an image
+// has decoded, any later <img> pointed at the same URL paints from the browser's
+// image cache synchronously. Remembering that lets a remounted loader start in
+// the decoded state instead of flashing its spinner for a frame: which is what
+// made preview images blink on every keystroke: typing re-renders the markdown
+// and react-markdown's index-keyed children remount image nodes mid-paragraph.
+const decodedUrls = new Set<string>();
+
 // Renders an image with a same-size spinner overlay until the image has decoded.
 // This prevents layout reflow: the <img> element reserves its final space immediately
 // (once the blob URL is available), and the spinner sits on top until onLoad fires.
@@ -56,7 +65,12 @@ function EchoInlineImageLoader({
   style?: CSSProperties | undefined;
   className?: string | undefined;
 }) {
-  const [decoded, setDecoded] = useState(false);
+  const [decoded, setDecoded] = useState(() => decodedUrls.has(url));
+
+  // A new URL (different asset on the same instance) starts undecoded again.
+  useEffect(() => {
+    setDecoded(decodedUrls.has(url));
+  }, [url]);
 
   return (
     <span
@@ -71,7 +85,10 @@ function EchoInlineImageLoader({
         alt={alt}
         style={{ ...style, visibility: decoded ? "visible" : "hidden" }}
         className={`echo-inline inline-block max-w-full rounded${extraClass ? ` ${extraClass}` : ""}`}
-        onLoad={() => setDecoded(true)}
+        onLoad={() => {
+          decodedUrls.add(url);
+          setDecoded(true);
+        }}
       />
       {!decoded && (
         <span className="absolute inset-0 flex items-center justify-center rounded bg-gray-100/60 min-w-[2rem] min-h-[1.5rem]">

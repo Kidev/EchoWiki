@@ -466,6 +466,7 @@ async function getVoteStatus(
   config: GameConfig,
   callerUsername: string,
   isMod: boolean,
+  postId?: string,
 ): Promise<VoteStatus> {
   const [statusRaw, votesRaw] = await Promise.all([
     redis.get(`voteStatus:${username}`).catch(() => null),
@@ -475,6 +476,43 @@ async function getVoteStatus(
   const statusData: VoteStatusData = statusRaw
     ? (JSON.parse(statusRaw) as VoteStatusData)
     : { status: "active", decidedAt: null, deadlineAt: null, reason: null };
+
+  const showVoter =
+    config.votingShowVoterNames || isMod || callerUsername === username;
+
+  // Once a vote concludes, `concludeVote` deletes the live `votes:<user>` hash
+  // after snapshotting the final tally + voter list into `votingPost:<postId>`.
+  // Reading the (now-empty) hash here would report 0 voters / an empty list even
+  // though the result banner is shown, so fall back to the snapshot. This mirrors
+  // the concluded-vote read path in the voting-init endpoint.
+  if (statusData.status !== "active" && postId) {
+    const snapshotRaw = await redis
+      .get(`votingPost:${postId}`)
+      .catch(() => null);
+    if (snapshotRaw) {
+      const snapshot = JSON.parse(snapshotRaw) as {
+        concluded?: boolean;
+        acceptCount?: number;
+        rejectCount?: number;
+        voters?: VoteEntry[];
+      };
+      if (snapshot.concluded) {
+        const acceptCount = snapshot.acceptCount ?? 0;
+        const rejectCount = snapshot.rejectCount ?? 0;
+        const votes: VoteEntry[] = (snapshot.voters ?? []).map((v) => ({
+          ...v,
+          username: showVoter ? v.username : "",
+        }));
+        return {
+          ...statusData,
+          acceptCount,
+          rejectCount,
+          totalVoters: acceptCount + rejectCount,
+          votes,
+        };
+      }
+    }
+  }
 
   const votes = votesRaw ?? {};
   let acceptCount = 0;
@@ -488,8 +526,6 @@ async function getVoteStatus(
     const votedAt = parseInt(raw.slice(colonIdx + 1), 10);
     if (voteType === "accept") acceptCount++;
     else if (voteType === "reject") rejectCount++;
-    const showVoter =
-      config.votingShowVoterNames || isMod || callerUsername === username;
     voteEntries.push({
       username: showVoter ? voter : "",
       vote: voteType,
@@ -788,41 +824,45 @@ async function cleanupVotingPost(
     ? (JSON.parse(existingRaw) as { username: string; subredditName: string })
     : { username, subredditName: "" };
 
+  // Persist the conclusion snapshot (final tally + voter list, with names) FIRST
+  // and only delete the live `votes:<user>` hash once it has durably landed.
+  // Deleting concurrently risks a window/partial-failure where the result banner
+  // is shown (voteStatus already set above) but the count/voter list read back as
+  // 0 because the live hash is gone and the snapshot never made it. The read path
+  // redacts names when the config / caller isn't allowed to see them.
+  await redis.set(
+    `votingPost:${votingPostId}`,
+    JSON.stringify({
+      ...baseData,
+      concluded: true,
+      status: outcome,
+      decidedAt,
+      reason,
+      decidedBy: decidedBy ?? null,
+      decisionNote: trimmedNote,
+      ...(concludedSuggestion
+        ? {
+            suggestion: {
+              page: concludedSuggestion.page,
+              content: concludedSuggestion.content,
+              description: concludedSuggestion.description,
+              createdAt: concludedSuggestion.createdAt,
+              previousDescriptions: concludedSuggestion.previousDescriptions,
+              baseContent: concludedSuggestion.baseContent,
+            },
+          }
+        : {}),
+      ...(concludedAcceptCount !== undefined
+        ? { acceptCount: concludedAcceptCount }
+        : {}),
+      ...(concludedRejectCount !== undefined
+        ? { rejectCount: concludedRejectCount }
+        : {}),
+      ...(concludedVoters !== undefined ? { voters: concludedVoters } : {}),
+    }),
+  );
+
   await Promise.all([
-    redis.set(
-      `votingPost:${votingPostId}`,
-      JSON.stringify({
-        ...baseData,
-        concluded: true,
-        status: outcome,
-        decidedAt,
-        reason,
-        decidedBy: decidedBy ?? null,
-        decisionNote: trimmedNote,
-        ...(concludedSuggestion
-          ? {
-              suggestion: {
-                page: concludedSuggestion.page,
-                content: concludedSuggestion.content,
-                description: concludedSuggestion.description,
-                createdAt: concludedSuggestion.createdAt,
-                previousDescriptions: concludedSuggestion.previousDescriptions,
-                baseContent: concludedSuggestion.baseContent,
-              },
-            }
-          : {}),
-        ...(concludedAcceptCount !== undefined
-          ? { acceptCount: concludedAcceptCount }
-          : {}),
-        ...(concludedRejectCount !== undefined
-          ? { rejectCount: concludedRejectCount }
-          : {}),
-        // Snapshot the full voter list (with names) before `votes:<user>` is
-        // deleted below, so a concluded vote can still show who voted. The read
-        // path redacts names when the config / caller isn't allowed to see them.
-        ...(concludedVoters !== undefined ? { voters: concludedVoters } : {}),
-      }),
-    ),
     redis.del(`votingPostId:${username}`),
     redis.del(`votes:${username}`),
   ]);
@@ -2705,6 +2745,25 @@ router.delete<
       (v) => v.vote === "reject",
     ).length;
 
+    // Record the self-withdrawal in the contribution audit trail before
+    // dropping the suggestion, so it stays visible in the History tab for both
+    // the author and moderators (recordDecision flags it as "Withdrawn by user"
+    // when the actor is the author). Without this the cancelled suggestion
+    // vanishes from every list with no trace.
+    if (withdrawnSuggestion) {
+      const base = await readPageContent(
+        context.subredditName ?? "",
+        withdrawnSuggestion.page,
+      );
+      await recordDecision(
+        withdrawnSuggestion,
+        base,
+        "denied",
+        username,
+        false,
+      );
+    }
+
     await Promise.all([
       redis.del(`suggestion:${username}`),
       redis.zRem("suggestions", [username]),
@@ -3045,15 +3104,13 @@ router.post<
       const modVotesRaw = await redis
         .hGetAll(`votes:${body.username}`)
         .catch(() => null);
-      let modAcceptCount = 0;
-      let modRejectCount = 0;
-      for (const v of Object.values(modVotesRaw ?? {})) {
-        const colonIdx = v.indexOf(":");
-        if (colonIdx < 0) continue;
-        const voteType = v.slice(0, colonIdx);
-        if (voteType === "accept") modAcceptCount++;
-        else if (voteType === "reject") modRejectCount++;
-      }
+      const modVoters = parseVoteEntries(modVotesRaw);
+      const modAcceptCount = modVoters.filter(
+        (v) => v.vote === "accept",
+      ).length;
+      const modRejectCount = modVoters.filter(
+        (v) => v.vote === "reject",
+      ).length;
       await cleanupVotingPost(
         body.username,
         "accepted",
@@ -3062,7 +3119,7 @@ router.post<
         suggestion,
         modAcceptCount,
         modRejectCount,
-        undefined,
+        modVoters,
         modUsername,
         acceptReason,
       );
@@ -3125,15 +3182,13 @@ router.post<
     const deniedSuggestion = deniedRaw
       ? (JSON.parse(deniedRaw) as WikiSuggestion)
       : null;
-    let denyAcceptCount = 0;
-    let denyRejectCount = 0;
-    for (const v of Object.values(deniedVotesRaw ?? {})) {
-      const colonIdx = v.indexOf(":");
-      if (colonIdx < 0) continue;
-      const voteType = v.slice(0, colonIdx);
-      if (voteType === "accept") denyAcceptCount++;
-      else if (voteType === "reject") denyRejectCount++;
-    }
+    const denyVoters = parseVoteEntries(deniedVotesRaw);
+    const denyAcceptCount = denyVoters.filter(
+      (v) => v.vote === "accept",
+    ).length;
+    const denyRejectCount = denyVoters.filter(
+      (v) => v.vote === "reject",
+    ).length;
 
     if (deniedSuggestion) {
       const base = await readPageContent(subreddit, deniedSuggestion.page);
@@ -3162,7 +3217,7 @@ router.post<
         deniedSuggestion,
         denyAcceptCount,
         denyRejectCount,
-        undefined,
+        denyVoters,
         modUsername,
         denyReason,
       );
@@ -3865,6 +3920,7 @@ router.get<Record<string, never>, CastVoteResponse | ErrorResponse>(
         config,
         voterUsername ?? "anonymous",
         isMod,
+        postId,
       );
       let myVote: VoteValue | null = null;
       if (voterUsername && voterUsername !== "anonymous") {
@@ -4030,6 +4086,7 @@ router.post<
       config,
       voterUsername,
       isMod,
+      postId,
     );
     const newVoteRaw = await redis
       .hGet(`votes:${suggestionUsername}`, voterUsername)
@@ -4815,6 +4872,40 @@ async function runDevSelfTests(caller: string): Promise<DevSelfTestResponse> {
         t.ok(
           leftover == null,
           "the accepted suggestion was cleared from the queue",
+        );
+
+        // Regression: once a threshold concludes the vote, `votes:<user>` is
+        // deleted, so the read path must surface the snapshotted tally + voter
+        // list (else the result banner shows but the count/list reset to 0).
+        const concludedStatus = await getVoteStatus(
+          u,
+          {
+            ...baseConfig,
+            votingAcceptThreshold: 2,
+            votingRejectThreshold: 0,
+            votingShowVoterNames: true,
+          },
+          "selftest-viewer",
+          false,
+          fakePostId,
+        );
+        t.step(
+          `getVoteStatus after accept -> accept=${concludedStatus.acceptCount}, total=${concludedStatus.totalVoters}, voters=${concludedStatus.votes.length}`,
+        );
+        t.eq(
+          concludedStatus.acceptCount,
+          2,
+          "concluded vote still reports the 2 accept votes",
+        );
+        t.eq(
+          concludedStatus.totalVoters,
+          2,
+          "concluded vote still reports 2 total voters",
+        );
+        t.eq(
+          concludedStatus.votes.length,
+          2,
+          "concluded vote still lists both voters",
         );
       },
     );

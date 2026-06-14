@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useLayoutEffect, useState, type CSSProperties } from "react";
 import { proxiedImageUrl } from "../assetUtils";
 
 // Remote http(s) images can't be loaded by a bare `<img src>` in the Reddit
@@ -8,25 +8,29 @@ import { proxiedImageUrl } from "../assetUtils";
 // blob object URL, and point the <img> at that: the same blob-URL strategy the
 // echo:// asset pipeline uses (see lib/echo.ts).
 
-// Session cache: a given remote src resolves to one blob URL we keep alive for
-// the session (mirrors echo's blobUrlCache) so re-renders don't refetch/flicker.
-const remoteBlobCache = new Map<string, string>();
-const remoteInflight = new Map<string, Promise<string | null>>();
+// Session cache: a given remote src resolves to one decoded Blob we keep alive
+// for the session so re-renders don't refetch. We deliberately cache the Blob
+// (not an object URL): the side-by-side vote preview mounts the same image in
+// both panes, and a single shared `blob:` URL handed to two concurrently-loading
+// <img> elements fails to render in the Reddit webview (the second one falls back
+// to its alt text). Each RemoteImage instance instead mints: and owns its own
+// object URL from the shared Blob, so the panes never contend over one URL.
+const remoteBlobCache = new Map<string, Blob>();
+const remoteInflight = new Map<string, Promise<Blob | null>>();
 
-async function loadRemoteImage(src: string): Promise<string | null> {
+async function loadRemoteBlob(src: string): Promise<Blob | null> {
   const cached = remoteBlobCache.get(src);
   if (cached) return cached;
 
   let pending = remoteInflight.get(src);
   if (!pending) {
-    pending = (async (): Promise<string | null> => {
+    pending = (async (): Promise<Blob | null> => {
       try {
         const res = await fetch(proxiedImageUrl(src));
         if (!res.ok) return null;
         const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        remoteBlobCache.set(src, url);
-        return url;
+        remoteBlobCache.set(src, blob);
+        return blob;
       } catch {
         return null;
       } finally {
@@ -87,33 +91,46 @@ export function RemoteImage({
   style?: CSSProperties | undefined;
   className?: string | undefined;
 }) {
-  const [url, setUrl] = useState<string | null>(
-    () => remoteBlobCache.get(src) ?? null,
-  );
+  const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
-  const mountedRef = useRef(true);
 
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
+  // Mint a fresh object URL from the (cached) Blob for THIS instance and revoke
+  // it on unmount / src change, so each <img> owns an independent URL. See the
+  // remoteBlobCache note above for why the URL isn't shared across instances.
+  //
+  // Runs as a layout effect (pre-paint) so that when the Blob is ALREADY in the
+  // session cache: e.g. this image is being remounted because typing in the
+  // editor re-rendered the markdown preview: the URL is set before the browser
+  // paints, and the spinner never shows for a frame. That one-frame spinner was
+  // the visible "flash" while typing. A genuine cache miss still falls back to
+  // the async fetch (and shows the spinner once, as intended).
+  useLayoutEffect(() => {
+    let objectUrl: string | null = null;
+    let cancelled = false;
 
-  useEffect(() => {
     const cached = remoteBlobCache.get(src);
     if (cached) {
-      setUrl(cached);
+      objectUrl = URL.createObjectURL(cached);
+      setUrl(objectUrl);
       setFailed(false);
-      return;
+    } else {
+      setUrl(null);
+      setFailed(false);
+      void loadRemoteBlob(src).then((blob) => {
+        if (cancelled) return;
+        if (!blob) {
+          setFailed(true);
+          return;
+        }
+        objectUrl = URL.createObjectURL(blob);
+        setUrl(objectUrl);
+      });
     }
-    setUrl(null);
-    setFailed(false);
-    void loadRemoteImage(src).then((resolved) => {
-      if (!mountedRef.current) return;
-      if (resolved) setUrl(resolved);
-      else setFailed(true);
-    });
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
   }, [src]);
 
   if (failed) {
@@ -130,5 +147,13 @@ export function RemoteImage({
       </span>
     );
   }
-  return <img src={url} alt={alt} style={style} className={className} />;
+  return (
+    <img
+      src={url}
+      alt={alt}
+      style={style}
+      className={className}
+      onError={() => setFailed(true)}
+    />
+  );
 }

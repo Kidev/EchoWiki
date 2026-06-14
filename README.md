@@ -1,12 +1,11 @@
 ![EchoWiki](https://raw.githubusercontent.com/Kidev/EchoWiki/refs/heads/main/assets/echo-wiki.svg)
 
-[Watch all the features in the demo video](https://youtu.be/OOgn59yKN_I "EchoWiki features demo video")
-
 EchoWiki turns a subreddit wiki into a proper editing and reading environment. Moderators write and update pages inside the app with a live Markdown preview. Readers get richer formatting than Reddit's native wiki. Contributors can propose changes that moderators review before merging, and optionally the community votes on whether to accept each suggestion. For game communities specifically, the app resolves special `echo://` links to in-game assets that each reader loads from their own copy of the game. No files are uploaded anywhere, so the original work's copyright is respected.
 
 ## Contents
 
 - [Wiki](#wiki)
+  - [Easy Integration](#easy-integration)
   - [Live Editor](#live-editor)
   - [Page Management](#page-management)
   - [Breadcrumb Navigation](#breadcrumb-navigation)
@@ -26,7 +25,7 @@ EchoWiki turns a subreddit wiki into a proper editing and reading environment. M
   - [Supported Engines](#supported-engines)
 - [Asset Browser](#asset-browser)
 - [Moderator Permissions](#moderator-permissions)
-- [Moderator Settings](#moderator-settings)
+- [Settings](#settings)
   - [General](#general)
   - [Game](#game)
   - [Style](#style)
@@ -39,9 +38,11 @@ EchoWiki turns a subreddit wiki into a proper editing and reading environment. M
 
 ## Wiki
 
+![EchoWiki](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/echowiki.png)
+
 EchoWiki is a renderer on top of your subreddit's **own** native Reddit wiki, not a separate store. Every page is fetched live from the subreddit wiki (`reddit.com/r/<subreddit>/wiki`) via the Reddit API and rendered inside the app with a full Markdown engine. Saving a page from the app writes straight back to that same wiki, so the two stay in sync.
 
-Because the data lives in the real wiki, you keep everything Reddit already gives you for it: the **full revision history** of every page (with author and reason for each edit) is visible at `reddit.com/r/<subreddit>/wiki/revisions` (and now also from inside the app, see [Page Management](#page-management)). New pages can be created in-app by moderators with the **+ Add page** action, or the normal Reddit way (visit the page's wiki URL on Reddit and create it, or link to it from an existing EchoWiki page) and they show up in the app. EchoWiki never hides or replaces the underlying wiki; it just gives it a richer reading and editing surface.
+Because the data lives in the real wiki, you keep everything Reddit already gives you for it: the **full revision history** of every page (with author and reason for each edit) is visible at `reddit.com/r/<subreddit>/wiki/revisions` (and also from inside the app, see [Page Management](#page-management)). New pages can be created in-app by moderators with the **+ Add page** action, or the normal Reddit way (visit the page's wiki URL on Reddit and create it, or link to it from an existing EchoWiki page) and they show up in the app. EchoWiki never hides or replaces the underlying wiki; it just gives it a richer reading and editing surface.
 
 Easy and powerful custom formatting based on Markdown:
 
@@ -56,9 +57,7 @@ Easy and powerful custom formatting based on Markdown:
 
 Navigation uses a breadcrumb bar that slides down from the top when hovering the Wiki tab (see [Breadcrumb Navigation](#breadcrumb-navigation)), with sibling-page dropdowns, a full page index, the edit/suggest action, and moderator page tools all anchored to it.
 
-**For more details, [watch the demo video](https://youtu.be/OOgn59yKN_I "EchoWiki features demo video")**
-
-### Easy integration
+### Easy Integration
 
 ![integration](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/modmenu.png)
 
@@ -66,30 +65,43 @@ Create and set up the wiki for your subreddit from the moderator menu: it create
 
 ### Live Editor
 
-![editor](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/editor.png)
+![editor](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/live-editor.gif)
 
 Moderators can edit wiki pages directly inside the app. The **Edit page** button lives on the [breadcrumb bar](#breadcrumb-navigation) (right side); it collapses to a pen icon when space is tight and follows the breadcrumb's visibility. Clicking it opens the editor, where the Markdown source sits next to a live preview that updates as you type. From the collapsed inline view the same button pops the app out to the expanded editor.
 
 The source pane has **syntax highlighting** for EchoWiki's Markdown dialect: headings, links, blockquotes, list markers, `:::` block fences and phase separators, `echo://` links, and `key=value` block params are all colored as you type (the same highlighter colors the read-only **Source** review panes). A **Scroll lock** toggle above the source, on by default, keeps the two panes aligned: it anchors them on matching headings so the source follows the preview (and vice-versa) to the same section rather than yoking the scrollbars by raw proportion. Toggle it off to scroll each pane independently.
 
-An **Insert** toolbar above the editor builds the trickier syntax for you: dialogs for inserting an image (with an asset picker and an inline emoji-size mode), an interactive 3D model, an infobox, a layered scene, a frame-by-frame or moving animation, and `:::def` path aliases, plus quick buttons for centered text, bold, italic, inline code, and a table template.
+![editor](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/insert.png)
 
-Saving requires a short description of the change (at least 10 characters). When collaborative mode and voting are both enabled, the save dialog shows a "Bypass public vote" checkbox, unchecked by default: leaving it unchecked sends the edit through the suggestion and voting flow, while checking it writes straight to the wiki without a vote post.
+An **Insert** toolbar above the editor builds the trickier syntax for you: dialogs for inserting an image (with an asset picker and an inline emoji-size mode), an interactive 3D model, a card, an infobox, a layered scene, a frame-by-frame or moving animation, and `:::def` path aliases, plus quick buttons for centered text, bold, italic, inline code, and a table template.
+
+Saving requires a short description of the change (at least 10 characters). When collaborative mode and voting are both enabled, the save dialog shows a "Bypass public vote" checkbox to moderators, unchecked by default: leaving it unchecked sends the edit through the suggestion and voting flow, while checking it writes straight to the wiki without a vote post.
 
 When saving directly, the reason is prefixed with the moderator's username and stored in the Reddit wiki revision history. Navigating away while editing prompts for confirmation before discarding changes.
+
+Unsaved work also survives the app closing: as you type, the editor auto-saves your changes to a private **draft** on the server. Each user keeps one draft at a time, for either a direct edit or a suggestion. Reopen the page and EchoWiki offers to **resume** the draft or discard it and start fresh; if the draft belongs to another page, it points you there instead, since only one can be open at once. Drafts are kept for 30 days, and one started as a direct edit becomes a suggestion automatically if you no longer have edit rights when you resume it.
 
 Inside the editor, a **Delete page** button (moderators, direct-edit mode, never the index) is a press-and-hold control: hold it for three seconds, watching it fill, and a confirmation dialog opens that requires typing the page's path to proceed. Reddit has no true wiki delete, so "delete" tombstones the page content, unlists it, and removes its link from the index; the Reddit revision history is preserved.
 
 ### Page Management
 
+![page-management](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/page-management.png)
+
 Several page-level tools live on the [breadcrumb bar](#breadcrumb-navigation):
 
 - **Index dropdown (everyone)**: the first breadcrumb crumb opens a scrollable list of every wiki page, including orphaned and unlisted ones, for quick navigation. Right-click any entry to copy its `echolink://`.
+
 - **+ Add page (moderators)**: from the moderator actions menu, creates a child page of the current page from a title, seeds it with a heading, links it from the index so it is not orphaned, and opens it.
+
 - **History (moderators)**: opens the page's Reddit revision history (author, timestamp, and reason for each of the most recent revisions). Each revision has a **Diff** button that shows a side-by-side comparison of that revision against the previous one (the oldest revision is compared against an empty page).
+
+  ![editor](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/history.png)
+
 - **Delete page**: see the [Live Editor](#live-editor) above.
 
 ### Breadcrumb Navigation
+
+![breadcrumb](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/breadcrumb.png)
 
 The breadcrumb bar slides down (and fades) from the top when hovering the Wiki tab, showing the path to the current page. It packs a lot into one line:
 
@@ -98,15 +110,19 @@ The breadcrumb bar slides down (and fades) from the top when hovering the Wiki t
 - The **Edit page** / **Suggest change** action and the moderator **page actions menu** (+ Add page, History) sit on the right of the bar.
 - When the trail is too long to fit alongside the buttons, the **start of the path is elided** (faded) so the current page and the action buttons always stay visible.
 
+### Section Links
+
 Every heading has a copy-link button that appears on hover. Clicking it copies an `echolink://` URL pointing to that specific section. These links can be shared with other users of the same subreddit's EchoWiki. To open one, use the link icon in the top bar to open the EchoLink dialog, then paste the URL. When opened from a wiki page, the dialog also shows the **current page's `echolink://`** with a one-click copy button. It also accepts `echo://` asset paths to jump directly to a file in the asset browser.
 
 ### Remote Images
+
+![remote images](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/remote.png)
 
 Beyond game assets, ordinary remote images embed with standard Markdown pointing at a normal URL: `![alt](https://i.imgur.com/example.png)`. These need no game import and work on any page, game-backed or not.
 
 Reddit's webview cannot load images from external origins directly, so EchoWiki **relays them through its own server**: the server fetches the image and streams the bytes back to the reader's browser same-origin. Nothing is stored or re-hosted; the server only proxies the bytes for that one request (the response is cacheable by the browser).
 
-Because the relay is the only way out, remote images only work from an **allowlist of trusted hosts**. The list is the set of domains the app is configured to reach (`i.imgur.com`, `raw.githubusercontent.com`, and `github.com` out of the box); an image from any other host is refused. The [live editor](#live-editor) helps here: as you type, an `![...](...)` whose host is not on the allowlist is **flagged in red with a wavy underline**, so you know it will not load before you save. `echo://` assets, `data:` URIs, and relative links are never flagged.
+Because the relay is the only way out, remote images only work from an **allowlist of trusted hosts**. This covers Reddit's own domains and [Reddit's global fetch allowlist](https://developers.reddit.com/docs/capabilities/http-fetch#global-fetch-allowlist), plus a few EchoWiki adds out of the box (`i.imgur.com`, `raw.githubusercontent.com`, and `github.com`); an image from any other host is refused. The [live editor](#live-editor) helps here: as you type, an `![...](...)` whose host is not on the allowlist is **flagged in red with a wavy underline**, so you know it will not load before you save. `echo://` assets, `data:` URIs, and relative links are never flagged.
 
 ## Collaborative Editing
 
@@ -114,23 +130,19 @@ When collaborative mode is enabled, users who meet the subreddit's eligibility t
 
 ### Suggestions
 
-![Suggestions](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/suggestions.png)
+![Suggestion](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/suggestion.gif)
 
-Suggesting a change opens the same editor as the moderator editor, with three ways to preview your work:
-
-- **Normal**: live rendered Markdown of the suggested content
-- **Source**: the raw Markdown of the suggestion
-- **Diff**: a side-by-side comparison of the current page and the suggestion, with changed text highlighted character by character (removed in red, added in green) and unchanged stretches collapsed
+Suggesting a change opens the same editor moderators use, with a live preview of the rendered Markdown on the left and the source editor on the right.
 
 Submitting requires a description of what changed (at least 10 characters). The suggestion is then queued for moderator review or community voting, depending on configuration.
 
-A user can update their pending suggestion from the Contributions tab. Each update resets any votes already cast on the suggestion. The maximum number of updates and the minimum time between updates are both configurable in moderator settings.
+A user can update their pending suggestion from the Contributions tab. Each update resets any votes already cast on the suggestion. The maximum number of updates and the minimum time between updates are both configurable in the settings.
 
 ### Voting
 
-![Vote](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/vote.png)
+![Vote](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/voting.gif)
 
-When voting is enabled, submitting a suggestion creates a separate Reddit post where community members cast votes. The voting post embeds the same side-by-side comparison as the editor (Normal / Source / Diff modes) so voters can review exactly what is changing, then vote **✓ FOR** or **✗ AGAINST**; clicking the chosen side again retracts the vote. Running tallies, the thresholds, and the time remaining are shown along the top.
+When voting is enabled, submitting a suggestion creates a separate Reddit post where community members cast votes. The voting post embeds a side-by-side comparison of the current page and the suggestion, switchable between Normal, Source, and Diff views, so voters can review exactly what is changing, then vote **✓ FOR** or **✗ AGAINST**; clicking the chosen side again retracts the vote. Running tallies, the thresholds, and the time remaining are shown along the top.
 
 A suggestion is finalized automatically when any of the following conditions are met:
 
@@ -140,15 +152,19 @@ A suggestion is finalized automatically when any of the following conditions are
 
 A minimum number of voters can be required before the time-based threshold applies. The suggestion author cannot vote on their own suggestion. Voter eligibility (karma and account age) is configurable separately from contributor eligibility.
 
+![Vote](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/comment.png)
+
 The voting post includes a pinned bot comment that records vote events: when the vote opened, when the suggestion was updated, and when the vote concluded with the outcome and reason. The comment is updated as events occur, and the post is locked once the vote concludes.
 
 Voting posts are public, so a voter who has not imported the game can still review the change: the import prompt on a voting post offers a **Continue without assets** option. Choosing it opens the suggestion with its text and Diff fully readable, while `echo://` references render as inert placeholders rather than resolved assets. The choice is session-only and is never persisted, so each visit opts in again.
 
 ### Moderator Review
 
-![Suggestions moderator](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/suggestions-mod.png)
+![Suggestions moderator](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/moderator-review.gif)
 
-Moderators with "wiki" or "config" permissions see a **Contributions** tab (formerly "Submissions"). Its **Pending** sub-tab lists all pending suggestions, each with the contributor, target page, description, and vote status if voting is enabled. Clicking Review opens a full-screen modal comparing the current page (left) and the suggestion (right), with the same Normal / Source / Diff modes as the editor; either column can be collapsed by clicking its label.
+Moderators with "wiki" or "config" permissions see a **Contributions** tab. Its **Pending** sub-tab lists all pending suggestions, each with the contributor, target page, description, and vote status if voting is enabled. Clicking Review opens a full-screen modal comparing the current page (left) and the suggestion (right), switchable between Normal, Source, and Diff views.
+
+![Suggestions moderator](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/pending-contributions.png)
 
 Moderators can Accept or Deny from the review modal, or Deny a suggestion straight from the list, at any time and regardless of the vote result. When a voting post exists, a link to it is shown. Accepting writes the suggested content to the Reddit wiki with the contributor's username in the revision reason.
 
@@ -161,7 +177,12 @@ The Contributions tab's **History** sub-tab is an audit trail of decided suggest
 Visibility depends on the role:
 
 - **Contributors** see only their own decided suggestions, and only _that_ a moderator acted, not which one (moderator identities are redacted).
+
+  ![History contributions](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/contributions-history-user.png)
+
 - **Moderators** see every decision in full detail, including which moderator approved or denied each one and which were decided by community vote.
+
+  ![History contributions](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/history-contributions.png)
 
 Moderators can act on a past decision from the History list, without erasing it: the entry stays and instead moves to the top, logging each new state (e.g. "denied by X", then "approved post-mortem by Y"):
 
@@ -189,9 +210,17 @@ Echo links are standard Markdown image or link syntax using the `echo://` scheme
 
 Images render inline, audio files become a native player, and 3D models open an interactive WebGL viewer. Users who have imported their copy of the game see assets resolved inline. Everyone else, including those reading the raw wiki on Reddit, sees only the alt text. Nothing is uploaded to any server.
 
+![Asset edit](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/image.png)
+
+![Asset edit](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/audio.png)
+
+![Asset edit](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/3d1.png)
+
 ### Asset Editions
 
-![Asset edit](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/asset-edit.png)
+![Asset edit](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/asset-edit1.png)
+
+![Sprites](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/sprites.png)
 
 Echo links support edition parameters that transform how assets are displayed, using URL query-parameter syntax appended to the path. Editions are applied client-side in real-time.
 
@@ -209,11 +238,13 @@ Editions combine with `&`:
 ![Battle theme fast](echo://audio/bgm/battle.ogg?speed=2.0&pitch=-3)
 ```
 
+Two further **display hints** change how an inline image sits in the surrounding text rather than the pixels themselves: `?emoji` shrinks the image to the height of the text so it reads as an inline icon, and `?outline` draws a dashed accent-colored outline around it. They are appended exactly like editions and combine with editions and with each other (e.g. `echo://img/icons/coin.png?crop&emoji`).
+
+![Sprites](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/asset-edit2.png)
+
+![Sprites](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/asset-edit3.png)
+
 The asset preview lightbox includes interactive controls for applying editions. The generated echo link (copied via the copy button) includes the active edition suffixes.
-
-![Audio](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/audio.png)
-
-![Sprites](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/sprites.png)
 
 ### 3D Models
 
@@ -222,7 +253,7 @@ The asset preview lightbox includes interactive controls for applying editions. 
 Interactive 3D models are a first-class echo asset, embedded with the same Markdown image syntax as a picture:
 
 ```markdown
-![King statue](echo://meshes/king.glb)
+![King statue](echo://meshes/weapon.glb)
 ```
 
 The model loads in an inline WebGL viewer (powered by three.js): drag to orbit, scroll to zoom, and use the corner buttons to auto-rotate or reset the view. Display hints can be appended to the path like editions and combined with `&`:
@@ -230,14 +261,18 @@ The model loads in an inline WebGL viewer (powered by three.js): drag to orbit, 
 | Hint            | Syntax                     | Description                                                 |
 | --------------- | -------------------------- | ----------------------------------------------------------- |
 | **Auto-rotate** | `?autorotate`              | Start the model slowly spinning (alias `?spin`)             |
-| **Height**      | `?height=400px`            | Viewer height (alias `?h`)                                  |
-| **Width**       | `?width=80%`               | Viewer width (alias `?w`)                                   |
+| **Width**       | `?width=60%`               | Viewer width as a share of the container (alias `?w`)       |
+| **Height**      | `?height=75%`              | Viewer height as a share of its width (alias `?h`)          |
 | **Background**  | `?bg=111`                  | Background color, hex (the `#` is added for you)            |
 | **Texture**     | `?texture=img/diffuse.png` | Use an imported image as the model's texture (alias `?tex`) |
 
+Percentages keep the viewer responsive (`100%` height is square, `50%` a 2:1 landscape, `200%` a 1:2 portrait); fixed pixel sizes like `?width=350px&height=400px` also work for an exact footprint.
+
 ```markdown
-![King statue](echo://meshes/king.glb?spin&height=420px&bg=151515)
+![King statue](echo://meshes/obelisk.glb?spin&width=60%&bg=151515)
 ```
+
+![Models](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/3d3.gif)
 
 Supported formats are `glb`, `gltf`, `obj`, `stl`, `ply`, `fbx`, `dae` (Collada), and `3mf`. GLB is recommended because it packs geometry and textures into a single self-contained file; formats that rely on sibling `.mtl` or texture files render geometry only. When a model loads untextured, the `?texture=` hint, or the **Texture** field in the asset browser's model preview, applies any imported image as its texture. That field also accepts a Markdown link pasted straight from another asset's copy button (e.g. `![diffuse](echo://img/diffuse.png)`), stripping it down to the `echo://` path automatically, so a texture can be grabbed from the browser and dropped onto a model without hand-editing the path.
 
@@ -263,9 +298,11 @@ A short character blurb beside the portrait.
 :::
 ```
 
-**`:::infobox`** renders a classic stat-table infobox: an optional title header and image on top of a list of `Label | value` rows, floated to one side of the page. Values support inline Markdown links and `<br>` for multi-line cells.
+![Infobox](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/card1.png)
 
-![Infobox](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/card.png)
+![Infobox](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/card2.png)
+
+**`:::infobox`** renders a classic stat-table infobox: an optional title header and image on top of a list of `Label | value` rows, floated to one side of the page. Values support inline Markdown links and `<br>` for multi-line cells.
 
 ```
 :::infobox title="Character Name" image=echo://img/faces/hero.png align=right
@@ -275,17 +312,19 @@ Weapon | Echo Blade
 :::
 ```
 
+![Infobox](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/card.png)
+
 **`:::scene`** stacks images at absolute positions over a background. `bg:` is the background layer, `layer:` places a sprite at custom CSS coordinates (append `bottom=`, `left=`, `height=`, etc., or `size=` to pin its width as a fraction of the background so it scales with the scene), and `fg:` is a foreground overlay with `pointer-events: none`. The background is composed at its natural size and scaled to fit `width`/`height` without ever being cropped, so the whole image is always visible; size layers in `%` so they scale with it. Like `:::fbf` and `:::anim`, a scene can be centered by wrapping it in `>>> ... <<<`.
 
 ![Scene](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/scene.png)
 
 **`:::fbf`** (frame by frame) cycles through sprite frames using CSS opacity animation. List one `echo://` path per line. Use `fps` to set playback speed, `size` for the box pixel dimensions, and `alias=name` to name the block for use in `:::anim`.
 
-![Scene](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/animations.gif)
+![Scene](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/fbf.gif)
 
 **`:::anim`** moves a sprite across a background scene. Reference an `:::fbf` block via `ref=alias`, or supply frames inline. Define the movement path as one or more keyframe lines (`N% key=value ...`).
 
-![Scene](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/animate.gif)
+![Scene](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/animation.gif)
 
 | Param              | Default | Description                                                                                                                                                                                                                                                                                           |
 | ------------------ | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -313,9 +352,9 @@ echo://img/characters/actor.png?sprite=12,8,1
 :::
 ```
 
-**Multi-phase animations** swap the sprite mid-loop: add `---` separators inside `:::anim`, each with its own frames and movement keyframes (and optional `fps`, `spritesize`, `loops`, `duration`, `hold`). They composite into one seamless loop: e.g. a right-facing walk left-to-right, then a left-facing walk back: so the character always faces the way it is walking.
+![Scene](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/fbf-anim.gif)
 
-![Scene](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/animate-blocs.gif)
+**Multi-phase animations** swap the sprite mid-loop: add `---` separators inside `:::anim`, each with its own frames and movement keyframes (and optional `fps`, `spritesize`, `loops`, `duration`, `hold`). They composite into one seamless loop: e.g. a right-facing walk left-to-right, then a left-facing walk back: so the character always faces the way it is walking.
 
 ```
 :::anim width=75% height=50% bg=echo://img/parallaxes/bg.png?crop bgopacity=1
@@ -336,6 +375,8 @@ echo://img/characters/actor.png?sprite=12,8,13
 :::
 ```
 
+![Scene](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/animations.gif)
+
 **`:::def`** defines reusable aliases for long echo paths. List `name = echo://path` lines inside the block, then reference them anywhere on the page as `echo://~name`.
 
 ```
@@ -349,9 +390,7 @@ theme = echo://audio/bgm/battle.ogg
 
 Content can also be centered with `>>>content<<<`, which wraps anything between the markers in a centered div.
 
-![Images](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/center-img.png)
-
-Inline echo images accept two display hints appended like editions: `?emoji` shrinks the image to the height of the surrounding text so it reads as an inline icon, and `?outline` draws a dashed accent-colored outline around it. They combine with editions and with each other.
+![Images](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/image-center.png)
 
 The file [docs/showcase.md](https://github.com/Kidev/EchoWiki/blob/main/docs/showcase.md) in the repository is a full showcase of all these features with live examples.
 
@@ -363,7 +402,9 @@ If no game is configured, EchoWiki runs as a plain wiki: there is no "Import gam
 
 ### Supported Engines
 
-Engine detection is automatic. EchoWiki reads the biggest modern general-purpose engines, Unity, Unreal, and Godot, directly from their packaged data.
+![engines](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/engines.png)
+
+Engine detection is automatic. EchoWiki reads the biggest modern general-purpose engines, Unity, Unreal, and Godot, directly from their packaged data. Many more are also supported! If yours doesn't work or if you have issues with assets, report this issue from `Settings` in the `General` tab.
 
 #### **Unity**
 
@@ -409,6 +450,8 @@ When forcing the engine in the [Game settings](#game), the choices are: **Auto-d
 
 A gallery view with filter tabs (Images, Audio, and a Models tab that appears once the game ships 3D assets) and subfolder navigation. Each card has a copy button that copies its echo Markdown to the clipboard (Ctrl/Cmd+click copies the link with the original, unmapped filename instead). When a filename mapping is configured, cards display their mapped names. A "Load more" button pages in additional assets on demand.
 
+![browser](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/assets-details.png)
+
 Clicking any asset opens a full preview: an image lightbox, an audio player with a waveform you can click to seek, or the interactive 3D model viewer (with a **Texture** field for retexturing models). The lightbox carries interactive [edition](#asset-editions) controls (crop, sprite-cell picker, audio speed and pitch); the copy button there bakes the active editions into the link, and right-clicking the preview copies it directly.
 
 ## Moderator Permissions
@@ -437,7 +480,7 @@ Config is a superset of Wiki: a config moderator can do everything a wiki modera
 | Collaborative settings (eligibility, flairs, bans)       | Config            |
 | Voting settings                                          | Config            |
 
-## Moderator Settings
+## Settings
 
 The Settings tab is visible only to **config**-level moderators (see [Moderator Permissions](#moderator-permissions)). **Wiki**-level moderators can edit, add, and delete wiki pages and use the Contributions tab, but not the Settings tab.
 
@@ -447,7 +490,8 @@ The Settings tab is visible only to **config**-level moderators (see [Moderator 
 
 - **Wiki Title**: Displayed on the home screen below the logo. Leave empty for default.
 - **Wiki Description**: Short text shown below the title.
-- **Reddit Wiki moderation page**: A shortcut that opens the subreddit's underlying Reddit wiki moderation page (`reddit.com/mod/<subreddit>/wiki`), for revision management and settings that live on Reddit itself. The running app version is shown beneath it.
+- **Reddit Wiki moderation page**: A shortcut that opens the subreddit's underlying Reddit wiki moderation page (`reddit.com/mod/<subreddit>/wiki`), for revision management and settings that live on Reddit itself.
+- **Report issue**: Opens the EchoWiki feedback page in the browser to report a bug or share feedback about the app. The running app version is shown beneath it.
 
 ### Game
 
@@ -502,7 +546,7 @@ return {
 - **Wiki Font Size**: Small, Normal, or Large.
 - **Font**: System, Serif, Mono, or Subreddit (uses the subreddit's configured font).
 - **Home Background**: Ripple animation, subreddit banner, both, or none.
-- **Home Logo**: EchoWiki logo or subreddit icon.
+- **Home Logo**: EchoWiki logo static, EchoWiki animated logo, or subreddit icon.
 
 ### Theme
 
@@ -573,4 +617,4 @@ All game files are processed locally in the browser using IndexedDB. No assets a
 
 [EchoWiki is available on GitHub](https://github.com/Kidev/EchoWiki)
 
-> _An echo is never a copy, it is a sound that returns to those who were there to make it. An `echo://` link stores no game file anywhere; it is a call that resolves inside the reader's own browser. Players who own the game hear the echo and see the art; everyone else sees only its name. The wiki speaks, and each player's own copy answers._
+> *A wiki that doesn't store assets but echoes them*

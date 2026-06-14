@@ -73,9 +73,9 @@ Combine `?speed=` and `?pitch=` to shift playback:
 Interactive 3D models embed with the **same image syntax** as a picture. The model loads in a small WebGL viewer: drag to orbit, scroll to zoom, and use the buttons in the corner to auto-rotate or reset the view.
 
 ```echo
-![1.glb](echo://models/1.glb?autorotate&width=350px)
+![1.glb](echo://models/1.glb?autorotate&width=50%)
 ```
->>>![1.glb](echo://models/1.glb?autorotate&width=350px)<<<
+>>>![1.glb](echo://models/1.glb?autorotate&width=50%)<<<
 
 > [!NOTE]
 > Unlike the image examples on this page, 3D models only appear for games that actually ship 3D assets (Unity, Unreal, Godot). *The Coffin of Andy and Leyley* is a 2D RPG Maker game, so the model paths in this section will not resolve in its demo. Swap in an `echo://` model path from your own asset browser.
@@ -96,17 +96,17 @@ When a model loads untextured (e.g. an OBJ whose materials live in external file
 
 ```echo
 >>>
-![](echo://models/obelisk_1_polysurface17_2.glb?width=450px&spin)
-![](echo://models/obelisk_1_polysurface17_2.glb?texture=echo://textures/obeliskkingsky_dif.png&width=450px&bg=#99ffff&spin)
+![](echo://models/obelisk_1_polysurface17_2.glb?width=40%)
+![](echo://models/obelisk_1_polysurface17_2.glb?texture=echo://textures/obeliskkingsky_dif.png&width=40%&bg=#99ffff&spin)
 <<<
 ```
 
 >>>
-![](echo://models/obelisk_1_polysurface17_2.glb?width=450px&spin)
-![](echo://models/obelisk_1_polysurface17_2.glb?texture=echo://textures/obeliskkingsky_dif.png&width=450px&bg=#99ffff&spin)
+![](echo://models/obelisk_1_polysurface17_2.glb?width=40%)
+![](echo://models/obelisk_1_polysurface17_2.glb?texture=echo://textures/obeliskkingsky_dif.png&width=40%&bg=#99ffff&spin)
 <<<
 
-The asset browser's model preview has a matching **Texture** field; whatever you set there is baked into the link it copies. You don't have to type the path by hand: open an image in the asset browser, hit its copy button, and paste the result straight into the Texture field. A pasted Markdown link like `![diffuse](echo://img/king_diffuse.png)` is trimmed down to its `echo://` path automatically and applied right away, so retexturing a model is a copy-then-paste.
+The asset browser's model preview has a matching **Texture** field; whatever you set there is baked into the link it copies. You don't have to type the path by hand: open an image in the asset browser, hit its copy button, and paste the result straight into the Texture field. A pasted Markdown link like `![diffuse](echo://textures/obeliskkingsky_dif.png)` is trimmed down to its `echo://` path automatically and applied right away, so retexturing a model is a copy-then-paste.
 
 The viewer is lazy-loaded: the three.js runtime and the loader for a given format are only downloaded the first time a reader opens a model, so pages without 3D content carry no extra weight.
 
