@@ -1084,7 +1084,17 @@ export function SettingsView({
   onConfigChanged: (config: GameConfig) => void;
 }) {
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
+  const [devMenuHidden, setDevMenuHidden] = useState(devMenuHiddenForSession);
   const [editingMode, setEditingMode] = useState<"light" | "dark">("light");
+
+  // Hide the Dev tab for the rest of the session (until app restart). Used from
+  // a demo "Hide" control inside the Dev panel; falls back to the General tab so
+  // we never leave the now-removed Dev tab selected.
+  const hideDevMenu = useCallback(() => {
+    devMenuHiddenForSession = true;
+    setDevMenuHidden(true);
+    setSettingsTab("general");
+  }, []);
   const [gameTitle, setGameTitle] = useState(config.gameName);
   const [wikiTitleField, setWikiTitleField] = useState(config.wikiTitle);
   const [wikiDescriptionField, setWikiDescriptionField] = useState(
@@ -1267,8 +1277,9 @@ export function SettingsView({
     { value: "collaborative", label: "Collaborative" },
     { value: "voting", label: "Voting" },
     // The self-test harness is only meaningful (and only authorized server-side)
-    // on the dev subreddit, so the tab is hidden everywhere else.
-    ...(subredditName === DEV_SUBREDDIT
+    // on the dev subreddit, so the tab is hidden everywhere else. It can also be
+    // hidden on demand for the rest of the session via the Dev panel's "Hide".
+    ...(subredditName === DEV_SUBREDDIT && !devMenuHidden
       ? [{ value: "dev" as const, label: "Dev" }]
       : []),
   ];
@@ -1729,11 +1740,16 @@ return { path: parent + '/' + name.toLowerCase(), data: await file.arrayBuffer()
           />
         )}
 
-        {settingsTab === "dev" && <DevTestsPanel />}
+        {settingsTab === "dev" && <DevTestsPanel onHide={hideDevMenu} />}
       </div>
     </>
   );
 }
+
+// Whether the Dev tab has been hidden for the current session. Module-level so
+// it survives SettingsView remounts (closing/reopening settings) but resets to
+// `false` on app restart (page reload): the hide is purely for demos.
+let devMenuHiddenForSession = false;
 
 // Dev-only in-situ regression harness. Runs the server-side `/api/dev/selftest`
 // suite (contribution / voting / wiki / permission checks) against the live dev
@@ -1741,7 +1757,7 @@ return { path: parent + '/' + name.toLowerCase(), data: await file.arrayBuffer()
 // subreddit; the endpoint independently re-checks that and moderator status.
 const testKey = (group: string, name: string) => `${group}::${name}`;
 
-function DevTestsPanel() {
+function DevTestsPanel({ onHide }: { onHide: () => void }) {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<DevSelfTestResponse | null>(null);
@@ -1915,6 +1931,18 @@ function DevTestsPanel() {
           ))}
         </div>
       )}
+
+      <div className="mt-2 pt-3 border-t border-gray-100 flex flex-col gap-1.5">
+        <button
+          onClick={onHide}
+          className="self-start text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-[var(--text)] transition-colors cursor-pointer hover:bg-[var(--thumb-bg)]"
+        >
+          Hide Dev menu
+        </button>
+        <span className="text-[10px] text-[var(--text-muted)] leading-snug">
+          Hides the Dev tab until the app is restarted (reloaded). For demos.
+        </span>
+      </div>
     </div>
   );
 }

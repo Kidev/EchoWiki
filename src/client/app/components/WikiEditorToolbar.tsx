@@ -138,7 +138,7 @@ function MiniAssetPicker({
         placeholder="Search assets..."
         className="w-full text-sm px-3 py-2 rounded-lg border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none focus:border-[var(--accent)]"
       />
-      <div className="flex flex-wrap gap-1.5 justify-center max-h-60 overflow-auto py-1">
+      <div className="flex flex-wrap gap-1.5 justify-center max-h-[50vh] overflow-auto py-1">
         {visible.map((p) => (
           <MiniAssetPickerItem key={p} path={p} onClick={() => onSelect(p)} />
         ))}
@@ -168,7 +168,7 @@ function InsertDialogShell({
     >
       <div
         className="bg-[var(--bg)] rounded-xl shadow-2xl flex flex-col overflow-hidden"
-        style={{ width: "min(94vw, 680px)", maxHeight: "88vh" }}
+        style={{ width: "min(96vw, 1040px)", maxHeight: "92vh" }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 shrink-0">
@@ -360,7 +360,8 @@ function ModelInsertDialog({
                   type="text"
                   value={height}
                   onChange={(e) => setHeight(e.target.value)}
-                  className="w-20 text-xs px-2 py-1 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none"
+                  placeholder="75% or 400px"
+                  className="w-24 text-xs px-2 py-1 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none"
                 />
               </label>
             </div>

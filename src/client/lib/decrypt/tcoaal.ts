@@ -26,9 +26,10 @@ const MIME_MAP: Record<string, string> = {
 
 // 3D model formats the asset browser / ModelViewer can render (mirrors
 // isModelPath in assetUtils.ts). TCOAAL is a 2D RPG Maker MV game, so its
-// `www/models/` directory is only scanned on the dev subreddit (see the
-// includeModels gate in processTcoaalFiles). Files there may be plain or
-// wrapped in the TCOAAL container; both are handled.
+// `www/models/` and `www/textures/` directories aren't part of the standard
+// asset set and are only scanned on the dev subreddit (see the includeDevAssets
+// gate in processTcoaalFiles). Files there may be plain or wrapped in the
+// TCOAAL container; both are handled.
 const MODEL_MIME_MAP: Record<string, string> = {
   ".glb": "model/gltf-binary",
   ".gltf": "model/gltf+json",
@@ -40,17 +41,37 @@ const MODEL_MIME_MAP: Record<string, string> = {
   ".3mf": "application/octet-stream",
 };
 
-// Returns the model extension carried by an on-disk path, looking past an
-// optional `.k9a` container suffix (e.g. `models/king.glb.k9a` -> `.glb`).
-// Empty string when the path doesn't end in a known model format.
-function getModelExtension(lowerInner: string): string {
+// Image formats the asset browser treats as images (mirrors isImagePath in
+// assetUtils.ts), used to type `www/textures/` entries. PNG is the assumed
+// default when a texture ships without a recognizable extension.
+const IMAGE_MIME_MAP: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".bmp": "image/bmp",
+  ".webp": "image/webp",
+};
+
+// Returns the extension from `mimeMap` carried by an on-disk path, looking past
+// an optional `.k9a` container suffix (e.g. `models/king.glb.k9a` -> `.glb`).
+// Empty string when the path doesn't end in one of the known extensions.
+function getKnownExtension(
+  lowerInner: string,
+  mimeMap: Record<string, string>,
+): string {
   const base = lowerInner.endsWith(".k9a")
     ? lowerInner.slice(0, -4)
     : lowerInner;
-  for (const ext of Object.keys(MODEL_MIME_MAP)) {
+  for (const ext of Object.keys(mimeMap)) {
     if (base.endsWith(ext)) return ext;
   }
   return "";
+}
+
+// Drops a trailing `.k9a` container suffix from a TCOAAL on-disk path.
+function stripContainerSuffix(lowerInner: string): string {
+  return lowerInner.endsWith(".k9a") ? lowerInner.slice(0, -4) : lowerInner;
 }
 
 function getExtensionForPath(relativePath: string): string {
@@ -120,7 +141,7 @@ function decryptTcoaal(rawBytes: Uint8Array, idFilePath: string): Uint8Array {
 export async function* processTcoaalFiles(
   files: File[],
   dataRoot: string,
-  includeModels = false,
+  includeDevAssets = false,
 ): AsyncGenerator<ProcessedAsset> {
   const hasK9a = files.some((f) => f.name.toLowerCase().endsWith(".k9a"));
   if (hasK9a && !dataRoot) {
@@ -147,9 +168,9 @@ export async function* processTcoaalFiles(
     // derive the extension from the name and only decrypt when the signature
     // is present.
     if (lowerInner.startsWith("models/")) {
-      if (!includeModels) continue;
+      if (!includeDevAssets) continue;
 
-      const modelExt = getModelExtension(lowerInner);
+      const modelExt = getKnownExtension(lowerInner, MODEL_MIME_MAP);
       if (!modelExt) continue;
 
       const rawBytes = new Uint8Array(await file.arrayBuffer());
@@ -158,9 +179,33 @@ export async function* processTcoaalFiles(
         : rawBytes;
 
       const mime = MODEL_MIME_MAP[modelExt] ?? "application/octet-stream";
-      const canonical = lowerInner.endsWith(".k9a")
-        ? lowerInner.slice(0, -4)
-        : lowerInner;
+      const canonical = stripContainerSuffix(lowerInner);
+
+      yield {
+        path: canonical,
+        blob: new Blob([data], { type: mime }),
+        mimeType: mime,
+      };
+      continue;
+    }
+
+    // Dev-subreddit only: surface model textures shipped under www/textures/ as
+    // images. Everything in this dir is treated as an image; the extension is
+    // taken from the name when recognizable, otherwise defaulting to .png. Plain
+    // and TCOAAL-wrapped files are both handled.
+    if (lowerInner.startsWith("textures/")) {
+      if (!includeDevAssets) continue;
+
+      const rawBytes = new Uint8Array(await file.arrayBuffer());
+      const data = hasTcoaalSignature(rawBytes)
+        ? decryptTcoaal(rawBytes, inner)
+        : rawBytes;
+
+      const base = stripContainerSuffix(lowerInner);
+      const detectedExt = getKnownExtension(base, IMAGE_MIME_MAP);
+      const ext = detectedExt || ".png";
+      const mime = IMAGE_MIME_MAP[ext] ?? "image/png";
+      const canonical = detectedExt ? base : base + ".png";
 
       yield {
         path: canonical,

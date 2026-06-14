@@ -872,9 +872,10 @@ export const App = () => {
           engineOverride: config?.engine,
           keyOverride: config?.encryptionKey || undefined,
           customTransformCode: config?.customTransformCode || undefined,
-          // Dev subreddit only (the "Dev" gate): allow TCOAAL's www/models/
-          // 3D assets into the browser / echo links.
-          enableTcoaalModels: subredditName === DEV_SUBREDDIT,
+          // Dev subreddit only (the "Dev" gate): allow TCOAAL's dev-extra
+          // folders (www/models/ 3D assets, www/textures/ images) into the
+          // browser / echo links.
+          enableTcoaalDevAssets: subredditName === DEV_SUBREDDIT,
           onProgress: (p) => {
             progressRef.current = p;
 
@@ -1028,26 +1029,30 @@ export const App = () => {
   }, []);
 
   const handleWipe = useCallback(async () => {
-    revokeAllBlobUrls();
-    await wipeAll();
-    setMeta(null);
-    setPaths([]);
-    setFilter("images");
-    setSubFilter(null);
-    setSearch("");
-    setPreviewInitialEditions(null);
-    setVisibleCount(PAGE_SIZE);
-    setMapping(null);
-    setPathToMapped(new Map());
-    setReverseMapping(null);
-    setPreviewPath(null);
-    setActiveTab("wiki");
-    setGameMismatch(null);
-    setLoadingProgress(0);
-    setDisplayedProgress(0);
-    setReadyToTransition(false);
-    setIsReturningUser(false);
-    setAppState("no-assets");
+    try {
+      revokeAllBlobUrls();
+      await wipeAll();
+      setMeta(null);
+      setPaths([]);
+      setFilter("images");
+      setSubFilter(null);
+      setSearch("");
+      setPreviewInitialEditions(null);
+      setVisibleCount(PAGE_SIZE);
+      setMapping(null);
+      setPathToMapped(new Map());
+      setReverseMapping(null);
+      setPreviewPath(null);
+      setActiveTab("wiki");
+      setGameMismatch(null);
+      setLoadingProgress(0);
+      setDisplayedProgress(0);
+      setReadyToTransition(false);
+      setIsReturningUser(false);
+      setAppState("no-assets");
+    } finally {
+      setIsWiping(false);
+    }
   }, []);
 
   const handleConfigChanged = useCallback(

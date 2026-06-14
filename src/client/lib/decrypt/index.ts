@@ -30,9 +30,10 @@ export type ImportOptions = {
   engineOverride?: EngineType | undefined;
   keyOverride?: string | undefined;
   customTransformCode?: string | undefined;
-  // Dev-subreddit only: also extract 3D models from a TCOAAL `www/models/`
-  // folder into the asset browser / echo links. Ignored for other engines.
-  enableTcoaalModels?: boolean | undefined;
+  // Dev-subreddit only: also extract a TCOAAL game's dev-extra folders
+  // (`www/models/` 3D models, `www/textures/` images) into the asset browser /
+  // echo links. Ignored for other engines.
+  enableTcoaalDevAssets?: boolean | undefined;
   onProgress: (progress: ImportProgress) => void;
   signal?: AbortSignal | undefined;
 };
@@ -100,7 +101,7 @@ function getAssetGenerator(
   detection: DetectionResult,
   keyOverride?: string,
   customTransformCode?: string,
-  enableTcoaalModels?: boolean,
+  enableTcoaalDevAssets?: boolean,
 ): AsyncGenerator<ProcessedAsset> | null {
   switch (engine) {
     case "rmmv":
@@ -118,7 +119,7 @@ function getAssetGenerator(
       return processTcoaalFiles(
         files,
         detection.dataRoot,
-        enableTcoaalModels ?? false,
+        enableTcoaalDevAssets ?? false,
       );
 
     case "rmxp":
@@ -157,7 +158,7 @@ export async function importGameFiles(options: ImportOptions): Promise<void> {
     engineOverride,
     keyOverride,
     customTransformCode,
-    enableTcoaalModels,
+    enableTcoaalDevAssets,
     onProgress,
     signal,
   } = options;
@@ -194,7 +195,7 @@ export async function importGameFiles(options: ImportOptions): Promise<void> {
         : detection,
       keyOverride,
       customTransformCode,
-      enableTcoaalModels,
+      enableTcoaalDevAssets,
     );
 
     if (eng === "rmxp" || eng === "rmvx" || eng === "rmvxace") {

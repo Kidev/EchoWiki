@@ -106,7 +106,17 @@ function parseModelOptions(path: string): ModelOptions {
   for (const seg of path.slice(qIdx + 1).split("&")) {
     const eqIdx = seg.indexOf("=");
     const key = (eqIdx === -1 ? seg : seg.slice(0, eqIdx)).toLowerCase();
-    const val = eqIdx === -1 ? "" : seg.slice(eqIdx + 1);
+    // Markdown URL normalization percent-escapes a literal `%` in the link
+    // destination (`width=50%` arrives as `width=50%25`), so decode the value
+    // back before reading it: otherwise a `%` size is invalid CSS and the
+    // viewer silently falls back to its full-width default.
+    const rawVal = eqIdx === -1 ? "" : seg.slice(eqIdx + 1);
+    let val = rawVal;
+    try {
+      val = decodeURIComponent(rawVal);
+    } catch {
+      // Malformed escape: keep the raw value rather than throwing.
+    }
     if (key === "autorotate" || key === "spin") {
       opts.autorotate = !(
         val === "false" ||
@@ -508,11 +518,22 @@ export default function ModelViewer({
   const name = alt ?? getFileName(basePath);
   const ext = getExt(basePath);
 
+  // A percentage height can't resolve against the inline-block's auto-height
+  // parent, so it would collapse. Instead, read it as a share of the viewer's
+  // rendered width and express it as an aspect-ratio: the box then keeps a
+  // stable shape that scales with the container (100% is square, 50% is 2:1
+  // landscape, 200% is 1:2 portrait). Pixel heights stay literal.
+  const heightRaw = opts.height;
+  const hPct = heightRaw?.trim().endsWith("%") ? parseFloat(heightRaw) : NaN;
+  const usePercentHeight = Number.isFinite(hPct) && hPct > 0;
+
   const boxStyle: CSSProperties = {
     width: opts.width ?? (variant === "preview" ? "70vw" : "100%"),
     maxWidth: variant === "preview" ? "70vw" : "100%",
-    height: opts.height ?? (variant === "preview" ? "70vh" : "340px"),
     background: opts.bg ?? "var(--thumb-bg)",
+    ...(usePercentHeight
+      ? { aspectRatio: `100 / ${hPct}` }
+      : { height: heightRaw ?? (variant === "preview" ? "70vh" : "340px") }),
     ...style,
   };
 

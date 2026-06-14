@@ -1,9 +1,11 @@
-# EchoWiki showcase
+>>>![EchoWiki logo](https://raw.githubusercontent.com/Kidev/EchoWiki/refs/heads/main/assets/echo-wiki.svg)<<<
+
+# Features
 
 This page demonstrates every visual feature the echo system supports. Assets are rendered from locally imported game files. Nothing is uploaded to Reddit's servers: assets are resolved on each reader's device.
 
 > [!NOTE]
-> Replace any `echo://` paths below with paths from **your own** asset browser. The paths shown here match *The Coffin of Andy and Leyley*.
+> Replace any `echo://` paths below with paths from **your own** asset browser.
 
 [1. Inline image](#1-inline-image)  
 [2. Audio player](#2-audio-player)  
@@ -71,9 +73,9 @@ Combine `?speed=` and `?pitch=` to shift playback:
 Interactive 3D models embed with the **same image syntax** as a picture. The model loads in a small WebGL viewer: drag to orbit, scroll to zoom, and use the buttons in the corner to auto-rotate or reset the view.
 
 ```echo
-![Bananaplant Mesh.glb](echo://meshes/bananaplant_mesh.glb)
+![1.glb](echo://models/1.glb?autorotate&width=350px)
 ```
-![Bananaplant Mesh.glb](echo://meshes/bananaplant_mesh.glb)
+>>>![1.glb](echo://models/1.glb?autorotate&width=350px)<<<
 
 > [!NOTE]
 > Unlike the image examples on this page, 3D models only appear for games that actually ship 3D assets (Unity, Unreal, Godot). *The Coffin of Andy and Leyley* is a 2D RPG Maker game, so the model paths in this section will not resolve in its demo. Swap in an `echo://` model path from your own asset browser.
@@ -88,18 +90,21 @@ Append display hints to the path, combined with `&`:
 | `?bg` | `?bg=111` | Background color (hex, `#` is added for you) |
 | `?texture` (alias `?tex`) | `?texture=img/diffuse.png` | Use an imported image as the model's texture |
 
-```echo
-![Bananaplant Mesh.glb](echo://meshes/bananaplant_mesh.glb?spin&height=420px&bg=ffffff)
-```
-![Bananaplant Mesh.glb](echo://meshes/bananaplant_mesh.glb?spin&height=420px&bg=ffffff)
-
 **Supported formats:** `glb`, `gltf`, `obj`, `stl`, `ply`, `fbx`, `dae` (Collada), `3mf`. GLB is recommended because it packs geometry and textures into a single self-contained file; OBJ/Collada that rely on sibling `.mtl` or texture files render geometry only. Unity games are special-cased: their meshes ship as raw GPU buffers rather than model files, so EchoWiki rebuilds each one into a self-contained GLB and links it to its base-color texture.
 
 When a model loads untextured (e.g. an OBJ whose materials live in external files), give it one with `?texture=`, pointing at any imported image asset:
 
 ```echo
-![King statue](echo://meshes/king.obj?texture=img/king_diffuse.png)
+>>>
+![](echo://models/obelisk_1_polysurface17_2.glb?width=450px&spin)
+![](echo://models/obelisk_1_polysurface17_2.glb?texture=echo://textures/obeliskkingsky_dif.png&width=450px&bg=#99ffff&spin)
+<<<
 ```
+
+>>>
+![](echo://models/obelisk_1_polysurface17_2.glb?width=450px&spin)
+![](echo://models/obelisk_1_polysurface17_2.glb?texture=echo://textures/obeliskkingsky_dif.png&width=450px&bg=#99ffff&spin)
+<<<
 
 The asset browser's model preview has a matching **Texture** field; whatever you set there is baked into the link it copies. You don't have to type the path by hand: open an image in the asset browser, hit its copy button, and paste the result straight into the Texture field. A pasted Markdown link like `![diffuse](echo://img/king_diffuse.png)` is trimmed down to its `echo://` path automatically and applied right away, so retexturing a model is a copy-then-paste.
 
@@ -252,18 +257,8 @@ Ashley has long black hair, most often styled in twin pigtails. She wears a chok
 
 In childhood flashbacks, she is depicted with a similar hairstyle, already visually distinct from other children.
 
-## Personality
-
-Ashley is manipulative, impulsive, and frequently cruel. She exhibits sociopathic tendencies and demonstrates little to no regard for conventional morality or the well-being of anyone outside her bond with Andrew. Her entire world revolves around her brother, and she becomes violently jealous of anyone who threatens her monopoly on his attention and affection.
-
-She employs a wide range of manipulation tactics, including guilt-tripping, emotional blackmail, playing the victim, and feigned helplessness, to maintain control over Andrew. She is acutely aware of his weaknesses and exploits them with precision.
-
-Despite her disturbing behavior, Ashley shows moments of genuine vulnerability and insecurity, particularly when she doubts Andrew's commitment to her. These moments suggest that beneath the manipulation lies a deeply damaged individual whose attachment style was warped by childhood neglect.
-
-She possesses a dark sense of humor and often makes light of horrific situations, suggesting either a coping mechanism or a genuine enjoyment of chaos, likely both.
+<br/><br/><br/><br/><br/><br/><br/><br/>
 ```
-
-Live render:
 
 # Ashley Graves
 
@@ -289,15 +284,7 @@ Ashley has long black hair, most often styled in twin pigtails. She wears a chok
 
 In childhood flashbacks, she is depicted with a similar hairstyle, already visually distinct from other children.
 
-## Personality
-
-Ashley is manipulative, impulsive, and frequently cruel. She exhibits sociopathic tendencies and demonstrates little to no regard for conventional morality or the well-being of anyone outside her bond with Andrew. Her entire world revolves around her brother, and she becomes violently jealous of anyone who threatens her monopoly on his attention and affection.
-
-She employs a wide range of manipulation tactics, including guilt-tripping, emotional blackmail, playing the victim, and feigned helplessness, to maintain control over Andrew. She is acutely aware of his weaknesses and exploits them with precision.
-
-Despite her disturbing behavior, Ashley shows moments of genuine vulnerability and insecurity, particularly when she doubts Andrew's commitment to her. These moments suggest that beneath the manipulation lies a deeply damaged individual whose attachment style was warped by childhood neglect.
-
-She possesses a dark sense of humor and often makes light of horrific situations, suggesting either a coping mechanism or a genuine enjoyment of chaos, likely both.
+<br/><br/><br/><br/><br/><br/><br/><br/>
 
 ---
 
@@ -317,13 +304,14 @@ layer: echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,3 bo
 fg: echo://img/parallaxes/backgrounds_157.png?crop
 :::
 ```
-
+>>>
 :::scene
 bg: echo://img/parallaxes/backgrounds_156.png?crop
 layer: echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,0 bottom=10% left=48% height=20%
 layer: echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,3 bottom=10% left=40% height=20%
 fg: echo://img/parallaxes/backgrounds_157.png?crop
 :::
+<<<
 
 ---
 
@@ -392,10 +380,10 @@ echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,25
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,26
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,25
 :::
-
+<br/>
 :::anim ref=ashley-right duration=2.5s width=75% height=75% bg=echo://img/parallaxes/backgrounds_66.png?crop bgopacity=1
-0% left=10% bottom=10%
-100% left=60% bottom=10%
+0% left=10% bottom=7%
+100% left=60% bottom=7%
 :::
 ```
 
@@ -406,12 +394,14 @@ echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,26
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,25
 :::
 
-*Walking across a background:*
+<br/>
 
+>>>
 :::anim ref=ashley-right duration=2.5s width=75% height=75% bg=echo://img/parallaxes/backgrounds_66.png?crop bgopacity=1
-0% left=10% bottom=10%
-100% left=60% bottom=10%
+0% left=10% bottom=7%
+100% left=60% bottom=7%
 :::
+<<<
 
 **Inline frames (no alias needed):**
 
@@ -423,19 +413,21 @@ echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,24
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,25
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,26
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,25
-0% left=10% bottom=10%
-100% left=60% bottom=10%
+0% left=10% bottom=7%
+100% left=60% bottom=7%
 :::
 ```
 
+>>>
 :::anim fps=6 spritesize=7% duration=2.5s width=75% height=75% bg=echo://img/parallaxes/backgrounds_66.png?crop bgopacity=1
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,24
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,25
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,26
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,25
-0% left=10% bottom=10%
-100% left=60% bottom=10%
+0% left=10% bottom=7%
+100% left=60% bottom=7%
 :::
+<<<
 
 **Walk back and forth (multi-phase):**
 
@@ -450,34 +442,36 @@ echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,24
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,25
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,26
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,25
-0% left=10% bottom=10%
-100% left=50% bottom=10%
+0% left=10% bottom=7%
+100% left=50% bottom=7%
 --- duration=2s fps=6
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,12
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,13
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,14
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,13
-0% left=50% bottom=10%
-100% left=10% bottom=10%
+0% left=50% bottom=7%
+100% left=10% bottom=7%
 :::
 ```
 
+>>>
 :::anim width=75% height=75% bg=echo://img/parallaxes/backgrounds_66.png?crop bgopacity=1 spritesize=7%
 --- duration=2s fps=6 
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,24
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,25
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,26
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,25
-0% left=10% bottom=10%
-100% left=50% bottom=10%
+0% left=10% bottom=7%
+100% left=50% bottom=7%
 --- duration=2s fps=6
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,12
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,13
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,14
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,13
-0% left=50% bottom=10%
-100% left=10% bottom=10%
+0% left=50% bottom=7%
+100% left=10% bottom=7%
 :::
+<<<
 
 ```echo
 :::anim width=75% height=75% bg=echo://img/parallaxes/backgrounds_66.png?crop bgopacity=1 spritesize=7%
@@ -486,14 +480,14 @@ echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,24
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,25
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,26
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,25
-0% left=10% bottom=10%
-100% left=50% bottom=10%
+0% left=10% bottom=7%
+100% left=50% bottom=7%
 --- duration=2s fps=6 
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,36
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,37
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,38
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,37
-0% left=50% bottom=10%
+0% left=50% bottom=7%
 100% left=50% bottom=50%
 --- duration=2s fps=6
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,0
@@ -501,47 +495,44 @@ echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,1
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,2
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,1
 0% left=50% bottom=50%
-100% left=50% bottom=10%
+100% left=50% bottom=7%
 --- duration=2s fps=6 
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,12
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,13
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,14
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,13
-0% left=50% bottom=10%
-100% left=10% bottom=10%
+0% left=50% bottom=7%
+100% left=10% bottom=7%
 :::
 ```
-
+>>>
 :::anim width=75% height=75% bg=echo://img/parallaxes/backgrounds_66.png?crop bgopacity=1 spritesize=7%
 --- duration=2s fps=6 
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,24
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,25
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,26
-echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,25
-0% left=10% bottom=10%
-100% left=50% bottom=10%
+0% left=10% bottom=7%
+100% left=50% bottom=7%
 --- duration=2s fps=6 
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,36
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,37
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,38
-echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,37
-0% left=50% bottom=10%
+0% left=50% bottom=7%
 100% left=50% bottom=50%
 --- duration=2s fps=6
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,0
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,1
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,2
-echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,1
 0% left=50% bottom=50%
-100% left=50% bottom=10%
+100% left=50% bottom=7%
 --- duration=2s fps=6 
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,12
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,13
 echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,14
-echo://img/characters/spritessheet_12x8_characters_8.png?sprite=12,8,13
-0% left=50% bottom=10%
-100% left=10% bottom=10%
+0% left=50% bottom=7%
+100% left=10% bottom=7%
 :::
+<<<
 
 ---
 
