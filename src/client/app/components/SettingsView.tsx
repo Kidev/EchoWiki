@@ -1586,6 +1586,10 @@ return { path: parent + '/' + name.toLowerCase(), data: await file.arrayBuffer()
               <SegmentedControl
                 value={homeLogo}
                 options={[
+                  {
+                    value: "echowiki-animated" as HomeLogo,
+                    label: "EchoWiki animated",
+                  },
                   { value: "echowiki" as HomeLogo, label: "EchoWiki" },
                   ...(appearance.iconUrl
                     ? [{ value: "subreddit" as HomeLogo, label: "Subreddit" }]

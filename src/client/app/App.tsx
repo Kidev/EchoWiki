@@ -1853,14 +1853,27 @@ export const App = () => {
 
             {}
             <img
+              src="/echo-wiki.svg"
+              alt="EchoWiki"
+              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-50 object-contain z-1 title-crossfade"
+              style={{
+                opacity:
+                  !initResolved ||
+                  !config ||
+                  config.homeLogo === "echowiki-animated"
+                    ? 1
+                    : 0,
+              }}
+            />
+
+            {}
+            <img
               src="/title.png"
               alt="EchoWiki"
               className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-50 object-contain z-1 title-crossfade"
               style={{
                 opacity:
-                  !initResolved || !config || config.homeLogo === "echowiki"
-                    ? 1
-                    : 0,
+                  initResolved && config?.homeLogo === "echowiki" ? 1 : 0,
               }}
             />
 

@@ -199,7 +199,7 @@ export type FontFamily = "system" | "serif" | "mono" | "subreddit";
 
 export type HomeBackground = "ripple" | "banner" | "both" | "none";
 
-export type HomeLogo = "echowiki" | "subreddit";
+export type HomeLogo = "echowiki-animated" | "echowiki" | "subreddit";
 
 export type ColorTheme = {
   accentColor: string;

@@ -134,7 +134,11 @@ const VALID_HOME_BACKGROUNDS = new Set<string>([
   "both",
   "none",
 ]);
-const VALID_HOME_LOGOS = new Set<string>(["echowiki", "subreddit"]);
+const VALID_HOME_LOGOS = new Set<string>([
+  "echowiki-animated",
+  "echowiki",
+  "subreddit",
+]);
 
 const DEFAULT_MAPPING_TEXT = '"original_filename": "mapped_filename"';
 
