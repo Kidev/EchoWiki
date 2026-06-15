@@ -48,6 +48,7 @@ import type {
   WikiHistoryEntry,
   WikiHistoryEvent,
   WikiContribHistoryResponse,
+  WikiContribContentResponse,
   WikiHistoryActionRequest,
   WikiHistoryActionResponse,
   WikiDeleteRequest,
@@ -125,6 +126,7 @@ const DEFAULT_CONFIG: GameConfig = {
   votingFlairTemplateId: null,
   votingMinVotersForTiming: 0,
   votingMaxSuggestionEdits: 1,
+  votingDeleteCompletedPosts: false,
   suggestionEditCooldownMinutes: 0,
 };
 
@@ -224,6 +226,7 @@ async function getConfig(): Promise<GameConfig> {
       0,
       parseInt(raw["votingMaxSuggestionEdits"] ?? "1", 10) || 0,
     ),
+    votingDeleteCompletedPosts: raw["votingDeleteCompletedPosts"] === "true",
     suggestionEditCooldownMinutes: Math.max(
       0,
       parseInt(raw["suggestionEditCooldownMinutes"] ?? "0", 10) || 0,
@@ -791,6 +794,84 @@ function parseVoteEntries(
   return entries;
 }
 
+// The suggestion content snapshotted onto a vote post's `votingPost:<id>`
+// record so it stays attached to THE POST, independent of the per-user
+// `suggestion:<username>` key (which is cleared at conclusion and reused by the
+// author's next suggestion).
+type StoredVotingPostSuggestion = {
+  page: string;
+  content: string;
+  description: string;
+  createdAt: number;
+  previousDescriptions?: string[];
+  baseContent?: string;
+};
+
+type StoredVotingPost = {
+  username: string;
+  subredditName: string;
+  concluded?: boolean;
+  status?: "accepted" | "rejected" | "cancelled";
+  decidedAt?: number;
+  reason?: VoteStatusData["reason"];
+  decidedBy?: string | null;
+  decisionNote?: string | null;
+  suggestion?: StoredVotingPostSuggestion;
+  acceptCount?: number;
+  rejectCount?: number;
+  voters?: VoteEntry[];
+};
+
+// Build the post-scoped suggestion snapshot from a live suggestion, omitting
+// optional fields when absent (keeps `exactOptionalPropertyTypes` happy).
+function toStoredVotingPostSuggestion(
+  suggestion: WikiSuggestion,
+): StoredVotingPostSuggestion {
+  return {
+    page: suggestion.page,
+    content: suggestion.content,
+    description: suggestion.description,
+    createdAt: suggestion.createdAt,
+    ...(suggestion.previousDescriptions !== undefined
+      ? { previousDescriptions: suggestion.previousDescriptions }
+      : {}),
+    ...(suggestion.baseContent !== undefined
+      ? { baseContent: suggestion.baseContent }
+      : {}),
+  };
+}
+
+// Finalize the Reddit-side state of a concluded vote post. By default the post
+// is locked (kept visible, no new votes/comments). When the moderator enabled
+// "Delete completed vote posts", it is deleted instead (author delete, falling
+// back to a mod removal). Deletion only removes the Reddit post object: the
+// conclusion snapshot (`votingPost:<id>`) and the contribution history are left
+// untouched, so the decided suggestion's content stays referenceable from the
+// Contributions > History tab even after the post is gone. Synthetic self-test
+// posts (no Reddit object) are skipped.
+async function closeVotingPostObject(votingPostId: string): Promise<void> {
+  if (votingPostId.startsWith(SELFTEST_POST_PREFIX)) return;
+  let deleteWhenDone = false;
+  try {
+    const config = await getConfig();
+    deleteWhenDone = config.votingDeleteCompletedPosts;
+  } catch {}
+  try {
+    const post = await reddit.getPostById(votingPostId as `t3_${string}`);
+    if (deleteWhenDone) {
+      try {
+        await post.delete();
+      } catch {
+        await post.remove();
+      }
+    } else {
+      await post.lock();
+    }
+  } catch (err) {
+    console.error("Failed to close voting post:", err);
+  }
+}
+
 async function cleanupVotingPost(
   username: string,
   outcome: "accepted" | "rejected",
@@ -820,8 +901,13 @@ async function cleanupVotingPost(
   const existingRaw = await redis
     .get(`votingPost:${votingPostId}`)
     .catch(() => null);
-  const baseData = existingRaw
-    ? (JSON.parse(existingRaw) as { username: string; subredditName: string })
+  // Carry the WHOLE existing record forward (not just username/subredditName) so
+  // the post-scoped `suggestion` snapshot written at creation survives the
+  // conclusion even when `concludedSuggestion` is null (e.g. a deadline tally
+  // after the per-user `suggestion:<username>` key was already cleared). Without
+  // this the concluded post would render empty.
+  const baseData: StoredVotingPost = existingRaw
+    ? (JSON.parse(existingRaw) as StoredVotingPost)
     : { username, subredditName: "" };
 
   // Persist the conclusion snapshot (final tally + voter list, with names) FIRST
@@ -841,16 +927,7 @@ async function cleanupVotingPost(
       decidedBy: decidedBy ?? null,
       decisionNote: trimmedNote,
       ...(concludedSuggestion
-        ? {
-            suggestion: {
-              page: concludedSuggestion.page,
-              content: concludedSuggestion.content,
-              description: concludedSuggestion.description,
-              createdAt: concludedSuggestion.createdAt,
-              previousDescriptions: concludedSuggestion.previousDescriptions,
-              baseContent: concludedSuggestion.baseContent,
-            },
-          }
+        ? { suggestion: toStoredVotingPostSuggestion(concludedSuggestion) }
         : {}),
       ...(concludedAcceptCount !== undefined
         ? { acceptCount: concludedAcceptCount }
@@ -859,7 +936,7 @@ async function cleanupVotingPost(
         ? { rejectCount: concludedRejectCount }
         : {}),
       ...(concludedVoters !== undefined ? { voters: concludedVoters } : {}),
-    }),
+    } satisfies StoredVotingPost),
   );
 
   await Promise.all([
@@ -884,15 +961,7 @@ async function cleanupVotingPost(
     }`,
     outcomeText,
   );
-  // Skip locking synthetic self-test posts, which don't exist on Reddit.
-  if (!votingPostId.startsWith(SELFTEST_POST_PREFIX)) {
-    try {
-      const post = await reddit.getPostById(votingPostId as `t3_${string}`);
-      await post.lock();
-    } catch (err) {
-      console.error("Failed to lock voting post:", err);
-    }
-  }
+  await closeVotingPostObject(votingPostId);
   const jobId = await redis.get(`voteJobId:${username}`).catch(() => null);
   if (jobId) {
     try {
@@ -963,7 +1032,11 @@ async function createVotingPost(
     await Promise.all([
       redis.set(
         `votingPost:${newPostId}`,
-        JSON.stringify({ username, subredditName: subreddit }),
+        JSON.stringify({
+          username,
+          subredditName: subreddit,
+          suggestion: toStoredVotingPostSuggestion(suggestion),
+        } satisfies StoredVotingPost),
       ),
       redis.set(`votingPostId:${username}`, newPostId),
       redis.set(
@@ -1330,7 +1403,13 @@ router.get<
       } catch {}
 
       const raw = await redis.get(`suggestion:${suggestionUsername}`);
-      if (!raw) {
+      // Render the concluded snapshot whenever THIS post is concluded, not just
+      // when the live `suggestion:<username>` key is empty. That key is per
+      // author, so once the author starts a new suggestion it points at the new
+      // one; keying off `!raw` alone made an old concluded post adopt the
+      // author's newer suggestion (or go blank once it too was gone). The
+      // post-scoped `suggestion` snapshot keeps this post's own content.
+      if (votingPostData.concluded || !raw) {
         let voteStatus: VoteStatus;
         if (votingPostData.concluded && votingPostData.status) {
           const storedAccept = votingPostData.acceptCount ?? 0;
@@ -1696,6 +1775,11 @@ router.post<
       fields["votingMaxSuggestionEdits"] = String(
         Math.max(0, Math.floor(body.votingMaxSuggestionEdits)),
       );
+    }
+    if (body.votingDeleteCompletedPosts !== undefined) {
+      fields["votingDeleteCompletedPosts"] = body.votingDeleteCompletedPosts
+        ? "true"
+        : "false";
     }
     if (body.suggestionEditCooldownMinutes !== undefined) {
       fields["suggestionEditCooldownMinutes"] = String(
@@ -2656,7 +2740,15 @@ router.post<
         .get(`votingPostId:${username}`)
         .catch(() => null);
       if (existingVotingPostId) {
-        // Updating suggestion: reset votes and status
+        // Updating suggestion: reset votes and status, and refresh the
+        // post-scoped suggestion snapshot so the edited content stays attached
+        // to the post (and its eventual concluded view).
+        const existingPostRaw = await redis
+          .get(`votingPost:${existingVotingPostId}`)
+          .catch(() => null);
+        const existingPostData: StoredVotingPost = existingPostRaw
+          ? (JSON.parse(existingPostRaw) as StoredVotingPost)
+          : { username, subredditName: subreddit };
         await Promise.all([
           redis.del(`votes:${username}`),
           redis.set(
@@ -2670,6 +2762,15 @@ router.post<
                   : null,
               reason: null,
             }),
+          ),
+          redis.set(
+            `votingPost:${existingVotingPostId}`,
+            JSON.stringify({
+              ...existingPostData,
+              username,
+              subredditName: subreddit,
+              suggestion: toStoredVotingPostSuggestion(suggestion),
+            } satisfies StoredVotingPost),
           ),
         ]);
         const updateDateStr = new Date().toLocaleDateString("en-US", {
@@ -2778,11 +2879,11 @@ router.delete<
       const existingRaw = await redis
         .get(`votingPost:${votingPostId}`)
         .catch(() => null);
-      const baseData = existingRaw
-        ? (JSON.parse(existingRaw) as {
-            username: string;
-            subredditName: string;
-          })
+      // Carry the whole existing record forward so the post-scoped `suggestion`
+      // snapshot (written at creation) survives even if the live suggestion was
+      // already gone when the withdrawal landed.
+      const baseData: StoredVotingPost = existingRaw
+        ? (JSON.parse(existingRaw) as StoredVotingPost)
         : { username, subredditName: context.subredditName ?? "" };
       await Promise.all([
         redis.set(
@@ -2795,20 +2896,13 @@ router.delete<
             reason: "cancelled",
             ...(withdrawnSuggestion
               ? {
-                  suggestion: {
-                    page: withdrawnSuggestion.page,
-                    content: withdrawnSuggestion.content,
-                    description: withdrawnSuggestion.description,
-                    createdAt: withdrawnSuggestion.createdAt,
-                    previousDescriptions:
-                      withdrawnSuggestion.previousDescriptions,
-                  },
+                  suggestion: toStoredVotingPostSuggestion(withdrawnSuggestion),
                 }
               : {}),
             acceptCount: withdrawnAcceptCount,
             rejectCount: withdrawnRejectCount,
             voters: withdrawnVoters,
-          }),
+          } satisfies StoredVotingPost),
         ),
         redis.del(`votingPostId:${username}`),
         redis.del(`votes:${username}`),
@@ -2827,10 +2921,7 @@ router.delete<
         `**Vote concluded** on ${dateStr}: the author has retracted their suggestion`,
         "**WITHDRAWN**",
       );
-      try {
-        const post = await reddit.getPostById(votingPostId as `t3_${string}`);
-        await post.lock();
-      } catch {}
+      await closeVotingPostObject(votingPostId);
       const jobId = await redis.get(`voteJobId:${username}`).catch(() => null);
       if (jobId) {
         try {
@@ -3297,6 +3388,50 @@ router.get<Record<string, never>, WikiContribHistoryResponse | ErrorResponse>(
       const message =
         error instanceof Error
           ? `Failed to load history: ${error.message}`
+          : "Unknown error";
+      res.status(400).json({ status: "error", message });
+    }
+  },
+);
+
+// On-demand content for a single history entry: the proposed change and the
+// page snapshot it was decided against. Lets the Contributions > History tab
+// render the diff for any decided contribution, so its content stays visible
+// even when the original vote post has been deleted ("Delete completed vote
+// posts"). A regular user may only read their own entries; mods may read any.
+router.get<Record<string, never>, WikiContribContentResponse | ErrorResponse>(
+  "/api/wiki/contrib-history/content",
+  async (req, res): Promise<void> => {
+    try {
+      const id = typeof req.query["id"] === "string" ? req.query["id"] : "";
+      if (!id) {
+        res.status(400).json({ status: "error", message: "id is required" });
+        return;
+      }
+      const username = await getCurrentUsername();
+      if (!username) {
+        res.status(403).json({ status: "error", message: "Not signed in" });
+        return;
+      }
+      const entry = await loadHistoryEntry(id);
+      if (!entry) {
+        res.status(404).json({ status: "error", message: "Entry not found" });
+        return;
+      }
+      const isMod = await checkIsMod(username);
+      if (!isMod && entry.author !== username) {
+        res.status(403).json({ status: "error", message: "Forbidden" });
+        return;
+      }
+      res.json({
+        type: "wiki-contrib-content",
+        proposedContent: entry.proposedContent ?? "",
+        baseContent: entry.baseContent ?? "",
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? `Failed to load contribution content: ${error.message}`
           : "Unknown error";
       res.status(400).json({ status: "error", message });
     }
@@ -4971,6 +5106,116 @@ async function runDevSelfTests(caller: string): Promise<DevSelfTestResponse> {
       },
     );
 
+    // ── Vote post content survives conclusion ────────────────────────────────
+    // Regression: a vote post used to carry its content only via the per-user
+    // `suggestion:<username>` key, so a concluded post rendered EMPTY once that
+    // key was cleared (deadline tally / legacy) or reused by the author's next
+    // suggestion. The suggestion is now snapshotted ON the post record and must
+    // survive conclusion even when `concludedSuggestion` is null.
+    await run(
+      "Vote post content",
+      "Helper keeps content and omits absent optional fields",
+      (t) => {
+        const full = toStoredVotingPostSuggestion({
+          username: u,
+          page: SELFTEST_WIKI_PAGE,
+          content: "body",
+          description: "d",
+          createdAt: 123,
+          baseContent: "base",
+          previousDescriptions: ["old"],
+        });
+        t.step(`toStoredVotingPostSuggestion(full) -> ${show(full)}`);
+        t.eq(full.content, "body", "the proposed content is carried");
+        t.eq(full.baseContent, "base", "the diff baseline is carried");
+        t.eq(
+          JSON.stringify(full.previousDescriptions),
+          JSON.stringify(["old"]),
+          "previousDescriptions is carried",
+        );
+
+        const minimal = toStoredVotingPostSuggestion({
+          username: u,
+          page: SELFTEST_WIKI_PAGE,
+          content: "body2",
+          description: "d2",
+          createdAt: 456,
+        });
+        t.step(`toStoredVotingPostSuggestion(minimal) -> ${show(minimal)}`);
+        t.ok(
+          !("baseContent" in minimal),
+          "absent baseContent is omitted, not stored as undefined",
+        );
+        t.ok(
+          !("previousDescriptions" in minimal),
+          "absent previousDescriptions is omitted",
+        );
+      },
+    );
+    await run(
+      "Vote post content",
+      "Concluded vote keeps its content when the author's suggestion key is gone",
+      async (t) => {
+        const proposed = `EchoWiki self-test vote body ${nonce}`;
+        const base = `EchoWiki self-test vote base ${nonce}`;
+        t.step(
+          `Seeding votingPost:${fakePostId} with a post-scoped suggestion (mirrors createVotingPost) and deleting the per-user suggestion:${u} key, so only the post itself holds the content.`,
+        );
+        await Promise.all([
+          redis.set(
+            `votingPost:${fakePostId}`,
+            JSON.stringify({
+              username: u,
+              subredditName: subreddit,
+              suggestion: {
+                page: SELFTEST_WIKI_PAGE,
+                content: proposed,
+                description: "self-test vote content",
+                createdAt: Date.now(),
+                baseContent: base,
+              },
+            } satisfies StoredVotingPost),
+          ),
+          redis.del(`suggestion:${u}`),
+          redis.set(`votingPostId:${u}`, fakePostId),
+          redis.set(`voteStatus:${u}`, activeStatus()),
+        ]);
+        t.step(
+          "Concluding via the real cleanupVotingPost() with concludedSuggestion=null: the deadline/legacy path where the live suggestion is already gone.",
+        );
+        await cleanupVotingPost(
+          u,
+          "accepted",
+          "threshold_accept",
+          fakePostId,
+          null,
+          1,
+          0,
+          [{ username: "alice", vote: "accept", votedAt: Date.now() }],
+        );
+        const rawRec = await redis.get(`votingPost:${fakePostId}`);
+        const rec = rawRec ? (JSON.parse(rawRec) as StoredVotingPost) : null;
+        t.step(
+          `votingPost:${fakePostId} after conclusion -> concluded=${rec?.concluded}, status=${rec?.status}, suggestion.content=${show(rec?.suggestion?.content)}`,
+        );
+        t.eq(
+          rec?.concluded,
+          true,
+          "the post record is marked concluded (so the read path uses its own snapshot)",
+        );
+        t.eq(
+          rec?.suggestion?.content,
+          proposed,
+          "the post-scoped content survives conclusion: no empty vote post",
+        );
+        t.eq(
+          rec?.suggestion?.baseContent,
+          base,
+          "the diff baseline survives too, so the concluded diff still renders",
+        );
+      },
+    );
+
     // ── History audit trail ──────────────────────────────────────────────────
     await run("History", "Decision is recorded and retrievable", async (t) => {
       const createdAt = Date.now();
@@ -5005,6 +5250,48 @@ async function runDevSelfTests(caller: string): Promise<DevSelfTestResponse> {
       t.ok(entry != null, "the entry is retrievable from the audit trail");
       t.eq(entry?.status, "approved", "the recorded status is approved");
     });
+    await run(
+      "History",
+      "Decision stores proposed + base content for later viewing",
+      async (t) => {
+        const createdAt = Date.now();
+        const id = historyEntryId(u, createdAt);
+        const proposed = `EchoWiki self-test history body ${nonce}`;
+        const base = `EchoWiki self-test history base ${nonce}`;
+        t.step(
+          `recordDecision(approved) then loadHistoryEntry("${id}"): this is the exact data /api/wiki/contrib-history/content serves so a decided contribution's changes stay viewable even after its vote post is deleted.`,
+        );
+        await recordDecision(
+          {
+            username: u,
+            page: SELFTEST_WIKI_PAGE,
+            content: proposed,
+            description: "self-test content snapshot",
+            createdAt,
+            baseContent: base,
+          },
+          base,
+          "approved",
+          caller,
+          false,
+          "self-test",
+        );
+        const entry = await loadHistoryEntry(id);
+        t.step(
+          `entry -> proposedContent=${show(entry?.proposedContent)}, baseContent=${show(entry?.baseContent)}`,
+        );
+        t.eq(
+          entry?.proposedContent,
+          proposed,
+          "the proposed content is stored on the history entry",
+        );
+        t.eq(
+          entry?.baseContent,
+          base,
+          "the base (diff 'before') content is stored on the history entry",
+        );
+      },
+    );
 
     // ── Merge engine ─────────────────────────────────────────────────────────
     await run("Merge", "Non-overlapping edits merge cleanly", (t) => {

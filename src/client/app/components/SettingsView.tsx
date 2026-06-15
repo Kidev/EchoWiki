@@ -556,6 +556,9 @@ function VotingSettingsPanel({
   const [showVoterNames, setShowVoterNames] = useState(
     config.votingShowVoterNames,
   );
+  const [deleteCompletedPosts, setDeleteCompletedPosts] = useState(
+    config.votingDeleteCompletedPosts,
+  );
   const [voterMinKarma, setVoterMinKarma] = useState(
     String(config.votingVoterMinKarma),
   );
@@ -593,6 +596,7 @@ function VotingSettingsPanel({
       allowVoteChange !== config.votingAllowVoteChange ||
       changeCooldown !== String(config.votingChangeCooldownMinutes) ||
       showVoterNames !== config.votingShowVoterNames ||
+      deleteCompletedPosts !== config.votingDeleteCompletedPosts ||
       voterMinKarma !== String(config.votingVoterMinKarma) ||
       voterMinAge !== String(config.votingVoterMinAccountAgeDays) ||
       maxEdits !== String(config.votingMaxSuggestionEdits) ||
@@ -608,6 +612,7 @@ function VotingSettingsPanel({
       allowVoteChange,
       changeCooldown,
       showVoterNames,
+      deleteCompletedPosts,
       voterMinKarma,
       voterMinAge,
       maxEdits,
@@ -649,6 +654,7 @@ function VotingSettingsPanel({
             parseInt(changeCooldown, 10) || 0,
           ),
           votingShowVoterNames: showVoterNames,
+          votingDeleteCompletedPosts: deleteCompletedPosts,
           votingVoterMinKarma: Math.max(0, parseInt(voterMinKarma, 10) || 0),
           votingVoterMinAccountAgeDays: Math.max(
             0,
@@ -677,6 +683,7 @@ function VotingSettingsPanel({
     allowVoteChange,
     changeCooldown,
     showVoterNames,
+    deleteCompletedPosts,
     voterMinKarma,
     voterMinAge,
     maxEdits,
@@ -913,9 +920,21 @@ function VotingSettingsPanel({
             Display
             <HelpTip text="When on, the vote post shows who voted and how. When off, only the running FOR / AGAINST tallies are visible, keeping individual votes anonymous." />
           </p>
-          <div className="flex items-center justify-between gap-2">
-            <span>Show voter names</span>
-            <Toggle val={showVoterNames} set={setShowVoterNames} />
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <span>Show voter names</span>
+              <Toggle val={showVoterNames} set={setShowVoterNames} />
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-1 min-w-0">
+                <span className="truncate">Delete decided posts</span>
+                <HelpTip text="When a vote concludes, delete its vote post from the subreddit instead of just locking it. This only removes the Reddit post; the decision and its content stay in the Contributions > History tab, so nothing is lost." />
+              </span>
+              <Toggle
+                val={deleteCompletedPosts}
+                set={setDeleteCompletedPosts}
+              />
+            </div>
           </div>
         </div>
 
@@ -1004,6 +1023,86 @@ function VotingSettingsPanel({
   );
 }
 
+// Dev-only manual override of the version shown in the General tab. Lets a
+// developer freeze a specific "current" version (for clean screenshots) or
+// fake a newer "latest" to exercise the "Update available" hint without
+// publishing. Persisted in localStorage so it survives reloads; a module-level
+// mirror keeps it working even where localStorage is unavailable. Only ever
+// settable from the Dev tab, which itself is dev-subreddit only.
+type VersionOverride = { current: string; latest: string | null };
+
+const VERSION_OVERRIDE_KEY = "echowiki:devVersionOverride";
+const VERSION_OVERRIDE_EVENT = "echowiki:version-override";
+
+function readVersionOverride(): VersionOverride | null {
+  try {
+    const raw = localStorage.getItem(VERSION_OVERRIDE_KEY);
+    if (!raw) return null;
+    const o = JSON.parse(raw) as Partial<VersionOverride>;
+    if (typeof o.current === "string" && o.current.length > 0) {
+      return {
+        current: o.current,
+        latest: typeof o.latest === "string" ? o.latest : null,
+      };
+    }
+  } catch {}
+  return null;
+}
+
+let versionOverride: VersionOverride | null = readVersionOverride();
+
+function setVersionOverride(next: VersionOverride | null): void {
+  versionOverride = next;
+  try {
+    if (next) localStorage.setItem(VERSION_OVERRIDE_KEY, JSON.stringify(next));
+    else localStorage.removeItem(VERSION_OVERRIDE_KEY);
+  } catch {}
+  // Notify any mounted VersionFooter so the General tab reflects the change
+  // live, without needing a reload.
+  window.dispatchEvent(new Event(VERSION_OVERRIDE_EVENT));
+}
+
+// Client-side mirror of the server's dotted-version comparison, used to decide
+// whether an overridden "latest" should light up the update hint.
+function compareVersionStrings(a: string, b: string): number {
+  const pa = a.split(".");
+  const pb = b.split(".");
+  const len = Math.max(pa.length, pb.length);
+  for (let i = 0; i < len; i++) {
+    const na = parseInt(pa[i] ?? "0", 10) || 0;
+    const nb = parseInt(pb[i] ?? "0", 10) || 0;
+    if (na !== nb) return na < nb ? -1 : 1;
+  }
+  return 0;
+}
+
+// Increments the last numeric component of a dotted version, e.g. "0.0.42" ->
+// "0.0.43". Used to one-click fake an available update.
+function bumpVersion(v: string): string {
+  const parts = v.split(".");
+  if (parts.length === 0) return "1.0.0";
+  const lastIdx = parts.length - 1;
+  const last = parseInt(parts[lastIdx] ?? "0", 10) || 0;
+  parts[lastIdx] = String(last + 1);
+  return parts.join(".");
+}
+
+function resolveVersion(
+  fetched: VersionResponse | null,
+  override: VersionOverride | null,
+): VersionResponse | null {
+  if (!override) return fetched;
+  return {
+    type: "version",
+    current: override.current,
+    latest: override.latest,
+    updateAvailable:
+      override.latest != null &&
+      override.current.length > 0 &&
+      compareVersionStrings(override.latest, override.current) > 0,
+  };
+}
+
 // Shows the running app version at the bottom of the General tab, and, when
 // the developer portal reports a newer published version: an "update
 // available" hint. Fails silently (renders nothing) if the version endpoint is
@@ -1032,18 +1131,35 @@ function fetchVersionOnce(): Promise<VersionResponse | null> {
 }
 
 function VersionFooter() {
-  const [version, setVersion] = useState<VersionResponse | null>(versionCache);
+  const [fetched, setFetched] = useState<VersionResponse | null>(versionCache);
+  const [override, setOverrideState] = useState<VersionOverride | null>(
+    versionOverride,
+  );
 
   useEffect(() => {
-    if (version) return;
+    if (fetched) return;
     let cancelled = false;
     void fetchVersionOnce().then((d) => {
-      if (!cancelled && d) setVersion(d);
+      if (!cancelled && d) setFetched(d);
     });
     return () => {
       cancelled = true;
     };
-  }, [version]);
+  }, [fetched]);
+
+  // Track Dev-tab overrides so the footer updates live (and across tabs / other
+  // open instances via the storage event).
+  useEffect(() => {
+    const sync = () => setOverrideState(readVersionOverride());
+    window.addEventListener(VERSION_OVERRIDE_EVENT, sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(VERSION_OVERRIDE_EVENT, sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
+
+  const version = resolveVersion(fetched, override);
 
   if (!version || !version.current) return null;
 
@@ -1055,6 +1171,139 @@ function VersionFooter() {
           . Update available ({version.latest})
         </span>
       )}
+      {override && (
+        <span className="ml-1.5 italic opacity-70">(dev override)</span>
+      )}
+    </div>
+  );
+}
+
+// Dev-tab control to fake the app version reported in the General tab. Handy for
+// screenshots (pin a clean version number) and for verifying the "Update
+// available" hint without actually publishing a newer build.
+function VersionOverridePanel() {
+  const [real, setReal] = useState<VersionResponse | null>(versionCache);
+  const [override, setOverrideState] = useState<VersionOverride | null>(
+    versionOverride,
+  );
+  const [currentField, setCurrentField] = useState(
+    versionOverride?.current ?? "",
+  );
+  const [latestField, setLatestField] = useState(versionOverride?.latest ?? "");
+
+  useEffect(() => {
+    if (real) return;
+    let cancelled = false;
+    void fetchVersionOnce().then((d) => {
+      if (!cancelled && d) setReal(d);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [real]);
+
+  const apply = useCallback(() => {
+    const current = currentField.trim() || real?.current || "0.0.0";
+    const latest = latestField.trim() || null;
+    const next: VersionOverride = { current, latest };
+    setVersionOverride(next);
+    setOverrideState(next);
+    setCurrentField(current);
+    setLatestField(latest ?? "");
+  }, [currentField, latestField, real]);
+
+  const clear = useCallback(() => {
+    setVersionOverride(null);
+    setOverrideState(null);
+    setCurrentField("");
+    setLatestField("");
+  }, []);
+
+  const simulateUpdate = useCallback(() => {
+    const current = currentField.trim() || real?.current || "1.0.0";
+    const latest = bumpVersion(current);
+    const next: VersionOverride = { current, latest };
+    setVersionOverride(next);
+    setOverrideState(next);
+    setCurrentField(current);
+    setLatestField(latest);
+  }, [currentField, real]);
+
+  const inputCls =
+    "w-28 text-xs px-2 py-1 rounded border border-gray-200 focus:outline-none focus:border-[var(--accent)] tabular-nums";
+  const inputStyle = {
+    backgroundColor: "var(--control-bg)",
+    color: "var(--control-text)",
+  };
+
+  return (
+    <div className="flex flex-col gap-3 max-w-md">
+      <div className="flex flex-col gap-1">
+        <span className="text-sm font-semibold">App version override</span>
+        <span className="text-[11px] text-[var(--text-muted)] leading-snug">
+          Fakes the version shown in{" "}
+          <span className="font-medium">{"Settings -> General"}</span>. Set a{" "}
+          <em>latest</em> higher than <em>current</em> to preview the
+          &ldquo;Update available&rdquo; hint. Persists across reloads (for
+          screenshots); leave a field blank to fall back to the real value.
+        </span>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <label className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
+          <span className="w-14 shrink-0">Current</span>
+          <input
+            type="text"
+            value={currentField}
+            onChange={(e) => setCurrentField(e.target.value)}
+            placeholder={real?.current || "0.0.0"}
+            className={inputCls}
+            style={inputStyle}
+          />
+        </label>
+        <label className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
+          <span className="w-14 shrink-0">Latest</span>
+          <input
+            type="text"
+            value={latestField}
+            onChange={(e) => setLatestField(e.target.value)}
+            placeholder={real?.latest || "none"}
+            className={inputCls}
+            style={inputStyle}
+          />
+        </label>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          onClick={apply}
+          className="text-xs px-3 py-1.5 rounded-lg bg-[var(--accent)] text-white cursor-pointer hover:opacity-90 transition-opacity"
+        >
+          Apply override
+        </button>
+        <button
+          onClick={simulateUpdate}
+          className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-[var(--text)] cursor-pointer hover:bg-[var(--thumb-bg)] transition-colors"
+        >
+          Simulate update
+        </button>
+        <button
+          onClick={clear}
+          disabled={!override}
+          className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-[var(--text-muted)] cursor-pointer hover:bg-[var(--thumb-bg)] transition-colors disabled:opacity-40"
+        >
+          Clear
+        </button>
+        <span className="text-[11px] text-[var(--text-muted)]">
+          {override
+            ? `Overriding: v${override.current}${
+                override.latest ? ` -> latest ${override.latest}` : ""
+              }`
+            : real?.current
+              ? `Live: v${real.current}`
+              : ""}
+        </span>
+      </div>
     </div>
   );
 }
@@ -1325,7 +1574,7 @@ export function SettingsView({
       </div>
 
       <div
-        className={`flex-1 ${settingsTab === "mapping" ? "overflow-hidden flex flex-col" : "overflow-auto px-4 py-4"}`}
+        className={`flex-1 ${settingsTab === "mapping" ? "overflow-hidden flex flex-col" : "overflow-y-auto overflow-x-hidden px-4 py-4"}`}
         style={{ scrollbarGutter: "stable both-edges" }}
       >
         {settingsTab === "general" && (
@@ -1761,7 +2010,13 @@ return { path: parent + '/' + name.toLowerCase(), data: await file.arrayBuffer()
           />
         )}
 
-        {settingsTab === "dev" && <DevTestsPanel onHide={hideDevMenu} />}
+        {settingsTab === "dev" && (
+          <div className="flex flex-col gap-6">
+            <VersionOverridePanel />
+            <div className="border-t border-gray-100" />
+            <DevTestsPanel onHide={hideDevMenu} />
+          </div>
+        )}
       </div>
     </>
   );

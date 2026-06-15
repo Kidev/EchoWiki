@@ -43,6 +43,7 @@ export type GameConfig = {
   votingFlairTemplateId: string | null;
   votingMinVotersForTiming: number;
   votingMaxSuggestionEdits: number;
+  votingDeleteCompletedPosts: boolean;
   suggestionEditCooldownMinutes: number;
 };
 
@@ -77,6 +78,7 @@ export type ConfigUpdateRequest = {
   votingFlairTemplateId?: string | null | undefined;
   votingMinVotersForTiming?: number | undefined;
   votingMaxSuggestionEdits?: number | undefined;
+  votingDeleteCompletedPosts?: boolean | undefined;
   suggestionEditCooldownMinutes?: number | undefined;
 };
 
@@ -440,6 +442,17 @@ export type WikiContribHistoryResponse = {
   isMod: boolean;
   /** More entries exist beyond the returned (capped at 10) window. */
   hasMore: boolean;
+};
+
+/**
+ * The proposed vs. base content snapshot stored for a history entry, so the
+ * contribution's changes stay viewable even after its vote post is deleted.
+ * `baseContent` is the page at decision time (the diff's "before").
+ */
+export type WikiContribContentResponse = {
+  type: "wiki-contrib-content";
+  proposedContent: string;
+  baseContent: string;
 };
 
 export type WikiHistoryActionRequest = {

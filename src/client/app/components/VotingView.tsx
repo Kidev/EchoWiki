@@ -7,6 +7,7 @@ import type {
   VoteValue,
   ErrorResponse,
   WikiFontSize,
+  WikiSuggestion,
 } from "../../../shared/types/api";
 import { requestExpandedMode, navigateTo } from "@devvit/web/client";
 import { CompareView, ScrollLockToggle } from "./DiffView";
@@ -38,6 +39,150 @@ function formatTimeRemaining(ms: number): string {
   if (hours > 0) return `${hours}h ${minutes}m left`;
   if (minutes > 0) return `${minutes}m left`;
   return "< 1m left";
+}
+
+function formatChangeDate(ms: number): string {
+  return new Date(ms).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+// Modal listing the justification the author gave for every version of a
+// contribution. Each suggestion edit appends the previous reason to
+// `previousDescriptions` server-side, so the full chronology is
+// `[...previousDescriptions, description]` (oldest -> newest). We show them
+// newest-first with the live version highlighted.
+function ChangesDialog({
+  suggestion,
+  onClose,
+}: {
+  suggestion: WikiSuggestion;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  const reasons = [
+    ...(suggestion.previousDescriptions ?? []),
+    suggestion.description,
+  ];
+  const lastIndex = reasons.length - 1;
+
+  const entries = reasons
+    .map((text, i) => {
+      const isOriginal = i === 0;
+      const isCurrent = i === lastIndex;
+      const label =
+        reasons.length === 1
+          ? "Reason"
+          : isCurrent
+            ? "Current version"
+            : isOriginal
+              ? "Original submission"
+              : `Update ${i}`;
+      const date = isOriginal
+        ? suggestion.createdAt
+        : isCurrent
+          ? (suggestion.lastEditAt ?? null)
+          : null;
+      return { text, label, date, isCurrent, key: i };
+    })
+    .reverse();
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-md max-h-[80vh] flex flex-col rounded-xl shadow-2xl overflow-hidden"
+        style={{ backgroundColor: "var(--bg)", color: "var(--text)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          className="flex items-center justify-between gap-3 px-4 py-3 border-b shrink-0"
+          style={{ borderColor: "var(--thumb-bg)" }}
+        >
+          <div className="flex flex-col min-w-0">
+            <span className="text-sm font-bold">Contribution changes</span>
+            <span
+              className="text-[11px]"
+              style={{ color: "var(--text-muted)" }}
+            >
+              u/{suggestion.username}
+              {reasons.length > 1 ? `- ${reasons.length} versions` : ""}
+            </span>
+          </div>
+          <button
+            onClick={onClose}
+            className="shrink-0 w-7 h-7 flex items-center justify-center rounded-full transition-colors cursor-pointer hover:bg-[var(--thumb-bg)]"
+            style={{ color: "var(--text-muted)" }}
+            aria-label="Close"
+          >
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-3">
+          {entries.map((e) => (
+            <div key={e.key} className="flex flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <span
+                  className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded"
+                  style={
+                    e.isCurrent
+                      ? { backgroundColor: "var(--accent)", color: "#fff" }
+                      : {
+                          backgroundColor: "var(--thumb-bg)",
+                          color: "var(--text-muted)",
+                        }
+                  }
+                >
+                  {e.label}
+                </span>
+                {e.date != null && (
+                  <span
+                    className="text-[10px]"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    {formatChangeDate(e.date)}
+                  </span>
+                )}
+              </div>
+              <p
+                className="text-xs leading-relaxed whitespace-pre-wrap break-words"
+                style={{
+                  color: e.text.trim() ? "var(--text)" : "var(--text-muted)",
+                  fontStyle: e.text.trim() ? "normal" : "italic",
+                }}
+              >
+                {e.text.trim() ? e.text : "No reason given."}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function voteReasonLabel(reason: VoteStatus["reason"]): string {
@@ -79,6 +224,13 @@ function VotingView({
   const [voteError, setVoteError] = useState<string | null>(null);
   const [mode, setMode] = useState<"normal" | "source" | "diff">("normal");
   const [now, setNow] = useState(Date.now());
+  const [showChanges, setShowChanges] = useState(false);
+
+  const changeReasons = [
+    ...(suggestion.previousDescriptions ?? []),
+    suggestion.description,
+  ];
+  const hasChangeReasons = changeReasons.some((r) => r.trim().length > 0);
 
   // Single source of truth for the deadline: the server stamps `deadlineAt` when
   // the vote starts/restarts. Fall back to the createdAt-derived value for votes
@@ -471,63 +623,63 @@ function VotingView({
               </>
             )}
           </div>
-          {data.suggestionAuthorInfo && (
+          {(data.suggestionAuthorInfo || hasChangeReasons) && (
             <div
               className="flex items-center gap-2 text-[10px] flex-wrap"
               style={{ color: "var(--text-muted)" }}
             >
-              <span>
-                {formatAuthorKarma(data.suggestionAuthorInfo.karma)} karma
-              </span>
-              <span>.</span>
-              <span>
-                {formatAuthorAge(data.suggestionAuthorInfo.accountAgeDays)} old
-              </span>
-              <span>.</span>
-              {data.suggestionAuthorInfo.acceptedContributions > 0 ? (
-                <span>
-                  {data.suggestionAuthorInfo.acceptedContributions} accepted
-                  contribution
-                  {data.suggestionAuthorInfo.acceptedContributions !== 1
-                    ? "s"
-                    : ""}
-                </span>
-              ) : (
-                <span>no previous contributions</span>
+              {data.suggestionAuthorInfo && (
+                <>
+                  <span>
+                    {formatAuthorKarma(data.suggestionAuthorInfo.karma)} karma
+                  </span>
+                  <span>.</span>
+                  <span>
+                    {formatAuthorAge(data.suggestionAuthorInfo.accountAgeDays)}{" "}
+                    old
+                  </span>
+                  <span>.</span>
+                  {data.suggestionAuthorInfo.acceptedContributions > 0 ? (
+                    <span>
+                      {data.suggestionAuthorInfo.acceptedContributions} accepted
+                      contribution
+                      {data.suggestionAuthorInfo.acceptedContributions !== 1
+                        ? "s"
+                        : ""}
+                    </span>
+                  ) : (
+                    <span>no previous contributions</span>
+                  )}
+                </>
               )}
-            </div>
-          )}
-          {suggestion.description && (
-            <div className="relative group">
-              <p
-                className="text-[10px] truncate font-bold"
-                style={{ color: "var(--text)" }}
-              >
-                {suggestion.description}
-              </p>
-              {suggestion.previousDescriptions &&
-                suggestion.previousDescriptions.length > 0 && (
-                  <div
-                    className="absolute bottom-full left-0 mb-1.5 z-50 hidden group-hover:block rounded-md shadow-lg p-2 text-[10px] max-w-64"
-                    style={{
-                      backgroundColor: "var(--control-bg)",
-                      border: "1px solid var(--thumb-bg)",
-                      color: "var(--text-muted)",
-                    }}
+              {hasChangeReasons && (
+                <button
+                  onClick={() => setShowChanges(true)}
+                  title="View the justification for each change in this contribution"
+                  className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border font-medium transition-colors cursor-pointer hover:bg-[var(--accent)] hover:text-white hover:border-[var(--accent)]"
+                  style={{
+                    borderColor: "var(--accent)",
+                    color: "var(--accent)",
+                  }}
+                >
+                  <svg
+                    className="w-3 h-3 shrink-0"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    aria-hidden="true"
                   >
-                    <div
-                      className="font-medium mb-1"
-                      style={{ color: "var(--text)" }}
-                    >
-                      Previous reasons:
-                    </div>
-                    {suggestion.previousDescriptions.map((d, i) => (
-                      <div key={i} className="truncate">
-                        . {d}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
+                  </svg>
+                  Changes
+                  {changeReasons.length > 1 ? ` (${changeReasons.length})` : ""}
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -602,6 +754,13 @@ function VotingView({
           ) : null}
         </div>
       </div>
+
+      {showChanges && (
+        <ChangesDialog
+          suggestion={suggestion}
+          onClose={() => setShowChanges(false)}
+        />
+      )}
     </div>
   );
 }

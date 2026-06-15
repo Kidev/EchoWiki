@@ -8,6 +8,7 @@ import type {
   ErrorResponse,
   WikiFontSize,
   WikiContribHistoryResponse,
+  WikiContribContentResponse,
   WikiHistoryEntry,
   WikiHistoryEvent,
   WikiHistoryActionRequest,
@@ -176,7 +177,13 @@ const STATUS_STYLE: Record<WikiHistoryEntry["status"], string> = {
 // Contributions > History: the audit trail. Mods see everything with full
 // detail and revert/restart actions; users see only their own decided
 // suggestions (moderator identities redacted server-side).
-function ContribHistoryView() {
+function ContribHistoryView({
+  subredditName,
+  wikiFontSize,
+}: {
+  subredditName: string;
+  wikiFontSize: WikiFontSize;
+}) {
   const [entries, setEntries] = useState<WikiHistoryEntry[] | null>(null);
   const [isMod, setIsMod] = useState(false);
   const [hasMore, setHasMore] = useState(false);
@@ -185,6 +192,37 @@ function ContribHistoryView() {
     id: string;
     action: WikiHistoryActionRequest["action"];
   } | null>(null);
+  // Content snapshot for the "Changes" diff overlay, fetched on demand so a
+  // decided contribution stays viewable even if its vote post was deleted.
+  const [changesId, setChangesId] = useState<string | null>(null);
+  const [changes, setChanges] = useState<{
+    entry: WikiHistoryEntry;
+    proposedContent: string;
+    baseContent: string;
+  } | null>(null);
+
+  const viewChanges = useCallback(async (entry: WikiHistoryEntry) => {
+    setChangesId(entry.id);
+    try {
+      const res = await fetch(
+        `/api/wiki/contrib-history/content?id=${encodeURIComponent(entry.id)}`,
+      );
+      if (res.ok) {
+        const data = (await res.json()) as WikiContribContentResponse;
+        setChanges({
+          entry,
+          proposedContent: data.proposedContent,
+          baseContent: data.baseContent,
+        });
+      } else {
+        showToast("Could not load the changes for this contribution.");
+      }
+    } catch {
+      showToast("Network error");
+    } finally {
+      setChangesId(null);
+    }
+  }, []);
 
   const load = useCallback(async () => {
     setEntries(null);
@@ -299,37 +337,65 @@ function ContribHistoryView() {
                     </p>
                   )}
                 </div>
-                {isMod && (
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    {e.status === "denied" && e.canRevert && (
-                      <button
-                        disabled={actingId === e.id}
-                        onClick={() => void act(e.id, "approve-postmortem")}
-                        className="text-xs px-2 py-1 rounded bg-[var(--accent)] text-white hover:opacity-90 cursor-pointer disabled:opacity-50"
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    disabled={changesId === e.id}
+                    onClick={() => void viewChanges(e)}
+                    title="View this contribution's changes (stays available even if the vote post was deleted)"
+                    className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-[var(--accent)] text-[var(--accent)] hover:bg-[var(--accent)] hover:text-white transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    {changesId === e.id ? (
+                      <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <svg
+                        className="w-3 h-3 shrink-0"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                        aria-hidden="true"
                       >
-                        Approve
-                      </button>
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                        />
+                      </svg>
                     )}
-                    {e.status === "approved" && e.canRevert && (
-                      <button
-                        disabled={actingId === e.id}
-                        onClick={() => void act(e.id, "revert")}
-                        className="text-xs px-2 py-1 rounded border border-red-300 text-red-600 hover:bg-red-50 cursor-pointer disabled:opacity-50"
-                      >
-                        Revert
-                      </button>
-                    )}
-                    {e.canRestartVote && (
-                      <button
-                        disabled={actingId === e.id}
-                        onClick={() => void act(e.id, "restart-vote")}
-                        className="text-xs px-2 py-1 rounded border border-gray-300 text-[var(--text)] hover:bg-[var(--thumb-bg)] cursor-pointer disabled:opacity-50"
-                      >
-                        Restart vote
-                      </button>
-                    )}
-                  </div>
-                )}
+                    Changes
+                  </button>
+                  {isMod && (
+                    <>
+                      {e.status === "denied" && e.canRevert && (
+                        <button
+                          disabled={actingId === e.id}
+                          onClick={() => void act(e.id, "approve-postmortem")}
+                          className="text-xs px-2 py-1 rounded bg-[var(--accent)] text-white hover:opacity-90 cursor-pointer disabled:opacity-50"
+                        >
+                          Approve
+                        </button>
+                      )}
+                      {e.status === "approved" && e.canRevert && (
+                        <button
+                          disabled={actingId === e.id}
+                          onClick={() => void act(e.id, "revert")}
+                          className="text-xs px-2 py-1 rounded border border-red-300 text-red-600 hover:bg-red-50 cursor-pointer disabled:opacity-50"
+                        >
+                          Revert
+                        </button>
+                      )}
+                      {e.canRestartVote && (
+                        <button
+                          disabled={actingId === e.id}
+                          onClick={() => void act(e.id, "restart-vote")}
+                          className="text-xs px-2 py-1 rounded border border-gray-300 text-[var(--text)] hover:bg-[var(--thumb-bg)] cursor-pointer disabled:opacity-50"
+                        >
+                          Restart vote
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
               <ul className="flex flex-col gap-0.5 border-t border-gray-100 pt-1.5">
                 {e.events.map((ev, i) => (
@@ -357,6 +423,60 @@ function ContribHistoryView() {
             </p>
           )}
         </>
+      )}
+
+      {changes && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setChanges(null)}
+        >
+          <div
+            className="bg-[var(--bg)] rounded-lg shadow-2xl w-full max-w-3xl h-[85vh] flex flex-col overflow-hidden"
+            onClick={(ev) => ev.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-gray-100 shrink-0">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="text-sm font-medium truncate">
+                  Changes by u/{changes.entry.author}
+                </span>
+                <span className="text-xs text-[var(--text-muted)] truncate">
+                  &rarr; <em>{pageLabelOf(changes.entry.page)}</em>
+                </span>
+              </div>
+              <button
+                onClick={() => setChanges(null)}
+                className="text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer shrink-0"
+                aria-label="Close"
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <CompareView
+                original={changes.baseContent}
+                proposed={changes.proposedContent}
+                subredditName={subredditName}
+                currentPage={changes.entry.page}
+                wikiFontSize={wikiFontSize}
+                leftLabel="Before"
+                rightLabel="Contribution"
+                initialMode="diff"
+              />
+            </div>
+          </div>
+        </div>
       )}
 
       {confirm && (
@@ -696,7 +816,10 @@ function SubmissionsPanel({
         style={{ scrollbarGutter: "stable both-edges" }}
       >
         {tab === "history" ? (
-          <ContribHistoryView />
+          <ContribHistoryView
+            subredditName={subredditName}
+            wikiFontSize={wikiFontSize}
+          />
         ) : loading ? (
           <div className="flex items-center gap-2 text-sm text-[var(--text-muted)] py-4">
             <div className="w-3.5 h-3.5 border border-[var(--accent)] border-t-transparent rounded-full animate-spin" />

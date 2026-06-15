@@ -6,3 +6,5 @@ docs/
 dist/
 build/
 webroot/
+.hide/
+README.md

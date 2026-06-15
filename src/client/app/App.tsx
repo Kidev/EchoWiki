@@ -1,6 +1,7 @@
 import {
   Fragment,
   lazy,
+  Suspense,
   type ChangeEvent,
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
@@ -106,18 +107,41 @@ import {
   FilterTabs,
   SubFilterTabs,
 } from "./components/AssetBrowser";
+// Each code-split view is loaded through a shared import function so the same
+// chunk can be both lazily rendered and eagerly prefetched. Prefetching after
+// the app is ready means the chunk is already in memory by the time the user
+// clicks the tab / asset, so navigation feels instant instead of stalling for a
+// fraction of a second while the chunk downloads.
+const importAssetPreview = () => import("./components/AssetPreview");
+const importVotingView = () => import("./components/VotingView");
+const importSubmissionsPanel = () => import("./components/SubmissionsPanel");
+const importSettingsView = () => import("./components/SettingsView");
+
+function prefetchLazyViews(): void {
+  void importAssetPreview();
+  void importVotingView();
+  void importSubmissionsPanel();
+  void importSettingsView();
+}
+
 const AssetPreview = lazy(() =>
-  import("./components/AssetPreview").then((m) => ({
-    default: m.AssetPreview,
-  })),
+  importAssetPreview().then((m) => ({ default: m.AssetPreview })),
 );
-const VotingView = lazy(() => import("./components/VotingView"));
-const SubmissionsPanel = lazy(() => import("./components/SubmissionsPanel"));
+const VotingView = lazy(importVotingView);
+const SubmissionsPanel = lazy(importSubmissionsPanel);
 const SettingsView = lazy(() =>
-  import("./components/SettingsView").then((m) => ({
-    default: m.SettingsView,
-  })),
+  importSettingsView().then((m) => ({ default: m.SettingsView })),
 );
+
+// Centered spinner used as the Suspense fallback while a code-split view's chunk
+// is still loading, so a click always produces immediate visual feedback.
+function ViewLoadingFallback() {
+  return (
+    <div className="flex-1 flex justify-center items-center min-h-48">
+      <div className="w-9 h-9 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+}
 
 export const App = () => {
   const [appMode, setAppMode] = useState<AppMode>("main");
@@ -304,6 +328,23 @@ export const App = () => {
       } catch {}
     })();
   }, []);
+
+  // Warm the code-split view chunks (settings, submissions, voting, asset
+  // preview) during idle time once the app is interactive. This eliminates the
+  // brief "nothing happens" stall the first time the user opens one of them.
+  useEffect(() => {
+    if (appState !== "ready") return;
+    const w = window as typeof window & {
+      requestIdleCallback?: (cb: () => void) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    if (w.requestIdleCallback) {
+      const id = w.requestIdleCallback(() => prefetchLazyViews());
+      return () => w.cancelIdleCallback?.(id);
+    }
+    const id = window.setTimeout(prefetchLazyViews, 300);
+    return () => window.clearTimeout(id);
+  }, [appState]);
 
   useEffect(() => {
     if (!canSuggest) return;
@@ -653,7 +694,6 @@ export const App = () => {
             expected: initConfig.gameName,
             detected: m.gameTitle,
           });
-          setActiveTab("assets");
         }
 
         setReadyToTransition(true);
@@ -932,7 +972,6 @@ export const App = () => {
             expected: config.gameName,
             detected: progressRef.current.gameTitle,
           });
-          setActiveTab("assets");
         }
 
         setAppState("ready");
@@ -1764,16 +1803,24 @@ export const App = () => {
       )}
 
       {previewPath && (
-        <AssetPreview
-          path={previewPath}
-          mappedPath={pathToMapped.get(previewPath)}
-          onClose={() => {
-            setPreviewPath(null);
-            setPreviewInitialEditions(null);
-          }}
-          onCopied={handleCopied}
-          initialEditions={previewInitialEditions ?? undefined}
-        />
+        <Suspense
+          fallback={
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+              <div className="w-10 h-10 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+            </div>
+          }
+        >
+          <AssetPreview
+            path={previewPath}
+            mappedPath={pathToMapped.get(previewPath)}
+            onClose={() => {
+              setPreviewPath(null);
+              setPreviewInitialEditions(null);
+            }}
+            onCopied={handleCopied}
+            initialEditions={previewInitialEditions ?? undefined}
+          />
+        </Suspense>
       )}
 
       {appState !== "ready" && (
@@ -2045,23 +2092,25 @@ export const App = () => {
 
       {appState === "ready" && appMode === "voting" && votingData && (
         <AssetBypassContext.Provider value={assetsBypassed}>
-          <VotingView
-            data={votingData}
-            wikiFontSize={style.wikiFontSize}
-            isInline={isInline}
-            onLoadAssets={handleLoadAssets}
-            onVoteCast={(updatedStatus, updatedMyVote) => {
-              setVotingData((prev) =>
-                prev
-                  ? {
-                      ...prev,
-                      voteStatus: updatedStatus,
-                      myVote: updatedMyVote,
-                    }
-                  : null,
-              );
-            }}
-          />
+          <Suspense fallback={<ViewLoadingFallback />}>
+            <VotingView
+              data={votingData}
+              wikiFontSize={style.wikiFontSize}
+              isInline={isInline}
+              onLoadAssets={handleLoadAssets}
+              onVoteCast={(updatedStatus, updatedMyVote) => {
+                setVotingData((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        voteStatus: updatedStatus,
+                        myVote: updatedMyVote,
+                      }
+                    : null,
+                );
+              }}
+            />
+          </Suspense>
         </AssetBypassContext.Provider>
       )}
 
@@ -2083,38 +2132,35 @@ export const App = () => {
               }}
             >
               <div className="flex flex-wrap items-center gap-1 min-w-0">
-                {!gameMismatch && (
-                  <button
-                    className={`text-sm px-3 py-1 rounded-full transition-colors cursor-pointer ${
-                      activeTab === "wiki"
-                        ? "bg-[var(--accent)] text-white"
-                        : "text-[var(--text-muted)]"
-                    }`}
-                    style={
-                      activeTab !== "wiki"
-                        ? { backgroundColor: "transparent" }
-                        : undefined
+                <button
+                  className={`text-sm px-3 py-1 rounded-full transition-colors cursor-pointer ${
+                    activeTab === "wiki"
+                      ? "bg-[var(--accent)] text-white"
+                      : "text-[var(--text-muted)]"
+                  }`}
+                  style={
+                    activeTab !== "wiki"
+                      ? { backgroundColor: "transparent" }
+                      : undefined
+                  }
+                  onMouseEnter={(e) => {
+                    if (activeTab === "wiki") {
+                      // While the wiki editor is open the breadcrumb bar would
+                      // overlay the editor's top bar and blank out the divider
+                      // beneath the top menu, so suppress it during editing.
+                      if (!wikiIsEditing) setShowBreadcrumb(true);
+                    } else {
+                      e.currentTarget.style.backgroundColor = "var(--thumb-bg)";
                     }
-                    onMouseEnter={(e) => {
-                      if (activeTab === "wiki") {
-                        // While the wiki editor is open the breadcrumb bar would
-                        // overlay the editor's top bar and blank out the divider
-                        // beneath the top menu, so suppress it during editing.
-                        if (!wikiIsEditing) setShowBreadcrumb(true);
-                      } else {
-                        e.currentTarget.style.backgroundColor =
-                          "var(--thumb-bg)";
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (activeTab !== "wiki")
-                        e.currentTarget.style.backgroundColor = "transparent";
-                    }}
-                    onClick={() => setActiveTab("wiki")}
-                  >
-                    Wiki
-                  </button>
-                )}
+                  }}
+                  onMouseLeave={(e) => {
+                    if (activeTab !== "wiki")
+                      e.currentTarget.style.backgroundColor = "transparent";
+                  }}
+                  onClick={() => setActiveTab("wiki")}
+                >
+                  Wiki
+                </button>
                 {!isGameIndependent && (
                   <button
                     className={`text-sm px-3 py-1 rounded-full transition-colors cursor-pointer ${
@@ -2204,12 +2250,6 @@ export const App = () => {
                   </button>
                 )}
               </div>
-              {gameMismatch && (
-                <span className="text-[10px] text-red-600 truncate px-2">
-                  Expected '{gameMismatch.expected}' but detected '
-                  {gameMismatch.detected}'
-                </span>
-              )}
               <div className="flex items-center gap-2 sm:gap-3 shrink-0 ml-auto">
                 {earnedFlairs.length > 0 && (
                   <div ref={flairDropdownRef} className="relative">
@@ -2661,6 +2701,37 @@ export const App = () => {
             className="flex-1 flex flex-col overflow-hidden"
             style={{ display: activeTab === "wiki" ? "flex" : "none" }}
           >
+            {gameMismatch && (
+              // The wiki stays fully usable on a game mismatch; this is a soft
+              // heads-up (the loaded assets are from a different game), kept on
+              // the wiki page itself. `shrink-0` + wrapping text so it never
+              // forces a horizontal scrollbar on narrow webviews.
+              <div
+                className="shrink-0 flex items-start gap-2 px-4 py-2 text-[11px] leading-snug border-b border-amber-200 bg-amber-50 text-amber-800"
+                role="status"
+              >
+                <svg
+                  className="w-3.5 h-3.5 shrink-0 mt-0.5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M12 9v2m0 4h.01M5.07 19h13.86a2 2 0 001.74-2.99l-6.93-12a2 2 0 00-3.48 0l-6.93 12A2 2 0 005.07 19z"
+                  />
+                </svg>
+                <span className="min-w-0">
+                  The loaded assets look like a different game: expected{" "}
+                  <strong>{gameMismatch.expected}</strong> but detected{" "}
+                  <strong>{gameMismatch.detected}</strong>. The wiki still
+                  works; some asset references may not resolve.
+                </span>
+              </div>
+            )}
             <WikiView
               subredditName={subredditName}
               wikiFontSize={style.wikiFontSize}
@@ -2794,28 +2865,32 @@ export const App = () => {
 
           {activeTab === "submissions" &&
             (isMod || config?.collaborativeMode) && (
-              <SubmissionsPanel
-                subredditName={subredditName}
-                isMod={isMod}
-                username={username}
-                wikiFontSize={style.wikiFontSize}
-                onPendingCountChange={setPendingCount}
-                onEditSuggestion={handleNavigateToSuggestion}
-              />
+              <Suspense fallback={<ViewLoadingFallback />}>
+                <SubmissionsPanel
+                  subredditName={subredditName}
+                  isMod={isMod}
+                  username={username}
+                  wikiFontSize={style.wikiFontSize}
+                  onPendingCountChange={setPendingCount}
+                  onEditSuggestion={handleNavigateToSuggestion}
+                />
+              </Suspense>
             )}
 
           {activeTab === "settings" && isAllMod && config && (
-            <SettingsView
-              mappingText={mappingText}
-              style={style}
-              config={config}
-              appearance={appearance}
-              subredditName={subredditName}
-              paths={paths}
-              onMappingSaved={handleMappingSaved}
-              onStyleChanged={handleStyleChanged}
-              onConfigChanged={handleConfigChanged}
-            />
+            <Suspense fallback={<ViewLoadingFallback />}>
+              <SettingsView
+                mappingText={mappingText}
+                style={style}
+                config={config}
+                appearance={appearance}
+                subredditName={subredditName}
+                paths={paths}
+                onMappingSaved={handleMappingSaved}
+                onStyleChanged={handleStyleChanged}
+                onConfigChanged={handleConfigChanged}
+              />
+            </Suspense>
           )}
         </>
       )}

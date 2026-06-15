@@ -154,7 +154,7 @@ A minimum number of voters can be required before the time-based threshold appli
 
 ![Vote](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/comment.png)
 
-The voting post includes a pinned bot comment that records vote events: when the vote opened, when the suggestion was updated, and when the vote concluded with the outcome and reason. The comment is updated as events occur, and the post is locked once the vote concludes.
+The voting post includes a pinned bot comment that records vote events: when the vote opened, when the suggestion was updated, and when the vote concluded with the outcome and reason. The comment is updated as events occur, and the post is locked once the vote concludes (or, if **Delete completed vote posts** is enabled in the [Voting settings](#voting-1), deleted from the subreddit instead). Either way the suggestion's content and the decision are preserved in the [contribution history](#contribution-history), so a concluded vote stays reviewable even after its post is gone.
 
 Voting posts are public, so a voter who has not imported the game can still review the change: the import prompt on a voting post offers a **Continue without assets** option. Choosing it opens the suggestion with its text and Diff fully readable, while `echo://` references render as inert placeholders rather than resolved assets. The choice is session-only and is never persisted, so each visit opts in again.
 
@@ -183,6 +183,8 @@ Visibility depends on the role:
 - **Moderators** see every decision in full detail, including which moderator approved or denied each one and which were decided by community vote.
 
   ![History contributions](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/history-contributions.png)
+
+Every entry has a **Changes** button that opens a side-by-side diff of what the contribution proposed, against the page as it stood when the decision was made. Because this content is stored with the history entry itself, it stays viewable even when the original vote post has been deleted (see [Delete completed vote posts](#voting-1)): the history is the durable record of what each contribution changed. Contributors can review their own contributions this way; moderators can review any.
 
 Moderators can act on a past decision from the History list, without erasing it: the entry stays and instead moves to the top, logging each new state (e.g. "denied by X", then "approved post-mortem by Y"):
 
@@ -497,7 +499,7 @@ The Settings tab is visible only to **config**-level moderators (see [Moderator 
 
 ![game](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/game.png)
 
-- **Game Title**: Displayed to users during import. A warning appears if the detected title does not match.
+- **Game Title**: Displayed to users during import. If the imported files look like a different game, a non-blocking notice is shown on the wiki page itself: the wiki stays fully usable and nothing is hidden, only some `echo://` references may not resolve.
 - **Engine**: Leave on Auto-detect, or force a specific engine. The dropdown lists Unity, Unreal, and Godot first, then groups the rest for clarity: **RPG Maker** (MV, MZ, VX Ace, VX, XP, 2003: with encrypted variants for MV/MZ), **Other** (Generic scan covering RenPy, GameMaker, and any other game; plus TCOAAL), and **Advanced** (Custom transform).
 - **Encryption Key**: Override the decryption key for games with encrypted assets. Leave empty for auto-detection. Not used by Unity, Unreal, Godot, Generic, or TCOAAL.
 - **Custom Transform Code**: Shown when the engine is set to Custom. See [Custom transform](#custom-transform) below.
@@ -600,6 +602,7 @@ Voting builds on collaborative mode, which it requires, engaging your community 
 - **Time-based threshold**: Percentage of accept votes required to pass when the deadline is reached. 0 means a simple majority wins.
 - **Allow vote changes**: Whether voters can change their vote after casting, with an optional cooldown between changes.
 - **Show voter names**: Whether voter names are visible to other users. Moderators and the suggestion author always see names.
+- **Delete completed vote posts**: When enabled, a vote post is deleted from the subreddit once its vote concludes, instead of being locked and left up. This only removes the Reddit post; the decision and its content remain in the [contribution history](#contribution-history), where they stay viewable.
 - **Max suggestion updates**: Maximum number of times a pending suggestion can be updated (0 for unlimited).
 - **Voter eligibility**: Minimum karma and account age required to vote (separate from contributor eligibility).
 - **Voting post flair**: Flair template applied to voting posts on creation.
