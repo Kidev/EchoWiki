@@ -11,7 +11,7 @@ export default defineConfig({
     emptyOutDir: true,
     sourcemap: true,
     // three.js core (chiefly WebGLRenderer) is ~520 kB minified and can't be
-    // shrunk below the 500 kB default: but it lives in its own `three` vendor
+    // shrunk below the 500 kB default, but it lives in its own `three` vendor
     // chunk (see manualChunks) that is only fetched lazily when a reader opens
     // a 3D model, and never enters the main app bundle. Raise the limit so this
     // one intentional, code-split vendor chunk doesn't trip the warning.

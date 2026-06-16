@@ -13,7 +13,7 @@ import { proxiedImageUrl } from "../assetUtils";
 // (not an object URL): the side-by-side vote preview mounts the same image in
 // both panes, and a single shared `blob:` URL handed to two concurrently-loading
 // <img> elements fails to render in the Reddit webview (the second one falls back
-// to its alt text). Each RemoteImage instance instead mints: and owns its own
+// to its alt text). Each RemoteImage instance instead mints and owns its own
 // object URL from the shared Blob, so the panes never contend over one URL.
 const remoteBlobCache = new Map<string, Blob>();
 const remoteInflight = new Map<string, Promise<Blob | null>>();

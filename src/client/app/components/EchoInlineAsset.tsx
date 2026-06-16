@@ -46,7 +46,7 @@ const RAW_PLACEHOLDER = `data:image/svg+xml;utf8,${encodeURIComponent(
 // blob URLs are stable (cached by base path in lib/echo.ts), so once an image
 // has decoded, any later <img> pointed at the same URL paints from the browser's
 // image cache synchronously. Remembering that lets a remounted loader start in
-// the decoded state instead of flashing its spinner for a frame: which is what
+// the decoded state instead of flashing its spinner for a frame, which is what
 // made preview images blink on every keystroke: typing re-renders the markdown
 // and react-markdown's index-keyed children remount image nodes mid-paragraph.
 const decodedUrls = new Set<string>();

@@ -127,7 +127,7 @@ function makeSlots() {
   // Restore iteratively: a held token can nest another (e.g. `[t](echo://...)`
   // holds the echo URL first, then holds the whole link with that placeholder
   // inside it). A single pass would expand the outer slot and leave the inner
-  // placeholder behind: which then renders as stray □ glyphs. Loop until stable.
+  // placeholder behind, which then renders as stray box glyphs. Loop until stable.
   const restore = (s: string): string => {
     let prev: string;
     do {

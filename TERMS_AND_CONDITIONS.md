@@ -19,7 +19,7 @@ EchoWiki does not upload, transmit, or distribute your game files. All processin
 
 **Game assets belong to their respective rights holders.** EchoWiki does not claim any ownership over any game assets you import or view through the app.
 
-EchoWiki provides an `echo://` link system that allows wiki editors to reference locally-imported assets within wiki pages. These links resolve to assets stored in each individual user's own browser, they are **not** hosted URLs and cannot be used to distribute assets to anyone.
+EchoWiki provides an `echo://` link system that allows wiki editors to reference locally-imported assets within wiki pages. These links resolve to assets stored in each individual user's own browser; they are **not** hosted URLs and cannot be used to distribute assets to anyone.
 
 **You must not use EchoWiki to distribute, redistribute, or make available copyrighted game assets to others.** The app is designed so that each user imports their own copy of the game files. Wiki pages may reference assets by filename, but every user must have their own local copy for those references to resolve.
 

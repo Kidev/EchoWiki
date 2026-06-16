@@ -4437,7 +4437,7 @@ router.post(
   async (_req, res: Response<UiResponse>): Promise<void> => {
     try {
       // The "Create EchoWiki" menu is gated to moderators by `forUserType: "moderator"`
-      // in devvit.json, and /internal/* endpoints are platform-only: so the caller is
+      // in devvit.json, and /internal/* endpoints are platform-only, so the caller is
       // already guaranteed to be a moderator. We intentionally do NOT re-resolve and
       // re-check the user here: in menu/trigger contexts the acting user often cannot be
       // resolved (context.username is unset and getCurrentUsername's UserAbout fallback
@@ -4540,7 +4540,7 @@ router.post(
   async (req, res: Response<UiResponse>): Promise<void> => {
     try {
       // The "Create EchoWiki" menu is gated to moderators by `forUserType: "moderator"`
-      // in devvit.json, and /internal/* endpoints are platform-only: so the caller is
+      // in devvit.json, and /internal/* endpoints are platform-only, so the caller is
       // already guaranteed to be a moderator. We intentionally do NOT re-resolve and
       // re-check the user here: in menu/trigger contexts the acting user often cannot be
       // resolved (context.username is unset and getCurrentUsername's UserAbout fallback

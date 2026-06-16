@@ -356,7 +356,7 @@ echo://img/characters/actor.png?sprite=12,8,1
 
 ![Scene](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/fbf-anim.gif)
 
-**Multi-phase animations** swap the sprite mid-loop: add `---` separators inside `:::anim`, each with its own frames and movement keyframes (and optional `fps`, `spritesize`, `loops`, `duration`, `hold`). They composite into one seamless loop: e.g. a right-facing walk left-to-right, then a left-facing walk back: so the character always faces the way it is walking.
+**Multi-phase animations** swap the sprite mid-loop: add `---` separators inside `:::anim`, each with its own frames and movement keyframes (and optional `fps`, `spritesize`, `loops`, `duration`, `hold`). They composite into one seamless loop: e.g. a right-facing walk left-to-right, then a left-facing walk back, so the character always faces the way it is walking.
 
 ```ini
 :::anim width=75% height=50% bg=echo://img/parallaxes/bg.png?crop bgopacity=1
@@ -524,7 +524,7 @@ The Settings tab is visible only to **config**-level moderators (see [Moderator 
 ![game](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/game.png)
 
 - **Game Title**: Displayed to users during import. If the imported files look like a different game, a non-blocking notice is shown on the wiki page itself: the wiki stays fully usable and nothing is hidden, only some `echo://` references may not resolve.
-- **Engine**: Leave on Auto-detect, or force a specific engine. The dropdown lists Unity, Unreal, and Godot first, then groups the rest for clarity: **Native engines** (Source, GoldSrc, Quake, Doom, id Tech 3/4, GTA/RenderWare, RAGE, Bethesda, Call of Duty, Frostbite), **RPG Maker** (MV, MZ, VX Ace, VX, XP, 2003: with encrypted variants for MV/MZ), **Other** (Generic scan covering RenPy, GameMaker, and any other game; plus TCOAAL), and **Advanced** (Custom transform). See [Supported Engines](#supported-engines) for what each reader extracts.
+- **Engine**: Leave on Auto-detect, or force a specific engine. The dropdown lists Unity, Unreal, and Godot first, then groups the rest for clarity: **Native engines** (Source, GoldSrc, Quake, Doom, id Tech 3/4, GTA/RenderWare, RAGE, Bethesda, Call of Duty, Frostbite), **RPG Maker** (MV, MZ, VX Ace, VX, XP, 2003, with encrypted variants for MV/MZ), **Other** (Generic scan covering RenPy, GameMaker, and any other game; plus TCOAAL), and **Advanced** (Custom transform). See [Supported Engines](#supported-engines) for what each reader extracts.
 - **Encryption Key**: Override the decryption key for games with encrypted assets. Leave empty for auto-detection. Used only by the RPG Maker family; the native-engine, Unity, Unreal, Godot, Generic, and TCOAAL readers ignore it.
 - **Custom Transform Code**: Shown when the engine is set to Custom. See [Custom transform](#custom-transform) below.
 - **Advanced parsing hooks**: Shown for any non-Custom engine. Optional pre-parse / post-process snippets for fixing a parsing quirk in a specific game (e.g. texture colours). See [Advanced parsing hooks](#advanced-parsing-hooks) below.
