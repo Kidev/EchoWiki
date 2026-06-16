@@ -204,7 +204,7 @@ Flairs are not assigned automatically. Users choose when to equip them using a d
 
 Echo links are standard Markdown image or link syntax using the `echo://` scheme:
 
-```markdown
+```ini
 ![Character portrait](echo://img/characters/hero.png)
 ![Battle theme](echo://audio/bgm/battle.ogg)
 ![King statue](echo://meshes/king.glb)
@@ -235,7 +235,7 @@ Echo links support edition parameters that transform how assets are displayed, u
 
 Editions combine with `&`:
 
-```markdown
+```ini
 ![Hero walking](echo://img/characters/actor1.png?crop&sprite=12,8,3)
 ![Battle theme fast](echo://audio/bgm/battle.ogg?speed=2.0&pitch=-3)
 ```
@@ -254,7 +254,7 @@ The asset preview lightbox includes interactive controls for applying editions. 
 
 Interactive 3D models are a first-class echo asset, embedded with the same Markdown image syntax as a picture:
 
-```markdown
+```ini
 ![King statue](echo://meshes/weapon.glb)
 ```
 
@@ -270,7 +270,7 @@ The model loads in an inline WebGL viewer (powered by three.js): drag to orbit, 
 
 Percentages keep the viewer responsive (`100%` height is square, `50%` a 2:1 landscape, `200%` a 1:2 portrait); fixed pixel sizes like `?width=350px&height=400px` also work for an exact footprint.
 
-```markdown
+```ini
 ![King statue](echo://meshes/obelisk.glb?spin&width=60%&bg=151515)
 ```
 
@@ -288,7 +288,7 @@ Wiki pages support a set of fenced block directives for building richer layouts 
 
 **`:::card`** floats an image beside free-form Markdown content (headings, tables, prose). `image=` is the echo path, `size=` sets the image width (default `30%`, accepts `%` or px), and `align=` places it `right` (default), `left`, or `center`. Add `fit=true` to shrink the card so it hugs the image: a self-contained captioned illustration rather than a body-wrapping float.
 
-```
+```ini
 :::card image=echo://img/faces/hero.png size=96px align=right
 ## Hero
 
@@ -306,7 +306,7 @@ A short character blurb beside the portrait.
 
 **`:::infobox`** renders a classic stat-table infobox: an optional title header and image on top of a list of `Label | value` rows, floated to one side of the page. Values support inline Markdown links and `<br>` for multi-line cells.
 
-```
+```ini
 :::infobox title="Character Name" image=echo://img/faces/hero.png align=right
 Class | Hero
 HP | 9999
@@ -340,7 +340,7 @@ Weapon | Echo Blade
 | `width` / `height` | `50%`   | Block size. `width` is the share of the container; `height` is taken relative to `width`. Equal (or `height` omitted) keeps the natural aspect ratio; an unequal `height` stretches the block vertically. The background is **scaled, never cropped** (given only `height`, `width` defaults to 100%) |
 | `bg` / `bgopacity` |         | Background image path and opacity (`0`-`1`)                                                                                                                                                                                                                                                           |
 
-```
+```ini
 :::fbf alias=hero fps=11 size=48
 echo://img/characters/actor.png?sprite=12,8,0
 echo://img/characters/actor.png?sprite=12,8,1
@@ -358,7 +358,7 @@ echo://img/characters/actor.png?sprite=12,8,1
 
 **Multi-phase animations** swap the sprite mid-loop: add `---` separators inside `:::anim`, each with its own frames and movement keyframes (and optional `fps`, `spritesize`, `loops`, `duration`, `hold`). They composite into one seamless loop: e.g. a right-facing walk left-to-right, then a left-facing walk back: so the character always faces the way it is walking.
 
-```
+```ini
 :::anim width=75% height=50% bg=echo://img/parallaxes/bg.png?crop bgopacity=1
 --- fps=6 spritesize=100% loops=3
 echo://img/characters/actor.png?sprite=12,8,24
@@ -381,7 +381,7 @@ echo://img/characters/actor.png?sprite=12,8,13
 
 **`:::def`** defines reusable aliases for long echo paths. List `name = echo://path` lines inside the block, then reference them anywhere on the page as `echo://~name`.
 
-```
+```ini
 :::def
 hero = echo://img/characters/actor1.png
 theme = echo://audio/bgm/battle.ogg
@@ -406,28 +406,42 @@ If no game is configured, EchoWiki runs as a plain wiki: there is no "Import gam
 
 ![engines](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/engines.png)
 
-Engine detection is automatic. EchoWiki reads the biggest modern general-purpose engines, Unity, Unreal, and Godot, directly from their packaged data. Many more are also supported! If yours doesn't work or if you have issues with assets, report this issue from `Settings` in the `General` tab.
+Engine detection is automatic: EchoWiki fingerprints the folder, picks the right reader, and extracts everything in the browser. If yours doesn't work, or some assets fail to load, report it from `Settings` in the `General` tab.
 
-#### **Unity**
+Two ideas recur in the tables below:
 
-EchoWiki reads Unity's serialized data files (`resources.assets`, `sharedassets*.assets`, `globalgamemanagers`, `levelN`) and asset bundles (`.bundle` / `.unity3d`). It extracts textures as PNGs and, because Unity ships meshes as raw geometry rather than model files, rebuilds each mesh into a self-contained [GLB model](#3d-models) linked to its base-color texture all decoded in the browser. Textures in GPU formats that need heavyweight decoders, and skinned or compressed meshes, are skipped.
+- **Decoded -> PNG**: textures that ship in GPU or palettized formats are decoded to PNG in the browser. The DXT/BCn block-compression families (DXT1/3/5, BC4/5) and the per-engine pixel layouts are supported; formats that need heavyweight decoders (BC6H/BC7, ASTC, ETC, crunch) are skipped. Audio and video pass through unchanged.
+- **Carved**: some engines wrap their assets in compressed or encrypted containers that can't be unpacked in the browser without proprietary libraries. For those, EchoWiki scans the raw bytes for self-contained media (OGG, WAV, PNG, JPEG) and rebuilds each file from its own length fields; cooked or compressed data is never matched, so it extracts only what it safely can rather than producing garbage. Carving is the slow path, and a notice warns that these imports take longer.
 
-#### **Unreal**
+#### General-purpose engines
 
-A full cooked-asset reader isn't feasible in the browser, since shipping titles compress and often encrypt their `.pak` archives. EchoWiki instead carves out any self-contained media (OGG, WAV, PNG, JPEG) stored uncompressed inside a `.pak`. Compressed, encrypted, or cooked data is never matched, so it extracts only what it safely can rather than producing garbage.
+| Engine     | Formats                                                          | What's extracted                                                                                            |
+| ---------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| **Unity**  | `.assets`, `.bundle`, `.unity3d`, `globalgamemanagers`, `levelN` | Textures -> PNG; meshes rebuilt into self-contained [GLB models](#3d-models) with their base texture; audio  |
+| **Unreal** | `.pak`, `.utoc`/`.ucas` (IoStore), `.upk`/`.u` (UE3/UE2)         | Carved media                                                                                                |
+| **Godot**  | `.pck` (Godot 3 & 4)                                             | Images, audio                                                                                               |
 
-#### **Godot**
+Unity ships meshes as raw geometry rather than model files, so each is rebuilt into a GLB linked to its base-color texture; skinned or compressed meshes are skipped. Unreal's `.pak` and IoStore archives are compressed and frequently encrypted, so its media is carved.
 
-EchoWiki reads Godot's `.pck` pack files (used by both Godot 3 and 4), pulling out the bundled images and audio.
+#### Native game engines
 
-Most other games work too. When no known engine is matched, EchoWiki falls back to a generic scan that picks up image and audio files from anywhere in the folder, using each file's parent folder as its category. Along the way it automatically unpacks common archives so these engines are supported out of the box:
+| Engine                | Formats                                     | What's extracted                                                 |
+| --------------------- | ------------------------------------------- | ---------------------------------------------------------------- |
+| **Source / Source 2** | `.vpk` (+ `.vtf`, `.bsp`)                   | VTF textures -> PNG; audio; embedded map `pakfile` contents       |
+| **GoldSrc**           | `.wad` (WAD3), `.bsp`, `.spr`               | Palettized textures and sprites -> PNG                            |
+| **Quake / Quake II**  | `.pak` (PACK), WAD2, `.bsp`, `.lmp`, `.wal` | Palettized textures -> PNG (engine palette read from the archive) |
+| **Doom (id Tech 1)**  | `.wad` (IWAD/PWAD)                          | Graphics, flats, and sprites -> PNG (PLAYPAL palette)             |
+| **id Tech 3 / 4**     | `.pk3`, `.pk4`                              | TGA/DDS -> PNG; JPEG and audio                                    |
+| **Call of Duty**      | `.iwd`                                      | Textures and media                                               |
+| **CryEngine**         | `.pak` (ZIP)                                | TGA/DDS -> PNG; media                                             |
+| **GTA / RenderWare**  | `.img`, `.dir`, `.txd`                      | TXD texture dictionaries -> PNG                                   |
+| **RAGE / id Tech 5**  | `.rpf`, `.resources`, `.streamed`           | Carved media                                                     |
+| **Frostbite**         | `cas`/`sb` bundles                          | Carved media                                                     |
+| **Bethesda Creation** | `.bsa`, `.ba2`                              | DDS textures -> PNG                                               |
 
-| Engine        | Format              | What's extracted            |
-| ------------- | ------------------- | --------------------------- |
-| **RenPy**     | `.rpa` archive      | Image/audio files           |
-| **GameMaker** | `data.win` / `FORM` | Texture pages + audio blobs |
+The `.vpk`, `.img`, and `.bsa` readers stream from multi-gigabyte archives without loading them whole. Loose `.dds`, `.tga`, `.vtf`, and `.txd` files anywhere in the folder are decoded too. Quake's palettized formats need the engine palette, which EchoWiki reads from `gfx/palette.lmp` (or `colormap.pcx`) inside the same PAK rather than guessing it.
 
-It also unpacks plain `.zip` and `.nw` (NW.js) packages.
+#### RPG Maker
 
 RPG Maker games are decrypted natively, including their archive formats:
 
@@ -440,11 +454,21 @@ RPG Maker games are decrypted natively, including their archive formats:
 | **RPG Maker XP**     | RGSSAD v1 archive |
 | **RPG Maker 2003**   | XYZ image format  |
 
-And a few title-specific readers, such as **TCOAAL** (_The Coffin of Andy and Leyley_) 3.0+, are handled natively as well.
+Encrypted MV and MZ projects are handled too, and a few title-specific readers, such as **TCOAAL** (_The Coffin of Andy and Leyley_) 3.0+, are built in.
+
+#### Other formats and fallback
+
+When no engine is matched, EchoWiki falls back to a generic scan that picks up image and audio files from anywhere in the folder, using each file's parent folder as its category. Along the way it unpacks common archives:
+
+| Engine        | Format              | What's extracted            |
+| ------------- | ------------------- | --------------------------- |
+| **RenPy**     | `.rpa` archive      | Image/audio files           |
+| **GameMaker** | `data.win` / `FORM` | Texture pages + audio blobs |
+| **NW.js**     | `.nw`, `.zip`       | Image/audio files           |
 
 For anything unusual, moderators can supply a [custom transform](#custom-transform): a short snippet of JavaScript that receives each file and returns the decoded asset. This lets a community add support for an engine EchoWiki doesn't recognize on its own.
 
-When forcing the engine in the [Game settings](#game), the choices are: **Auto-detect** (recommended), then Unity, Unreal, and Godot, followed by the **RPG Maker** group (the full family above), **Other** (Generic scan, TCOAAL), and **Advanced** (Custom transform).
+When forcing the engine in the [Game settings](#game), the choices are: **Auto-detect** (recommended), then Unity, Unreal, and Godot, a **Native engines** group (Source, GoldSrc, Quake, Doom, id Tech 3/4, GTA/RenderWare, RAGE, Bethesda, Call of Duty, Frostbite), the **RPG Maker** family, **Other** (Generic scan, TCOAAL), and **Advanced** (Custom transform).
 
 ## Asset Browser
 
@@ -500,8 +524,8 @@ The Settings tab is visible only to **config**-level moderators (see [Moderator 
 ![game](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/game.png)
 
 - **Game Title**: Displayed to users during import. If the imported files look like a different game, a non-blocking notice is shown on the wiki page itself: the wiki stays fully usable and nothing is hidden, only some `echo://` references may not resolve.
-- **Engine**: Leave on Auto-detect, or force a specific engine. The dropdown lists Unity, Unreal, and Godot first, then groups the rest for clarity: **RPG Maker** (MV, MZ, VX Ace, VX, XP, 2003: with encrypted variants for MV/MZ), **Other** (Generic scan covering RenPy, GameMaker, and any other game; plus TCOAAL), and **Advanced** (Custom transform).
-- **Encryption Key**: Override the decryption key for games with encrypted assets. Leave empty for auto-detection. Not used by Unity, Unreal, Godot, Generic, or TCOAAL.
+- **Engine**: Leave on Auto-detect, or force a specific engine. The dropdown lists Unity, Unreal, and Godot first, then groups the rest for clarity: **Native engines** (Source, GoldSrc, Quake, Doom, id Tech 3/4, GTA/RenderWare, RAGE, Bethesda, Call of Duty, Frostbite), **RPG Maker** (MV, MZ, VX Ace, VX, XP, 2003: with encrypted variants for MV/MZ), **Other** (Generic scan covering RenPy, GameMaker, and any other game; plus TCOAAL), and **Advanced** (Custom transform). See [Supported Engines](#supported-engines) for what each reader extracts.
+- **Encryption Key**: Override the decryption key for games with encrypted assets. Leave empty for auto-detection. Used only by the RPG Maker family; the native-engine, Unity, Unreal, Godot, Generic, and TCOAAL readers ignore it.
 - **Custom Transform Code**: Shown when the engine is set to Custom. See [Custom transform](#custom-transform) below.
 
 #### Custom transform
@@ -566,7 +590,7 @@ When a mapping is changed or removed, any wiki echo links referencing the old ma
 
 Example:
 
-```
+```ini
 // Character sprites
 "actor1": "hero"
 "actor2": "villain"

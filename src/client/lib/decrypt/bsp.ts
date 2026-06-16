@@ -117,7 +117,10 @@ export async function* processBsp(file: File): AsyncGenerator<ProcessedAsset> {
 
   if (ident === VBSP_IDENT) {
     yield* sourcePakfile(buffer);
-  } else if (ident === 30 || ident === 29) {
+  } else if (ident === 30) {
+    // GoldSrc (v30) embeds a palette per miptex. Quake1 (v29) shares the engine
+    // palette instead, so it is decoded only via the Quake PAK reader (which has
+    // that palette), never guessed here.
     yield* goldsrcTextures(file, buffer);
   }
 }

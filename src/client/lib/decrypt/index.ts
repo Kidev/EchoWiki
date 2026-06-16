@@ -143,6 +143,12 @@ function getAssetGenerator(
     case "goldsrc":
     case "gta":
     case "frostbite":
+    case "doom":
+    case "quake":
+    case "idtech3":
+    case "bethesda":
+    case "cod":
+    case "rage":
     case "generic":
       return processGenericFiles(files);
 

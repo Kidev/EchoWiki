@@ -1379,7 +1379,13 @@ export function SettingsView({
     engineField === "source" ||
     engineField === "goldsrc" ||
     engineField === "gta" ||
-    engineField === "frostbite";
+    engineField === "frostbite" ||
+    engineField === "doom" ||
+    engineField === "quake" ||
+    engineField === "idtech3" ||
+    engineField === "bethesda" ||
+    engineField === "cod" ||
+    engineField === "rage";
 
   useEffect(() => {
     if (isTcoaalDetected) {
@@ -1728,7 +1734,19 @@ export function SettingsView({
                       <option value="goldsrc">
                         GoldSrc (.wad, .bsp, .spr)
                       </option>
+                      <option value="quake">Quake / Quake II (.pak)</option>
+                      <option value="doom">Doom / id Tech 1 (.wad)</option>
+                      <option value="idtech3">
+                        id Tech 3 / 4 (.pk3, .pk4)
+                      </option>
                       <option value="gta">GTA / RenderWare (.img, .txd)</option>
+                      <option value="rage">
+                        RAGE / id Tech 5 (.rpf): carve
+                      </option>
+                      <option value="bethesda">
+                        Bethesda Creation (.bsa, .ba2)
+                      </option>
+                      <option value="cod">Call of Duty (.iwd)</option>
                       <option value="frostbite">
                         Frostbite (cas/sb): slower
                       </option>
@@ -1776,13 +1794,25 @@ export function SettingsView({
                                 ? "Decodes GoldSrc WAD3 textures, BSP map textures and SPR sprites (Half-Life and mods)."
                                 : engineField === "gta"
                                   ? "Reads RenderWare GTA IMG archives and TXD texture dictionaries (III / VC / SA). The large .img archives can take a while."
-                                  : engineField === "frostbite"
-                                    ? "Best-effort carving of uncompressed audio/images from Frostbite cas/sb bundles. This is the slow path and may take several minutes."
-                                    : engineField === "generic"
-                                      ? "Scans any game folder for images and audio; also unpacks RenPy (.rpa), GameMaker (data.win), .zip, and .nw archives."
-                                      : engineField === "custom"
-                                        ? "Run custom JavaScript on each imported file: handles any game format."
-                                        : "Override engine auto-detection. Leave on Auto-detect if unsure."}
+                                  : engineField === "quake"
+                                    ? "Reads Quake / Quake II PAK archives: decodes palettized textures (WAD2, BSP miptex, .lmp, .wal) using the engine palette found inside, plus TGA/DDS."
+                                    : engineField === "doom"
+                                      ? "Decodes Doom / id Tech 1 WAD graphics, flats and sprites against the PLAYPAL palette (Doom, Doom II, Heretic, Hexen)."
+                                      : engineField === "idtech3"
+                                        ? "Unpacks id Tech 3/4 ZIP archives (Quake III/RtCW .pk3, Doom 3 .pk4): decodes TGA/DDS textures and extracts JPEG/audio."
+                                        : engineField === "bethesda"
+                                          ? "Reads Bethesda BSA/BA2 archives (Skyrim, Fallout, Oblivion) and decodes the DDS textures inside to PNG."
+                                          : engineField === "cod"
+                                            ? "Unpacks Call of Duty .iwd ZIP archives and decodes the textures inside."
+                                            : engineField === "rage"
+                                              ? "Best-effort carving of uncompressed audio/images from Rockstar RAGE (.rpf) and id Tech 5 (.resources) containers. Slow path; may take several minutes."
+                                              : engineField === "frostbite"
+                                                ? "Best-effort carving of uncompressed audio/images from Frostbite cas/sb bundles. This is the slow path and may take several minutes."
+                                                : engineField === "generic"
+                                                  ? "Scans any game folder for images and audio; also unpacks RenPy (.rpa), GameMaker (data.win), .zip, and .nw archives."
+                                                  : engineField === "custom"
+                                                    ? "Run custom JavaScript on each imported file: handles any game format."
+                                                    : "Override engine auto-detection. Leave on Auto-detect if unsure."}
                   </span>
                 </div>
 

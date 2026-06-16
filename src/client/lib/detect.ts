@@ -131,14 +131,55 @@ export function detectEngine(files: File[]): DetectionResult {
   // (e.g. NW.js/Chromium ships resources.pak, so TCOAAL and RPG Maker MV/MZ
   // games must be matched above before this catches their runtime files).
 
+  // Bethesda Creation/Gamebryo archives (Skyrim, Fallout, Oblivion).
+  if (hasExt(idx, ".bsa") || hasExt(idx, ".ba2")) {
+    return { engine: "bethesda", dataRoot: "", hasEncryption: false };
+  }
+
   // Source / Source 2 (Valve): VPK package sets.
   if (hasExt(idx, ".vpk")) {
     return { engine: "source", dataRoot: "", hasEncryption: false };
   }
 
+  // Call of Duty (IW engine): .iwd ZIP archives.
+  if (hasExt(idx, ".iwd")) {
+    return { engine: "cod", dataRoot: "", hasEncryption: false };
+  }
+
+  // id Tech 3/4 lineage: Quake III / RtCW .pk3, Doom 3 .pk4.
+  if (hasExt(idx, ".pk3") || hasExt(idx, ".pk4")) {
+    return { engine: "idtech3", dataRoot: "", hasEncryption: false };
+  }
+
+  // Rockstar RAGE (GTA IV/V, RDR) and id Tech 5 (RAGE) megatexture containers.
+  if (hasExt(idx, ".rpf") || hasExt(idx, ".resources")) {
+    return { engine: "rage", dataRoot: "", hasEncryption: false };
+  }
+
+  // Doom (id Tech 1): IWAD/PWAD. Distinguished from GoldSrc/Quake .wad by the
+  // absence of BSP/SPR siblings and presence of the classic IWAD names.
+  if (
+    hasExt(idx, ".wad") &&
+    !hasExt(idx, ".bsp") &&
+    (hasPath(idx, "doom.wad") ||
+      hasPath(idx, "doom2.wad") ||
+      hasPath(idx, "doom1.wad") ||
+      hasPath(idx, "heretic.wad") ||
+      hasPath(idx, "hexen.wad") ||
+      hasPath(idx, "tnt.wad") ||
+      hasPath(idx, "plutonia.wad"))
+  ) {
+    return { engine: "doom", dataRoot: "", hasEncryption: false };
+  }
+
   // GoldSrc (Quake-derived): WAD3 texture archives, optionally with .bsp maps.
   if (hasExt(idx, ".wad") || (hasExt(idx, ".bsp") && hasExt(idx, ".spr"))) {
     return { engine: "goldsrc", dataRoot: "", hasEncryption: false };
+  }
+
+  // Quake / Quake II: PAK archives ("PACK") sit alongside .bsp maps.
+  if (hasExt(idx, ".pak") && hasExt(idx, ".bsp")) {
+    return { engine: "quake", dataRoot: "", hasEncryption: false };
   }
 
   // RenderWare-era GTA: IMG archives or loose TXD texture dictionaries.

@@ -11,6 +11,10 @@ import { processImgArchive } from "./imgarchive";
 import { processWadArchive } from "./wad";
 import { processSprFile } from "./spr";
 import { processBsp } from "./bsp";
+import { processDoomWad } from "./doomwad";
+import { processQuakePak } from "./quakepak";
+import { processZipGameArchive } from "./pk3";
+import { processBethesdaArchive } from "./bsa";
 import { decodeTxd } from "./txd";
 import { decodeVtf } from "./vtf";
 import { decodeDds } from "./dds";
@@ -145,6 +149,28 @@ function withPngExt(path: string): string {
   return `${dot >= 0 ? path.slice(0, dot) : path}.png`;
 }
 
+// Stream a sub-decoder's output, dropping paths already emitted in this import.
+async function* dedupe(
+  gen: AsyncGenerator<ProcessedAsset>,
+  yielded: Set<string>,
+): AsyncGenerator<ProcessedAsset> {
+  for await (const asset of gen) {
+    if (yielded.has(asset.path)) continue;
+    yielded.add(asset.path);
+    yield asset;
+  }
+}
+
+// Read the first four bytes to tell apart formats that share an extension.
+async function magic4(file: File): Promise<string> {
+  try {
+    const b = new Uint8Array(await file.slice(0, 4).arrayBuffer());
+    return String.fromCharCode(b[0] ?? 0, b[1] ?? 0, b[2] ?? 0, b[3] ?? 0);
+  } catch {
+    return "";
+  }
+}
+
 // Derive a stored path using the immediate parent folder as category.
 // e.g. "images/characters/hero.png" -> "characters/hero.png"
 // e.g. "hero.png" (root level)      -> "hero.png"
@@ -211,14 +237,17 @@ export async function* processGenericFiles(
       continue;
     }
 
-    // Carve embedded media out of Unreal Engine pak archives (.pak)
+    // .pak is overloaded across engines: sniff the magic to pick a reader.
+    // Quake/Quake2 ("PACK"), CryEngine/others (ZIP "PK"), else Unreal (carved).
     if (ext === ".pak") {
+      const m = await magic4(file);
       try {
-        for await (const asset of processUnrealPak(file)) {
-          if (!yielded.has(asset.path)) {
-            yielded.add(asset.path);
-            yield asset;
-          }
+        if (m === "PACK") {
+          yield* dedupe(processQuakePak(file), yielded);
+        } else if (m.startsWith("PK")) {
+          yield* dedupe(processZipGameArchive(file), yielded);
+        } else {
+          yield* dedupe(processUnrealPak(file), yielded);
         }
       } catch {
         // Encrypted / Oodle-compressed / corrupt pak: skip
@@ -226,21 +255,53 @@ export async function* processGenericFiles(
       continue;
     }
 
-    // Opaque containers carved by raw signature scan (the slow path): UE4.25+/UE5
-    // IoStore data (.ucas), legacy UE3 packages (.upk), and Frostbite cas/sb
-    // bundles. The .utoc/.toc index files carry no media, so they're skipped.
-    if (ext === ".ucas" || ext === ".upk" || ext === ".cas" || ext === ".sb") {
-      const folder =
-        ext === ".ucas" ? "iostore" : ext === ".upk" ? "upk" : "frostbite";
+    // Opaque/proprietary containers carved by raw signature scan (the slow path):
+    // UE4.25+/UE5 IoStore (.ucas), UE3 (.upk) and UE2 (.u) packages, Frostbite
+    // cas/sb bundles, Rockstar RAGE (.rpf), id Tech 5 RAGE (.resources/.streamed),
+    // Borderlands texture caches (.tfc), and FMOD banks (.fsb). Index-only files
+    // (.utoc/.toc) carry no media and are skipped.
+    const CARVE_EXTS: Record<string, string> = {
+      ".ucas": "iostore",
+      ".upk": "upk",
+      ".u": "upk",
+      ".cas": "frostbite",
+      ".sb": "frostbite",
+      ".rpf": "rpf",
+      ".rcf": "rpf",
+      ".resources": "idtech5",
+      ".streamed": "idtech5",
+      ".tfc": "cooked",
+      ".fsb": "fmod",
+    };
+    if (CARVE_EXTS[ext]) {
       try {
-        for await (const asset of carveMediaFromFile(file, { folder })) {
-          if (!yielded.has(asset.path)) {
-            yielded.add(asset.path);
-            yield asset;
-          }
-        }
+        yield* dedupe(
+          carveMediaFromFile(file, { folder: CARVE_EXTS[ext] }),
+          yielded,
+        );
       } catch {
         // Unreadable container: skip
+      }
+      continue;
+    }
+
+    // Bethesda Creation/Gamebryo archives (.bsa, .ba2) -> DDS textures.
+    if (ext === ".bsa" || ext === ".ba2") {
+      try {
+        yield* dedupe(processBethesdaArchive(file), yielded);
+      } catch {
+        // Encrypted / unsupported: skip
+      }
+      continue;
+    }
+
+    // id Tech 3/4 + relatives, all ZIP-based: Quake III/RtCW .pk3, Doom 3 .pk4,
+    // Call of Duty .iwd.
+    if (ext === ".pk3" || ext === ".pk4" || ext === ".iwd") {
+      try {
+        yield* dedupe(processZipGameArchive(file), yielded);
+      } catch {
+        // Corrupt archive: skip
       }
       continue;
     }
@@ -280,17 +341,19 @@ export async function* processGenericFiles(
       continue;
     }
 
-    // GoldSrc WAD3 texture archive.
+    // .wad spans three lineages: GoldSrc WAD3, Doom IWAD/PWAD, and Quake WAD2.
+    // Dispatch by magic. (Quake WAD2 needs the engine palette and is handled
+    // inside the Quake PAK reader, so standalone WAD2 is skipped here.)
     if (ext === ".wad") {
+      const m = await magic4(file);
       try {
-        for await (const asset of processWadArchive(file)) {
-          if (!yielded.has(asset.path)) {
-            yielded.add(asset.path);
-            yield asset;
-          }
+        if (m === "WAD3") {
+          yield* dedupe(processWadArchive(file), yielded);
+        } else if (m === "IWAD" || m === "PWAD") {
+          yield* dedupe(processDoomWad(file), yielded);
         }
       } catch {
-        // Not a WAD3 (e.g. a Doom IWAD): skip
+        // Unsupported WAD variant: skip
       }
       continue;
     }

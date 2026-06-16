@@ -17,6 +17,12 @@ export type EngineType =
   | "goldsrc"
   | "gta"
   | "frostbite"
+  | "doom"
+  | "quake"
+  | "idtech3"
+  | "bethesda"
+  | "cod"
+  | "rage"
   | "generic"
   | "custom"
   | "auto";
