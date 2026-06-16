@@ -199,6 +199,7 @@ export const App = () => {
   });
   const [initResolved, setInitResolved] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
+  const [loadingStatus, setLoadingStatus] = useState("");
   const [isReturningUser, setIsReturningUser] = useState<boolean | null>(null);
   const [isGameIndependent, setIsGameIndependent] = useState(false);
   const [displayedProgress, setDisplayedProgress] = useState(0);
@@ -883,6 +884,7 @@ export const App = () => {
       setAppState("importing");
       setError(null);
       setLoadingProgress(3);
+      setLoadingStatus("Reading files");
 
       const controller = new AbortController();
       abortRef.current = controller;
@@ -925,21 +927,35 @@ export const App = () => {
           onProgress: (p) => {
             progressRef.current = p;
 
+            if (p.phase === "detecting") {
+              setLoadingStatus("Detecting game engine");
+            }
+
             if (p.phase === "decrypting" && p.processed > 0) {
               const pct = Math.round(
                 45 * (1 - Math.pow(0.92, p.processed / 20)),
               );
               setLoadingProgress((prev) => Math.max(prev, pct));
+              // The decrypt percentage asymptotes toward 45%, so on a large
+              // archive the bar can sit near 45 for a long time. Surface the
+              // live extracted-asset count so it's clear work is ongoing.
+              setLoadingStatus(
+                `Extracting assets (${p.processed.toLocaleString()} found)`,
+              );
             }
 
             if (p.phase === "storing" && p.total > 0) {
               const pct = 45 + Math.round((p.processed / p.total) * 45);
               setLoadingProgress((prev) => Math.max(prev, pct));
+              setLoadingStatus(
+                `Saving assets (${p.processed.toLocaleString()} / ${p.total.toLocaleString()})`,
+              );
             }
           },
           signal: controller.signal,
         });
         setLoadingProgress(93);
+        setLoadingStatus("Loading wiki");
         const m = await getMeta();
         setMeta(m ?? null);
         const allPaths = await listAssetPaths();
@@ -1970,6 +1986,7 @@ export const App = () => {
                     style={{ opacity: loadingProgress > 0 ? 1 : 0 }}
                   >
                     {Math.round(displayedProgress)}%
+                    {loadingStatus ? ` - ${loadingStatus}` : ""}
                   </span>
                 </span>
               </p>

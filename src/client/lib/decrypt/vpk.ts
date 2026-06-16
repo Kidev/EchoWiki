@@ -12,10 +12,16 @@ import type { ProcessedAsset } from "./rmmv";
 import { decodeVtf } from "./vtf";
 import { decodeTga } from "./tga";
 import { encodePngBlob } from "./png";
+import { decodeModel } from "./models";
 
 const VPK_SIGNATURE = 0x55aa1234;
 const INLINE_ARCHIVE = 0x7fff;
-const MAX_ENTRIES = 8000; // cap stored assets so IndexedDB stays manageable
+// The directory tree is grouped by extension, so a low parse cap can drop entire
+// categories (models sort after shader caches). Parse generously; the number of
+// *stored* assets is bounded separately below.
+const MAX_ENTRIES = 500_000;
+const MAX_MODELS = 6000; // stored GLB models
+const MAX_MEDIA = 12000; // stored textures / audio / video
 const MAX_FILE_BYTES = 96 * 1024 * 1024;
 
 const PASSTHROUGH: Record<string, string> = {
@@ -148,7 +154,79 @@ export async function* processVpkArchive(
 
   const yielded = new Set<string>();
 
+  // Index entries by lowercased path so a .mdl can pull its .vvd / .vtx siblings.
+  const byPath = new Map<string, VpkEntry>();
+  for (const e of entries) byPath.set(e.path.toLowerCase(), e);
+
+  // Assemble an entry's full bytes (inline preload + archive slice), or null.
+  const readEntry = async (entry: VpkEntry): Promise<Uint8Array | null> => {
+    const totalLen = entry.preload.length + entry.length;
+    if (totalLen <= 0 || totalLen > MAX_FILE_BYTES) return null;
+    if (entry.length === 0) return entry.preload;
+    const source =
+      entry.archiveIndex === INLINE_ARCHIVE
+        ? dirFile
+        : archiveFor(entry.archiveIndex);
+    if (!source) return null;
+    let slice: ArrayBuffer;
+    try {
+      slice = await source
+        .slice(entry.offset, entry.offset + entry.length)
+        .arrayBuffer();
+    } catch {
+      return null;
+    }
+    if (entry.preload.length > 0) {
+      const out = new Uint8Array(entry.preload.length + entry.length);
+      out.set(entry.preload, 0);
+      out.set(new Uint8Array(slice), entry.preload.length);
+      return out;
+    }
+    return new Uint8Array(slice);
+  };
+
+  const fetchSibling = async (p: string): Promise<Uint8Array | null> => {
+    const e = byPath.get(p.toLowerCase());
+    return e ? readEntry(e) : null;
+  };
+
+  // Pass 1: models (.mdl -> GLB). Done first and capped on its own so a tree with
+  // a huge texture/media count can never starve the models out.
+  let modelCount = 0;
   for (const entry of entries) {
+    if (entry.ext !== "mdl") continue;
+    if (modelCount >= MAX_MODELS) break;
+    const totalLen = entry.preload.length + entry.length;
+    if (totalLen <= 0 || totalLen > MAX_FILE_BYTES) continue;
+    const data = await readEntry(entry);
+    if (!data) continue;
+    try {
+      const glb = await decodeModel(
+        entry.path.toLowerCase(),
+        data,
+        fetchSibling,
+      );
+      if (!glb) continue;
+      const stored = `${storedPath(entry.path).replace(/\.mdl$/, "")}.glb`;
+      if (yielded.has(stored)) continue;
+      yielded.add(stored);
+      modelCount++;
+      yield {
+        path: stored,
+        blob: new Blob([glb as unknown as BlobPart], {
+          type: "model/gltf-binary",
+        }),
+        mimeType: "model/gltf-binary",
+      };
+    } catch {
+      // Bad model: skip quietly.
+    }
+  }
+
+  // Pass 2: textures (VTF/TGA -> PNG) and pass-through media.
+  let mediaCount = 0;
+  for (const entry of entries) {
+    if (mediaCount >= MAX_MEDIA) break;
     const isVtf = entry.ext === "vtf";
     const isTga = entry.ext === "tga";
     const passMime = PASSTHROUGH[entry.ext];
@@ -157,32 +235,8 @@ export async function* processVpkArchive(
     const totalLen = entry.preload.length + entry.length;
     if (totalLen <= 0 || totalLen > MAX_FILE_BYTES) continue;
 
-    // Assemble the file bytes from inline preload + archive slice.
-    let data: Uint8Array;
-    if (entry.length === 0) {
-      data = entry.preload;
-    } else {
-      const source =
-        entry.archiveIndex === INLINE_ARCHIVE
-          ? dirFile
-          : archiveFor(entry.archiveIndex);
-      if (!source) continue;
-      let slice: ArrayBuffer;
-      try {
-        slice = await source
-          .slice(entry.offset, entry.offset + entry.length)
-          .arrayBuffer();
-      } catch {
-        continue;
-      }
-      if (entry.preload.length > 0) {
-        data = new Uint8Array(entry.preload.length + entry.length);
-        data.set(entry.preload, 0);
-        data.set(new Uint8Array(slice), entry.preload.length);
-      } else {
-        data = new Uint8Array(slice);
-      }
-    }
+    const data = await readEntry(entry);
+    if (!data) continue;
 
     try {
       if (isVtf || isTga) {
@@ -193,12 +247,14 @@ export async function* processVpkArchive(
         const stored = `${storedPath(entry.path).replace(/\.(vtf|tga)$/, "")}.png`;
         if (yielded.has(stored)) continue;
         yielded.add(stored);
+        mediaCount++;
         const blob = await encodePngBlob(dec.width, dec.height, dec.rgba);
         yield { path: stored, blob, mimeType: "image/png" };
       } else if (passMime) {
         const stored = storedPath(entry.path);
         if (yielded.has(stored)) continue;
         yielded.add(stored);
+        mediaCount++;
         yield {
           path: stored,
           blob: new Blob([data as unknown as BlobPart], { type: passMime }),

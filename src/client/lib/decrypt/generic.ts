@@ -20,6 +20,9 @@ import { decodeVtf } from "./vtf";
 import { decodeDds } from "./dds";
 import { decodeTga, type DecodedImage } from "./tga";
 import { encodePngBlob } from "./png";
+import { decodeModel, isModelPath } from "./models";
+
+const MAX_MODEL_BYTES = 96 * 1024 * 1024;
 
 // Sniff the first bytes of an unknown file (e.g. .bin) to determine its true format,
 // then dispatch to the appropriate parser.
@@ -186,6 +189,24 @@ export async function* processGenericFiles(
   files: File[],
 ): AsyncGenerator<ProcessedAsset> {
   const yielded = new Set<string>();
+
+  // Index loose files by engine-relative path so a studio model (.mdl) can pull
+  // its sibling texture / vertex / index files (T.mdl, .vvd, .dx90.vtx).
+  const filesByRel = new Map<string, File>();
+  for (const f of files) {
+    const r = f.webkitRelativePath;
+    const i = r.indexOf("/");
+    filesByRel.set((i >= 0 ? r.slice(i + 1) : r).toLowerCase(), f);
+  }
+  const fetchSibling = async (p: string): Promise<Uint8Array | null> => {
+    const f = filesByRel.get(p.toLowerCase());
+    if (!f || f.size > MAX_MODEL_BYTES) return null;
+    try {
+      return new Uint8Array(await f.arrayBuffer());
+    } catch {
+      return null;
+    }
+  };
 
   // Unity builds: extract Texture2D objects from bundles / serialized files.
   if (looksLikeUnity(files)) {
@@ -490,6 +511,39 @@ export async function* processGenericFiles(
         } catch {
           // Corrupted archive: skip
         }
+      }
+      continue;
+    }
+
+    // Native engine model formats (.md3/.md2/.mdl) -> GLB. (.vvd/.vtx are pulled
+    // in as siblings of a .mdl, never emitted on their own.)
+    if (isModelPath(file.name)) {
+      if (file.size > MAX_MODEL_BYTES) continue;
+      try {
+        const data = new Uint8Array(await file.arrayBuffer());
+        const glb = await decodeModel(
+          relativePath.toLowerCase(),
+          data,
+          fetchSibling,
+        );
+        if (glb) {
+          const stored = deriveStoredPath(relativePath).replace(
+            /\.(md3|md2|mdl)$/i,
+            ".glb",
+          );
+          if (!yielded.has(stored)) {
+            yielded.add(stored);
+            yield {
+              path: stored,
+              blob: new Blob([glb as unknown as BlobPart], {
+                type: "model/gltf-binary",
+              }),
+              mimeType: "model/gltf-binary",
+            };
+          }
+        }
+      } catch {
+        // Unsupported / corrupt model: skip
       }
       continue;
     }

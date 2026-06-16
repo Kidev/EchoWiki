@@ -18,6 +18,7 @@ import {
   decodeQuakeWad2,
   decodeQuakeBspTextures,
 } from "./quake";
+import { decodeModel } from "./models";
 
 const PACK_MAGIC = 0x4b434150; // "PACK"
 const MAX_ENTRIES = 20_000;
@@ -118,6 +119,17 @@ export async function* processQuakePak(
     }
   }
 
+  // Sibling fetcher for multi-file studio models (rare in PAK, but keeps the
+  // model dispatcher uniform). Resolves by raw entry name, case-insensitively.
+  const entryByName = new Map<string, PakEntry>();
+  for (const e of entries) entryByName.set(e.name.toLowerCase(), e);
+  const fetchSibling = async (p: string): Promise<Uint8Array | null> => {
+    const e = entryByName.get(p.toLowerCase());
+    if (!e) return null;
+    const buf = await read(e);
+    return buf ? new Uint8Array(buf) : null;
+  };
+
   const yielded = new Set<string>();
   const emitImage = async (
     rgba: Uint8Array,
@@ -161,6 +173,35 @@ export async function* processQuakePak(
         `${base}.png`,
       );
       if (asset) yield asset;
+      continue;
+    }
+
+    // Native models: Quake 1 .mdl (IDPO) and Quake 2 .md2 (IDP2) -> GLB. These
+    // are self-contained and don't need the engine palette, so handle them here.
+    if (ext === "mdl" || ext === "md2") {
+      const buf = await read(entry);
+      if (!buf) continue;
+      let glb: Uint8Array | null = null;
+      try {
+        glb = await decodeModel(
+          entry.name.toLowerCase(),
+          new Uint8Array(buf),
+          fetchSibling,
+        );
+      } catch {
+        glb = null;
+      }
+      if (!glb) continue;
+      const stored = `${base}.glb`;
+      if (yielded.has(stored)) continue;
+      yielded.add(stored);
+      yield {
+        path: stored,
+        blob: new Blob([glb as unknown as BlobPart], {
+          type: "model/gltf-binary",
+        }),
+        mimeType: "model/gltf-binary",
+      };
       continue;
     }
 
