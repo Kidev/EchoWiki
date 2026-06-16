@@ -1,4 +1,9 @@
 import type { ProcessedAsset } from "./rmmv";
+import {
+  fileToPayload,
+  sandboxCompileCheck,
+  sandboxFileTransform,
+} from "../sandbox";
 
 export type CustomTransformResult =
   | {
@@ -9,36 +14,28 @@ export type CustomTransformResult =
   | null
   | undefined;
 
-// Compile the user-provided transform code into an async function.
-// The code receives a File object and must return:
-//   { path: string, data: ArrayBuffer, mimeType: string }: to include the file
-//   null or undefined: to skip the file
+// Run the moderator-supplied transform over every file. The code is UNTRUSTED:
+// it is authored by a subreddit's moderators but executes in the importing
+// visitor's browser. It therefore never runs in this realm: `sandbox.ts`
+// executes it inside an opaque-origin, network-isolated iframe+worker so it can
+// read the file it is given and return a transformed asset, but cannot touch
+// the app's DOM, storage, session, or the network. See src/client/lib/sandbox.ts.
 //
-// Available on `file`:
+// The transform receives a `file` object exposing:
 //   file.name, file.size, file.type
 //   file.webkitRelativePath  (e.g. "GameFolder/images/characters/hero.png")
 //   file.arrayBuffer()       -> Promise<ArrayBuffer>
 //   file.text()              -> Promise<string>
-function compileTransform(
-  code: string,
-): (file: File) => Promise<CustomTransformResult> {
-  // Using the AsyncFunction constructor avoids needing eval.
-  // The code runs in the browser's JS sandbox: no Node or server access.
-
-  const AsyncFunction = Object.getPrototypeOf(async function () {})
-    .constructor as new (
-    ...args: string[]
-  ) => (file: File) => Promise<CustomTransformResult>;
-  return new AsyncFunction("file", code);
-}
-
+// and must return { path, data, mimeType } to include the file, or null/
+// undefined to skip it.
 export async function* processCustomFiles(
   files: File[],
   transformCode: string,
 ): AsyncGenerator<ProcessedAsset> {
-  let transform: (file: File) => Promise<CustomTransformResult>;
+  // Validate the code compiles once up front so a syntax error fails the import
+  // with a clear message instead of silently skipping every file.
   try {
-    transform = compileTransform(transformCode);
+    await sandboxCompileCheck(transformCode);
   } catch (err) {
     throw new Error(
       `Custom transform compile error: ${err instanceof Error ? err.message : String(err)}`,
@@ -48,7 +45,10 @@ export async function* processCustomFiles(
   for (const file of files) {
     let result: CustomTransformResult;
     try {
-      result = await transform(file);
+      result = await sandboxFileTransform(
+        await fileToPayload(file),
+        transformCode,
+      );
     } catch {
       continue; // Skip files where the transform throws
     }

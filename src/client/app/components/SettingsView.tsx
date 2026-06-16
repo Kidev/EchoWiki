@@ -1360,6 +1360,12 @@ export function SettingsView({
   const [customTransformCodeField, setCustomTransformCodeField] = useState(
     config.customTransformCode ?? "",
   );
+  const [assetPreParseCodeField, setAssetPreParseCodeField] = useState(
+    config.assetPreParseCode ?? "",
+  );
+  const [assetPostProcessCodeField, setAssetPostProcessCodeField] = useState(
+    config.assetPostProcessCode ?? "",
+  );
   const [savingConfig, setSavingConfig] = useState(false);
   const [votingPanelDirty, setVotingPanelDirty] = useState(false);
   const votingSaveRef = useRef<(() => Promise<void>) | null>(null);
@@ -1404,7 +1410,9 @@ export function SettingsView({
     homeLogo !== config.homeLogo ||
     engineField !== config.engine ||
     encryptionKeyField !== config.encryptionKey ||
-    customTransformCodeField !== (config.customTransformCode ?? "");
+    customTransformCodeField !== (config.customTransformCode ?? "") ||
+    assetPreParseCodeField !== (config.assetPreParseCode ?? "") ||
+    assetPostProcessCodeField !== (config.assetPostProcessCode ?? "");
 
   const handleSaveConfig = useCallback(async () => {
     setSavingConfig(true);
@@ -1421,6 +1429,8 @@ export function SettingsView({
           engine: engineField,
           encryptionKey: encryptionKeyField,
           customTransformCode: customTransformCodeField || null,
+          assetPreParseCode: assetPreParseCodeField || null,
+          assetPostProcessCode: assetPostProcessCodeField || null,
         }),
       });
       if (res.ok) {
@@ -1440,6 +1450,8 @@ export function SettingsView({
     engineField,
     encryptionKeyField,
     customTransformCodeField,
+    assetPreParseCodeField,
+    assetPostProcessCodeField,
     onConfigChanged,
   ]);
 
@@ -1891,6 +1903,86 @@ return { path: parent + '/' + name.toLowerCase(), data: await file.arrayBuffer()
                       <code>await file.arrayBuffer()</code> to read bytes. Apply
                       any custom decryption here.
                     </span>
+                  </div>
+                )}
+
+                {engineField !== "custom" && (
+                  <div className="flex flex-col gap-3 pt-3 border-t border-gray-100">
+                    <span className="text-xs font-semibold">
+                      Advanced parsing hooks
+                    </span>
+                    <span className="text-[10px] text-amber-600">
+                      ⚠ This code runs sandboxed in importers' browsers when
+                      they import game files. It cannot access the network,
+                      cookies, or the page, but only set it if you trust the
+                      source. Use it to fix a parsing bug for your game (e.g.
+                      swapping RenderWare/GTA texture colour channels).
+                    </span>
+
+                    <div className="flex flex-col gap-2">
+                      <span className="text-xs font-medium">
+                        Pre-parse (raw files)
+                      </span>
+                      <textarea
+                        value={assetPreParseCodeField}
+                        onChange={(e) =>
+                          setAssetPreParseCodeField(e.target.value)
+                        }
+                        rows={6}
+                        spellCheck={false}
+                        placeholder={`// Called for every raw file BEFORE the built-in decoders.
+// Return an array of { path, data, mimeType } to emit your own
+// assets, or null/undefined to let the built-in decoder handle it.
+// Available: file.name, file.webkitRelativePath, file.arrayBuffer(), file.text()
+
+return null;`}
+                        className="text-xs font-mono px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)] resize-y"
+                        style={{
+                          backgroundColor: "var(--control-bg)",
+                          color: "var(--control-text)",
+                          minHeight: 120,
+                        }}
+                      />
+                      <span className="text-[10px] text-[var(--text-muted)]">
+                        Receives <code>file</code>; returns{" "}
+                        <code>{"{ path, data, mimeType }[]"}</code> or{" "}
+                        <code>null</code> to defer to the built-in decoder.
+                      </span>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <span className="text-xs font-medium">
+                        Post-process (decoded assets)
+                      </span>
+                      <textarea
+                        value={assetPostProcessCodeField}
+                        onChange={(e) =>
+                          setAssetPostProcessCodeField(e.target.value)
+                        }
+                        rows={8}
+                        spellCheck={false}
+                        placeholder={`// Called for every asset the built-in decoders produced.
+// Return a modified { path, data, mimeType }, the asset
+// unchanged, or null to drop it. asset.data is an ArrayBuffer.
+
+// Example: swap red/blue on decoded GTA textures (fixes
+// RenderWare BGR ordering). asset.data here is PNG bytes; for
+// pixel work decode via OffscreenCanvas/createImageBitmap.
+return asset;`}
+                        className="text-xs font-mono px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)] resize-y"
+                        style={{
+                          backgroundColor: "var(--control-bg)",
+                          color: "var(--control-text)",
+                          minHeight: 140,
+                        }}
+                      />
+                      <span className="text-[10px] text-[var(--text-muted)]">
+                        Receives <code>asset</code> (
+                        {"{ path, mimeType, data }"}
+                        ); returns a modified asset, the asset unchanged, or{" "}
+                        <code>null</code> to drop it.
+                      </span>
+                    </div>
                   </div>
                 )}
               </>

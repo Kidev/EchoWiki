@@ -487,7 +487,7 @@ EchoWiki maps its capabilities onto Reddit's native moderator permissions, so yo
 - **Wiki**: moderators who hold Reddit's _Manage Wiki Pages_ permission (`wiki`).
 - **Config**: moderators who hold _Manage Settings_ (`config`), or full moderators with no permission restrictions (`all`).
 
-Config is a superset of Wiki: a config moderator can do everything a wiki moderator can, plus everything in the Settings tab. A user with neither permission is treated as a regular reader.
+Config is a superset of Wiki: a config moderator can do everything a wiki moderator can, plus everything in the Settings tab. Access is granted strictly from these Reddit permissions: a moderator who holds only unrelated permissions (such as `flair` or `posts`), or whose effective permissions are otherwise limited, gets **no** EchoWiki moderator access and is treated as a regular reader. This matters because the Settings tab can store import code that runs in every reader's browser, so config access is never inherited merely by being a moderator of some kind.
 
 | Capability                                               | Required level    |
 | -------------------------------------------------------- | ----------------- |
@@ -527,10 +527,13 @@ The Settings tab is visible only to **config**-level moderators (see [Moderator 
 - **Engine**: Leave on Auto-detect, or force a specific engine. The dropdown lists Unity, Unreal, and Godot first, then groups the rest for clarity: **Native engines** (Source, GoldSrc, Quake, Doom, id Tech 3/4, GTA/RenderWare, RAGE, Bethesda, Call of Duty, Frostbite), **RPG Maker** (MV, MZ, VX Ace, VX, XP, 2003: with encrypted variants for MV/MZ), **Other** (Generic scan covering RenPy, GameMaker, and any other game; plus TCOAAL), and **Advanced** (Custom transform). See [Supported Engines](#supported-engines) for what each reader extracts.
 - **Encryption Key**: Override the decryption key for games with encrypted assets. Leave empty for auto-detection. Used only by the RPG Maker family; the native-engine, Unity, Unreal, Godot, Generic, and TCOAAL readers ignore it.
 - **Custom Transform Code**: Shown when the engine is set to Custom. See [Custom transform](#custom-transform) below.
+- **Advanced parsing hooks**: Shown for any non-Custom engine. Optional pre-parse / post-process snippets for fixing a parsing quirk in a specific game (e.g. texture colours). See [Advanced parsing hooks](#advanced-parsing-hooks) below.
 
 #### Custom transform
 
 When no built-in reader fits, set the engine to **Custom transform** and provide a JavaScript snippet. The snippet is a function body that runs in each reader's browser during import. It is called once for every file in the selected game folder and receives a single `file` argument (a [`File`](https://developer.mozilla.org/en-US/docs/Web/API/File) object). Return `{ path, data, mimeType }` to include the decoded asset, or `null`/`undefined` to skip the file. Read raw bytes with `await file.arrayBuffer()` and apply any custom decryption there.
+
+The snippet is **untrusted**: it is written by the subreddit's moderators but runs in the browser of every reader who imports their own files. To make that safe, EchoWiki never executes it in the app's page. It runs inside a hardened sandbox (a sandboxed, opaque-origin `<iframe>` with a strict `connect-src 'none'` Content-Security-Policy, with the code itself running in a Worker). In that sandbox the snippet can read the file it is handed and return a result, but it **cannot** reach the network, the page, cookies, storage, or the app's session: it can only produce the asset object it returns. A snippet that loops forever is timed out and the sandbox is rebuilt, so it cannot freeze the reader's tab.
 
 ```js
 // Called for every file in the game folder.
@@ -562,7 +565,16 @@ return {
 };
 ```
 
-> ⚠ This code runs in users' browsers when they import game files. Only set it from a source you trust.
+> ⚠ This code runs **sandboxed** in users' browsers when they import game files. The sandbox blocks network, page, and storage access, but only set it from a source you trust.
+
+#### Advanced parsing hooks
+
+For the built-in engines, an advanced moderator can fix a parsing quirk for their specific game **without** switching to a full custom transform, for example correcting a texture colour-channel order. Two optional hooks are available under the Game settings (shown for any non-Custom engine), and both run in the **same hardened sandbox** as the custom transform above:
+
+- **Pre-parse (raw files)**: called for every raw file _before_ the built-in decoders. Receives `file` and returns an array of `{ path, data, mimeType }` to emit your own assets, or `null`/`undefined` to let the built-in decoder handle the file as usual. Use it to fully re-parse a format the built-in reader mishandles.
+- **Post-process (decoded assets)**: called for every asset the built-in decoders produced. Receives `asset` (`{ path, mimeType, data }`, where `data` is an `ArrayBuffer`) and returns a modified asset, the asset unchanged, or `null` to drop it. This is the place to tweak decoded output, e.g. swapping the red and blue channels to fix the BGR ordering some RenderWare/GTA `.txd` textures use. For pixel work, decode the bytes with `OffscreenCanvas` / `createImageBitmap` (available inside the sandbox), edit, and re-encode.
+
+A pre-parse result wins over the built-in decoder for the same path, and a post-process hook that throws leaves the original asset untouched, so a buggy hook degrades gracefully rather than breaking the import.
 
 ### Style
 

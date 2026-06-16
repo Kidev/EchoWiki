@@ -916,6 +916,8 @@ export const App = () => {
           engineOverride: config?.engine,
           keyOverride: config?.encryptionKey || undefined,
           customTransformCode: config?.customTransformCode || undefined,
+          assetPreParseCode: config?.assetPreParseCode || undefined,
+          assetPostProcessCode: config?.assetPostProcessCode || undefined,
           // Dev subreddit only (the "Dev" gate): allow TCOAAL's dev-extra
           // folders (www/models/ 3D assets, www/textures/ images) into the
           // browser / echo links.

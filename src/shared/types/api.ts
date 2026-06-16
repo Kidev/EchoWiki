@@ -32,6 +32,10 @@ export type GameConfig = {
   engine: EngineType;
   encryptionKey: string;
   customTransformCode: string | null;
+  // Advanced moderator import hooks (untrusted JS, run sandboxed in importers'
+  // browsers). Pre-parse sees raw files; post-process tweaks produced assets.
+  assetPreParseCode: string | null;
+  assetPostProcessCode: string | null;
   wikiTitle: string;
   wikiDescription: string;
   homeBackground: HomeBackground;
@@ -67,6 +71,8 @@ export type ConfigUpdateRequest = {
   engine?: EngineType;
   encryptionKey?: string;
   customTransformCode?: string | null | undefined;
+  assetPreParseCode?: string | null | undefined;
+  assetPostProcessCode?: string | null | undefined;
   wikiTitle?: string;
   wikiDescription?: string;
   homeBackground?: HomeBackground;

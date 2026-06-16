@@ -16,6 +16,7 @@ import { processTcoaalFiles } from "./tcoaal";
 import { processZipArchive } from "./zip";
 import { processGenericFiles } from "./generic";
 import { processCustomFiles } from "./custom";
+import { applyPostProcess, processPreParse } from "./advanced";
 
 export type ImportProgress = {
   phase: "detecting" | "decrypting" | "storing" | "done" | "error";
@@ -30,6 +31,10 @@ export type ImportOptions = {
   engineOverride?: EngineType | undefined;
   keyOverride?: string | undefined;
   customTransformCode?: string | undefined;
+  // Advanced moderator hooks (untrusted, sandboxed). Pre-parse sees raw files
+  // before the built-in decoders; post-process tweaks each produced asset.
+  assetPreParseCode?: string | undefined;
+  assetPostProcessCode?: string | undefined;
   // Dev-subreddit only: also extract a TCOAAL game's dev-extra folders
   // (`www/models/` 3D models, `www/textures/` images) into the asset browser /
   // echo links. Ignored for other engines.
@@ -168,6 +173,8 @@ export async function importGameFiles(options: ImportOptions): Promise<void> {
     engineOverride,
     keyOverride,
     customTransformCode,
+    assetPreParseCode,
+    assetPostProcessCode,
     enableTcoaalDevAssets,
     onProgress,
     signal,
@@ -235,14 +242,24 @@ export async function importGameFiles(options: ImportOptions): Promise<void> {
       }
     }
 
-    if (!gen) return [];
+    // Advanced pre-parse runs AFTER the built-in decoders in the chain so its
+    // paths win the last-write dedupe below: letting a moderator override a
+    // built-in decode (e.g. re-parse a format the engine mishandles).
+    const generators: AsyncGenerator<ProcessedAsset>[] = [];
+    if (gen) generators.push(gen);
+    if (assetPreParseCode) {
+      generators.push(processPreParse(files, assetPreParseCode));
+    }
+    if (generators.length === 0) return [];
 
-    const assets: ProcessedAsset[] = [];
+    // Dedupe by path; later producers (pre-parse) overwrite earlier ones. This
+    // matches the existing IndexedDB last-write-wins store semantics.
+    const byPath = new Map<string, ProcessedAsset>();
     let count = 0;
-    for await (const asset of gen) {
+    for await (const asset of chainGenerators(generators)) {
       if (signal?.aborted) throw new Error("Import cancelled");
       if (DATA_EXT.test(asset.path)) continue;
-      assets.push(asset);
+      byPath.set(asset.path, asset);
       count++;
       if (count % 20 === 0) {
         onProgress({
@@ -254,6 +271,20 @@ export async function importGameFiles(options: ImportOptions): Promise<void> {
         });
       }
     }
+    let assets = [...byPath.values()];
+
+    // Advanced post-process: let the moderator tweak each produced asset (e.g.
+    // the GTA / RenderWare colour-channel fix) or drop it by returning null.
+    if (assetPostProcessCode) {
+      const processed: ProcessedAsset[] = [];
+      for (const asset of assets) {
+        if (signal?.aborted) throw new Error("Import cancelled");
+        const out = await applyPostProcess(asset, assetPostProcessCode);
+        if (out) processed.push(out);
+      }
+      assets = processed;
+    }
+
     return assets;
   };
 

@@ -104,6 +104,8 @@ const DEFAULT_CONFIG: GameConfig = {
   engine: "auto",
   encryptionKey: "",
   customTransformCode: null,
+  assetPreParseCode: null,
+  assetPostProcessCode: null,
   wikiTitle: "",
   wikiDescription: "",
   homeBackground: "ripple",
@@ -168,6 +170,8 @@ async function getConfig(): Promise<GameConfig> {
     engine: (raw["engine"] as GameConfig["engine"]) ?? DEFAULT_CONFIG.engine,
     encryptionKey: raw["encryptionKey"] ?? DEFAULT_CONFIG.encryptionKey,
     customTransformCode: raw["customTransformCode"] ?? null,
+    assetPreParseCode: raw["assetPreParseCode"] ?? null,
+    assetPostProcessCode: raw["assetPostProcessCode"] ?? null,
     wikiTitle: raw["wikiTitle"] ?? DEFAULT_CONFIG.wikiTitle,
     wikiDescription: raw["wikiDescription"] ?? DEFAULT_CONFIG.wikiDescription,
     homeBackground:
@@ -282,19 +286,22 @@ async function getModLevel(
         err,
       );
     }
+    // Map the Reddit moderator permissions to EchoWiki's access levels. Only a
+    // mod holding "all" or "config" may change app config (the config level);
+    // "wiki" additionally grants wiki-editing. ANY OTHER permission set, e.g. a
+    // flair-only or posts-only mod, or an empty list grants NO EchoWiki
+    // access. We deliberately fail CLOSED here: the config level can set the
+    // custom JS that runs in every visitor's browser, so a moderator must
+    // positively hold config/wiki rather than inherit it by virtue of being any
+    // kind of moderator. (The earlier behavior failed open to "config", letting
+    // a low-privilege mod escalate.)
     if (perms.includes("all") || perms.includes("config")) return "config";
     if (perms.includes("wiki")) return "wiki";
 
-    // The user IS a confirmed moderator, but the platform did not report a
-    // recognizable config/wiki permission. This happens for "everything" mods
-    // whose perms come back empty, and for INACTIVE mods whose effective perms
-    // Reddit reduces ("Inactive mods have limited permissions"). Rather than lock
-    // a real moderator out entirely, fail open to full access: matching the
-    // app's pre-granular-permissions behavior where any mod could do anything.
     console.warn(
-      `getModLevel: moderator "${username}" reported perms [${perms.join(", ")}] for r/${context.subredditName}; defaulting to "config"`,
+      `getModLevel: moderator "${username}" reported perms [${perms.join(", ")}] for r/${context.subredditName}; denying EchoWiki mod access (lacks config/wiki)`,
     );
-    return "config";
+    return null;
   } catch {
     return null;
   }
@@ -1685,6 +1692,16 @@ router.post<
     }
     if (body.customTransformCode !== undefined) {
       fields["customTransformCode"] = body.customTransformCode ?? "";
+    }
+    // These hold untrusted JS, but it is never executed on the server: it only
+    // runs sandboxed in importers' browsers (see src/client/lib/sandbox.ts).
+    // Storing it verbatim is safe; the route is already restricted to config
+    // moderators via checkIsAllMod above.
+    if (body.assetPreParseCode !== undefined) {
+      fields["assetPreParseCode"] = body.assetPreParseCode ?? "";
+    }
+    if (body.assetPostProcessCode !== undefined) {
+      fields["assetPostProcessCode"] = body.assetPostProcessCode ?? "";
     }
     if (body.wikiTitle !== undefined) {
       fields["wikiTitle"] = body.wikiTitle;
@@ -4780,7 +4797,50 @@ async function runDevSelfTests(caller: string): Promise<DevSelfTestResponse> {
         level !== null,
         `u/${caller} is recognised as a moderator (level must be non-null)`,
       );
+      t.ok(
+        level === "config" || level === "wiki",
+        "the level is one of the two recognised grants (config | wiki)",
+      );
     });
+    await run(
+      "Permissions",
+      "Access predicates match the granted level (fail-closed mapping)",
+      async (t) => {
+        // Security invariant for the granular-permission model: app access is
+        // derived ONLY from the Reddit config/wiki/all permissions, never
+        // granted just for being some kind of moderator. getModLevel returns
+        // null for an empty/limited permission set, and the predicates must
+        // track it exactly. This guards against regressing back to the old
+        // fail-open behaviour where any mod was silently elevated to config.
+        t.step(
+          `Resolving getModLevel + checkIsAllMod + checkIsMod for "${caller}" against r/${subreddit}.`,
+        );
+        const [level, isAll, isAny] = await Promise.all([
+          getModLevel(caller),
+          checkIsAllMod(caller),
+          checkIsMod(caller),
+        ]);
+        t.step(
+          `level=${show(level)}, checkIsAllMod=${isAll}, checkIsMod=${isAny}`,
+        );
+        t.eq(
+          isAll,
+          level === "config",
+          "checkIsAllMod (config-only actions) is true exactly when the level is 'config'",
+        );
+        t.eq(
+          isAny,
+          level === "config" || level === "wiki",
+          "checkIsMod (wiki-or-config actions) is true exactly for the config/wiki levels",
+        );
+        if (level === null) {
+          t.ok(
+            !isAll && !isAny,
+            "a null level (non-mod, or a mod lacking config/wiki) grants neither access (fail-closed)",
+          );
+        }
+      },
+    );
     await run(
       "Permissions",
       "Open eligibility passes with no requirements",
@@ -4813,6 +4873,49 @@ async function runDevSelfTests(caller: string): Promise<DevSelfTestResponse> {
           "a karma floor of MAX_SAFE_INTEGER rejects any real account",
         );
         t.ok(!!info.reason, "the rejection carries a human-readable reason");
+      },
+    );
+
+    // ── Config ───────────────────────────────────────────────────────────────
+    await run(
+      "Config",
+      "Advanced parse-hook fields exist and default to null",
+      (t) => {
+        // Verifies the read path for the sandboxed import hooks without touching
+        // the shared "config" key (the suite never mutates real config): the
+        // default must be null, and getConfig() must surface both fields as
+        // string-or-null so the client always receives a defined shape.
+        t.step(
+          "Inspecting DEFAULT_CONFIG and the live getConfig() result captured at suite start.",
+        );
+        t.eq(
+          DEFAULT_CONFIG.assetPreParseCode,
+          null,
+          "assetPreParseCode defaults to null",
+        );
+        t.eq(
+          DEFAULT_CONFIG.assetPostProcessCode,
+          null,
+          "assetPostProcessCode defaults to null",
+        );
+        t.ok(
+          "assetPreParseCode" in baseConfig &&
+            "assetPostProcessCode" in baseConfig,
+          "getConfig() surfaces both advanced parse-hook fields",
+        );
+        const preOk =
+          baseConfig.assetPreParseCode === null ||
+          typeof baseConfig.assetPreParseCode === "string";
+        const postOk =
+          baseConfig.assetPostProcessCode === null ||
+          typeof baseConfig.assetPostProcessCode === "string";
+        t.step(
+          `live assetPreParseCode=${show(baseConfig.assetPreParseCode)}, assetPostProcessCode=${show(baseConfig.assetPostProcessCode)}`,
+        );
+        t.ok(
+          preOk && postOk,
+          "both fields are string-or-null on the live config (never undefined)",
+        );
       },
     );
 
