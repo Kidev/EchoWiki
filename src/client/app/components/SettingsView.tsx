@@ -1375,7 +1375,11 @@ export function SettingsView({
     engineField === "generic" ||
     engineField === "unity" ||
     engineField === "unreal" ||
-    engineField === "godot";
+    engineField === "godot" ||
+    engineField === "source" ||
+    engineField === "goldsrc" ||
+    engineField === "gta" ||
+    engineField === "frostbite";
 
   useEffect(() => {
     if (isTcoaalDetected) {
@@ -1713,8 +1717,22 @@ export function SettingsView({
                   >
                     <option value="auto">Auto-detect (recommended)</option>
                     <option value="unity">Unity (asset bundles)</option>
-                    <option value="unreal">Unreal Engine (.pak)</option>
+                    <option value="unreal">
+                      Unreal Engine (.pak / IoStore)
+                    </option>
                     <option value="godot">Godot (.pck pack)</option>
+                    <optgroup label="Native engines">
+                      <option value="source">
+                        Source / Source 2 (.vpk, .vtf)
+                      </option>
+                      <option value="goldsrc">
+                        GoldSrc (.wad, .bsp, .spr)
+                      </option>
+                      <option value="gta">GTA / RenderWare (.img, .txd)</option>
+                      <option value="frostbite">
+                        Frostbite (cas/sb): slower
+                      </option>
+                    </optgroup>
                     <optgroup label="RPG Maker">
                       <option value="rmmv">RPG Maker MV</option>
                       <option value="rmmv-encrypted">
@@ -1749,14 +1767,22 @@ export function SettingsView({
                       : engineField === "unity"
                         ? "Extracts Texture2D images and audio from Unity asset bundles (.assets, .bundle, .unity3d)."
                         : engineField === "unreal"
-                          ? "Carves images and audio out of Unreal Engine .pak archives (uncompressed entries)."
+                          ? "Carves images and audio out of Unreal Engine .pak and IoStore (.ucas) / UE3 (.upk) containers. Large archives can take a while."
                           : engineField === "godot"
                             ? "Extracts images and audio from Godot .pck pack files."
-                            : engineField === "generic"
-                              ? "Scans any game folder for images and audio; also unpacks RenPy (.rpa), GameMaker (data.win), .zip, and .nw archives."
-                              : engineField === "custom"
-                                ? "Run custom JavaScript on each imported file: handles any game format."
-                                : "Override engine auto-detection. Leave on Auto-detect if unsure."}
+                            : engineField === "source"
+                              ? "Reads Source / Source 2 VPK packages: decodes VTF textures to PNG and extracts audio. Large game folders can take a while."
+                              : engineField === "goldsrc"
+                                ? "Decodes GoldSrc WAD3 textures, BSP map textures and SPR sprites (Half-Life and mods)."
+                                : engineField === "gta"
+                                  ? "Reads RenderWare GTA IMG archives and TXD texture dictionaries (III / VC / SA). The large .img archives can take a while."
+                                  : engineField === "frostbite"
+                                    ? "Best-effort carving of uncompressed audio/images from Frostbite cas/sb bundles. This is the slow path and may take several minutes."
+                                    : engineField === "generic"
+                                      ? "Scans any game folder for images and audio; also unpacks RenPy (.rpa), GameMaker (data.win), .zip, and .nw archives."
+                                      : engineField === "custom"
+                                        ? "Run custom JavaScript on each imported file: handles any game format."
+                                        : "Override engine auto-detection. Leave on Auto-detect if unsure."}
                   </span>
                 </div>
 

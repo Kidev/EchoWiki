@@ -139,6 +139,10 @@ function getAssetGenerator(
     case "unity":
     case "unreal":
     case "godot":
+    case "source":
+    case "goldsrc":
+    case "gta":
+    case "frostbite":
     case "generic":
       return processGenericFiles(files);
 

@@ -5,6 +5,17 @@ import { processGodotPck } from "./godotpck";
 import { processGameMakerData } from "./gamemaker";
 import { looksLikeUnity, processUnityFiles } from "./unity";
 import { processUnrealPak } from "./unrealpak";
+import { carveMediaFromFile } from "./mediacarve";
+import { processVpkArchive } from "./vpk";
+import { processImgArchive } from "./imgarchive";
+import { processWadArchive } from "./wad";
+import { processSprFile } from "./spr";
+import { processBsp } from "./bsp";
+import { decodeTxd } from "./txd";
+import { decodeVtf } from "./vtf";
+import { decodeDds } from "./dds";
+import { decodeTga, type DecodedImage } from "./tga";
+import { encodePngBlob } from "./png";
 
 // Sniff the first bytes of an unknown file (e.g. .bin) to determine its true format,
 // then dispatch to the appropriate parser.
@@ -119,6 +130,21 @@ function isMediaFile(name: string): boolean {
   );
 }
 
+// Wrap a decoded RGBA image (from a GPU-texture format) as a PNG asset.
+async function decodedToPngAsset(
+  storedPath: string,
+  img: DecodedImage,
+): Promise<ProcessedAsset> {
+  const blob = await encodePngBlob(img.width, img.height, img.rgba);
+  return { path: storedPath, blob, mimeType: "image/png" };
+}
+
+// Replace a file's extension with .png for storing decoded textures.
+function withPngExt(path: string): string {
+  const dot = path.lastIndexOf(".");
+  return `${dot >= 0 ? path.slice(0, dot) : path}.png`;
+}
+
 // Derive a stored path using the immediate parent folder as category.
 // e.g. "images/characters/hero.png" -> "characters/hero.png"
 // e.g. "hero.png" (root level)      -> "hero.png"
@@ -196,6 +222,142 @@ export async function* processGenericFiles(
         }
       } catch {
         // Encrypted / Oodle-compressed / corrupt pak: skip
+      }
+      continue;
+    }
+
+    // Opaque containers carved by raw signature scan (the slow path): UE4.25+/UE5
+    // IoStore data (.ucas), legacy UE3 packages (.upk), and Frostbite cas/sb
+    // bundles. The .utoc/.toc index files carry no media, so they're skipped.
+    if (ext === ".ucas" || ext === ".upk" || ext === ".cas" || ext === ".sb") {
+      const folder =
+        ext === ".ucas" ? "iostore" : ext === ".upk" ? "upk" : "frostbite";
+      try {
+        for await (const asset of carveMediaFromFile(file, { folder })) {
+          if (!yielded.has(asset.path)) {
+            yielded.add(asset.path);
+            yield asset;
+          }
+        }
+      } catch {
+        // Unreadable container: skip
+      }
+      continue;
+    }
+
+    // Source / Source 2 VPK package set (process only the directory archive,
+    // which references the sibling numbered _NNN.vpk data files).
+    if (ext === ".vpk") {
+      if (file.name.toLowerCase().endsWith("_dir.vpk")) {
+        try {
+          for await (const asset of processVpkArchive(file, files)) {
+            if (!yielded.has(asset.path)) {
+              yielded.add(asset.path);
+              yield asset;
+            }
+          }
+        } catch {
+          // Corrupt / unsupported VPK: skip
+        }
+      }
+      continue;
+    }
+
+    // Grand Theft Auto IMG archives (.img, or a .dir+.img V1 pair).
+    if (ext === ".img" || ext === ".dir") {
+      // Avoid double-processing a V1 pair: only the .img drives extraction.
+      if (ext === ".dir") continue;
+      try {
+        for await (const asset of processImgArchive(file, files)) {
+          if (!yielded.has(asset.path)) {
+            yielded.add(asset.path);
+            yield asset;
+          }
+        }
+      } catch {
+        // Not a GTA archive (e.g. a Steam .img disc image): skip
+      }
+      continue;
+    }
+
+    // GoldSrc WAD3 texture archive.
+    if (ext === ".wad") {
+      try {
+        for await (const asset of processWadArchive(file)) {
+          if (!yielded.has(asset.path)) {
+            yielded.add(asset.path);
+            yield asset;
+          }
+        }
+      } catch {
+        // Not a WAD3 (e.g. a Doom IWAD): skip
+      }
+      continue;
+    }
+
+    // GoldSrc / Quake sprite.
+    if (ext === ".spr") {
+      try {
+        for await (const asset of processSprFile(file)) {
+          if (!yielded.has(asset.path)) {
+            yielded.add(asset.path);
+            yield asset;
+          }
+        }
+      } catch {
+        // Skip
+      }
+      continue;
+    }
+
+    // BSP map: GoldSrc embedded miptex or Source pakfile (zip) content.
+    if (ext === ".bsp") {
+      try {
+        for await (const asset of processBsp(file)) {
+          if (!yielded.has(asset.path)) {
+            yielded.add(asset.path);
+            yield asset;
+          }
+        }
+      } catch {
+        // Skip
+      }
+      continue;
+    }
+
+    // Single-file GPU texture formats decoded to PNG.
+    if (ext === ".vtf" || ext === ".dds" || ext === ".tga" || ext === ".txd") {
+      try {
+        const buf = await file.arrayBuffer();
+        if (ext === ".txd") {
+          const txdName = deriveStoredPath(relativePath).replace(/\.txd$/i, "");
+          for (const tex of decodeTxd(buf)) {
+            const texName =
+              tex.name.replace(/[^a-z0-9_-]/gi, "_").toLowerCase() || "tex";
+            let stored = `${txdName}/${texName}.png`;
+            let n = 1;
+            while (yielded.has(stored))
+              stored = `${txdName}/${texName}_${n++}.png`;
+            yielded.add(stored);
+            yield await decodedToPngAsset(stored, tex);
+          }
+        } else {
+          const decoded =
+            ext === ".vtf"
+              ? decodeVtf(buf)
+              : ext === ".dds"
+                ? decodeDds(buf)
+                : decodeTga(buf);
+          if (decoded) {
+            const stored = withPngExt(deriveStoredPath(relativePath));
+            if (!yielded.has(stored)) {
+              yielded.add(stored);
+              yield await decodedToPngAsset(stored, decoded);
+            }
+          }
+        }
+      } catch {
+        // Unsupported pixel format / corrupt file: skip
       }
       continue;
     }

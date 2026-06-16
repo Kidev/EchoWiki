@@ -144,3 +144,15 @@ export async function encodePng(
   }
   return png;
 }
+
+// Convenience wrapper: encode an RGBA8 buffer straight to a PNG `image/png` Blob,
+// the shape the asset pipeline stores. Used by every GPU-texture decoder
+// (VTF / TXD / DDS / WAD / SPR) that must turn pixels into a viewable image.
+export async function encodePngBlob(
+  width: number,
+  height: number,
+  rgba: Uint8Array,
+): Promise<Blob> {
+  const png = await encodePng(width, height, rgba);
+  return new Blob([png as unknown as BlobPart], { type: "image/png" });
+}

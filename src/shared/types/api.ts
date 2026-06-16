@@ -13,6 +13,10 @@ export type EngineType =
   | "unity"
   | "unreal"
   | "godot"
+  | "source"
+  | "goldsrc"
+  | "gta"
+  | "frostbite"
   | "generic"
   | "custom"
   | "auto";

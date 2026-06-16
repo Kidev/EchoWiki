@@ -131,8 +131,29 @@ export function detectEngine(files: File[]): DetectionResult {
   // (e.g. NW.js/Chromium ships resources.pak, so TCOAAL and RPG Maker MV/MZ
   // games must be matched above before this catches their runtime files).
 
-  // Unreal Engine pak archives (media carved out of uncompressed entries)
-  if (hasExt(idx, ".pak")) {
+  // Source / Source 2 (Valve): VPK package sets.
+  if (hasExt(idx, ".vpk")) {
+    return { engine: "source", dataRoot: "", hasEncryption: false };
+  }
+
+  // GoldSrc (Quake-derived): WAD3 texture archives, optionally with .bsp maps.
+  if (hasExt(idx, ".wad") || (hasExt(idx, ".bsp") && hasExt(idx, ".spr"))) {
+    return { engine: "goldsrc", dataRoot: "", hasEncryption: false };
+  }
+
+  // RenderWare-era GTA: IMG archives or loose TXD texture dictionaries.
+  if (hasExt(idx, ".img") || hasExt(idx, ".txd")) {
+    return { engine: "gta", dataRoot: "", hasEncryption: false };
+  }
+
+  // Frostbite: cas/sb bundles addressed by a .toc table of contents.
+  if (hasExt(idx, ".cas") || (hasExt(idx, ".sb") && hasExt(idx, ".toc"))) {
+    return { engine: "frostbite", dataRoot: "", hasEncryption: false };
+  }
+
+  // Unreal Engine: classic .pak archives or the UE4.25+/UE5 IoStore (.ucas)
+  // and legacy UE3 packages (.upk). All routed through the media carver.
+  if (hasExt(idx, ".pak") || hasExt(idx, ".ucas") || hasExt(idx, ".upk")) {
     return { engine: "unreal", dataRoot: "", hasEncryption: false };
   }
 
@@ -223,7 +244,31 @@ export async function detectGameTitle(
     }
     case "tcoaal":
       return "The Coffin of Andy and Leyley";
+    case "goldsrc": {
+      // liblist.gam: game "Half-Life"
+      const gam = idx.byName.get("liblist.gam");
+      if (gam) {
+        try {
+          const match = /^\s*game\s+"([^"]+)"/m.exec(await gam.text());
+          if (match?.[1]) return match[1].trim();
+        } catch {}
+      }
+      break;
+    }
+    case "source": {
+      // gameinfo.txt: game "Half-Life 2" (inside the GameInfo block)
+      const info = idx.byName.get("gameinfo.txt");
+      if (info) {
+        try {
+          const match = /^\s*game\s+"([^"]+)"/m.exec(await info.text());
+          if (match?.[1]) return match[1].trim();
+        } catch {}
+      }
+      break;
+    }
     case "rm2k3":
+    case "gta":
+    case "frostbite":
     case "auto":
       break;
   }
