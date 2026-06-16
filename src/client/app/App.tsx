@@ -186,6 +186,9 @@ export const App = () => {
     expected: string;
     detected: string;
   } | null>(null);
+  // Once dismissed, the mismatch banner stays hidden until a new folder is
+  // loaded (each fresh detection resets this back to false).
+  const [gameMismatchDismissed, setGameMismatchDismissed] = useState(false);
   const [mappingUpdateInfo, setMappingUpdateInfo] = useState<string | null>(
     null,
   );
@@ -694,6 +697,7 @@ export const App = () => {
             expected: initConfig.gameName,
             detected: m.gameTitle,
           });
+          setGameMismatchDismissed(false);
         }
 
         setReadyToTransition(true);
@@ -972,6 +976,7 @@ export const App = () => {
             expected: config.gameName,
             detected: progressRef.current.gameTitle,
           });
+          setGameMismatchDismissed(false);
         }
 
         setAppState("ready");
@@ -2701,17 +2706,18 @@ export const App = () => {
             className="flex-1 flex flex-col overflow-hidden"
             style={{ display: activeTab === "wiki" ? "flex" : "none" }}
           >
-            {gameMismatch && (
+            {gameMismatch && !gameMismatchDismissed && (
               // The wiki stays fully usable on a game mismatch; this is a soft
               // heads-up (the loaded assets are from a different game), kept on
-              // the wiki page itself. `shrink-0` + wrapping text so it never
-              // forces a horizontal scrollbar on narrow webviews.
+              // the wiki page itself. `shrink-0` so it never forces a
+              // horizontal scrollbar on narrow webviews. Dismissable: stays
+              // hidden until the next folder load.
               <div
-                className="shrink-0 flex items-start gap-2 px-4 py-2 text-[11px] leading-snug border-b border-amber-200 bg-amber-50 text-amber-800"
+                className="shrink-0 flex items-center gap-2 px-4 py-1.5 text-[10px] leading-snug border-b border-amber-200 bg-amber-50 text-amber-800"
                 role="status"
               >
                 <svg
-                  className="w-3.5 h-3.5 shrink-0 mt-0.5"
+                  className="w-3 h-3 shrink-0"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -2724,12 +2730,31 @@ export const App = () => {
                     d="M12 9v2m0 4h.01M5.07 19h13.86a2 2 0 001.74-2.99l-6.93-12a2 2 0 00-3.48 0l-6.93 12A2 2 0 005.07 19z"
                   />
                 </svg>
-                <span className="min-w-0">
-                  The loaded assets look like a different game: expected{" "}
-                  <strong>{gameMismatch.expected}</strong> but detected{" "}
-                  <strong>{gameMismatch.detected}</strong>. The wiki still
-                  works; some asset references may not resolve.
+                <span className="min-w-0 flex-1 truncate">
+                  Loaded assets look like <strong>{gameMismatch.detected}</strong>
+                  , not <strong>{gameMismatch.expected}</strong>.
                 </span>
+                <button
+                  onClick={() => setGameMismatchDismissed(true)}
+                  className="shrink-0 -mr-1 p-0.5 rounded hover:bg-amber-100 transition-colors cursor-pointer"
+                  aria-label="Dismiss"
+                  title="Dismiss"
+                >
+                  <svg
+                    className="w-3 h-3"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
               </div>
             )}
             <WikiView
