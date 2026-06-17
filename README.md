@@ -622,6 +622,7 @@ The collaborative feature lets users suggest changes to the wiki.
 - **Collaborative mode**: Toggle to enable or disable community suggestions.
 - **Eligibility thresholds**: Minimum karma and account age required to submit suggestions.
 - **Edit cooldown**: Minimum number of minutes a user must wait between edits to their pending suggestion.
+- **Min. justification**: Minimum number of characters required to justify a change. It applies to the contributor describing their suggestion and to moderators when they accept or deny one (0 disables the requirement).
 - **Contributor flair**: Flair template awarded to users after their first accepted suggestion.
 - **Advanced contributor flair**: Flair template and acceptance count threshold for the advanced tier.
 - **Banned contributors**: List of users banned from submitting suggestions.
