@@ -185,6 +185,111 @@ function deriveStoredPath(relativePath: string): string {
   return `${parts[parts.length - 2]}/${parts[parts.length - 1]}`;
 }
 
+// GPU / container texture formats that are not browser-native but can be decoded
+// to PNG. Loose copies are handled by the single-file branch; this set lets the
+// same decoders run on copies found *inside* generic archives (zip/rpa/pck/bin).
+const TEXTURE_DECODE_EXTS = new Set([".dds", ".tga", ".vtf", ".txd"]);
+
+// Finalize one asset extracted from a generic archive. Standard media is passed
+// through untouched; embedded GPU textures are decoded to PNG and native engine
+// models to GLB, so archive-based engines (Godot .pck, RenPy .rpa, zip/.nw
+// games) yield images/models/audio instead of silently dropping non-web assets.
+// `storedBase` is the already-derived storage path (keeps the original ext).
+async function* finalizeArchiveAsset(
+  asset: ProcessedAsset,
+  storedBase: string,
+  yielded: Set<string>,
+): AsyncGenerator<ProcessedAsset> {
+  const ext = getExtLower(asset.path);
+
+  if (TEXTURE_DECODE_EXTS.has(ext)) {
+    try {
+      const buf = await asset.blob.arrayBuffer();
+      if (ext === ".txd") {
+        const base = storedBase.replace(/\.txd$/i, "");
+        for (const tex of decodeTxd(buf)) {
+          const texName =
+            tex.name.replace(/[^a-z0-9_-]/gi, "_").toLowerCase() || "tex";
+          let stored = `${base}/${texName}.png`;
+          let n = 1;
+          while (yielded.has(stored)) stored = `${base}/${texName}_${n++}.png`;
+          yielded.add(stored);
+          yield await decodedToPngAsset(stored, tex);
+        }
+      } else {
+        const decoded =
+          ext === ".vtf"
+            ? decodeVtf(buf)
+            : ext === ".dds"
+              ? decodeDds(buf)
+              : decodeTga(buf);
+        if (decoded) {
+          const stored = withPngExt(storedBase);
+          if (!yielded.has(stored)) {
+            yielded.add(stored);
+            yield await decodedToPngAsset(stored, decoded);
+          }
+        }
+      }
+    } catch {
+      // Unsupported pixel format / corrupt entry: skip
+    }
+    return;
+  }
+
+  if (isModelPath(asset.path)) {
+    try {
+      const buf = await asset.blob.arrayBuffer();
+      if (buf.byteLength <= MAX_MODEL_BYTES) {
+        // Siblings (.vvd/.vtx/T.mdl) are not resolvable inside an archive, so
+        // only self-contained models (md2/md3/Quake mdl) convert here.
+        const glb = await decodeModel(
+          asset.path.toLowerCase(),
+          new Uint8Array(buf),
+          async () => null,
+        );
+        if (glb) {
+          const stored = storedBase.replace(/\.(md3|md2|mdl)$/i, ".glb");
+          if (!yielded.has(stored)) {
+            yielded.add(stored);
+            yield {
+              path: stored,
+              blob: new Blob([glb as unknown as BlobPart], {
+                type: "model/gltf-binary",
+              }),
+              mimeType: "model/gltf-binary",
+            };
+          }
+        }
+      }
+    } catch {
+      // Unsupported / corrupt model: skip
+    }
+    return;
+  }
+
+  if (isMediaFile(asset.path)) {
+    if (!yielded.has(storedBase)) {
+      yielded.add(storedBase);
+      // Some archive readers tag non-web media (.opus/.flac/.glb...) as
+      // octet-stream; recover the real type from the extension so the asset
+      // plays/renders. Re-wrapping a Blob in a Blob is cheap (no copy).
+      const mime =
+        asset.mimeType && asset.mimeType !== "application/octet-stream"
+          ? asset.mimeType
+          : getMimeType(asset.path);
+      yield {
+        path: storedBase,
+        blob:
+          asset.blob.type === mime
+            ? asset.blob
+            : new Blob([asset.blob], { type: mime }),
+        mimeType: mime,
+      };
+    }
+  }
+}
+
 export async function* processGenericFiles(
   files: File[],
 ): AsyncGenerator<ProcessedAsset> {
@@ -228,12 +333,11 @@ export async function* processGenericFiles(
     if (ext === ".zip" || ext === ".nw") {
       try {
         for await (const asset of processZipArchive(file)) {
-          if (!isMediaFile(asset.path)) continue;
-          const stored = deriveStoredPath(asset.path);
-          if (!yielded.has(stored)) {
-            yielded.add(stored);
-            yield { ...asset, path: stored };
-          }
+          yield* finalizeArchiveAsset(
+            asset,
+            deriveStoredPath(asset.path),
+            yielded,
+          );
         }
       } catch {
         // Corrupted or unsupported archive: skip
@@ -245,12 +349,11 @@ export async function* processGenericFiles(
     if (ext === ".rpa") {
       try {
         for await (const asset of processRpaArchive(file)) {
-          if (!isMediaFile(asset.path)) continue;
-          const stored = deriveStoredPath(asset.path);
-          if (!yielded.has(stored)) {
-            yielded.add(stored);
-            yield { ...asset, path: stored };
-          }
+          yield* finalizeArchiveAsset(
+            asset,
+            deriveStoredPath(asset.path),
+            yielded,
+          );
         }
       } catch {
         // Corrupted or unsupported archive: skip
@@ -450,12 +553,11 @@ export async function* processGenericFiles(
     if (ext === ".pck") {
       try {
         for await (const asset of processGodotPck(file)) {
-          if (!isMediaFile(asset.path)) continue;
-          const stored = deriveStoredPath(asset.path);
-          if (!yielded.has(stored)) {
-            yielded.add(stored);
-            yield { ...asset, path: stored };
-          }
+          yield* finalizeArchiveAsset(
+            asset,
+            deriveStoredPath(asset.path),
+            yielded,
+          );
         }
       } catch {
         // Corrupted or unsupported PCK: skip
@@ -498,14 +600,17 @@ export async function* processGenericFiles(
                   : processGameMakerData(file);
 
           for await (const asset of gen) {
-            if (!isMediaFile(asset.path) && format !== "gamemaker") continue;
-            const stored =
-              format === "gamemaker"
-                ? asset.path
-                : deriveStoredPath(asset.path);
-            if (!yielded.has(stored)) {
-              yielded.add(stored);
-              yield { ...asset, path: stored };
+            if (format === "gamemaker") {
+              if (!yielded.has(asset.path)) {
+                yielded.add(asset.path);
+                yield asset;
+              }
+            } else {
+              yield* finalizeArchiveAsset(
+                asset,
+                deriveStoredPath(asset.path),
+                yielded,
+              );
             }
           }
         } catch {

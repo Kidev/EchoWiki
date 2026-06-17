@@ -130,6 +130,7 @@ const DEFAULT_CONFIG: GameConfig = {
   votingMaxSuggestionEdits: 1,
   votingDeleteCompletedPosts: false,
   suggestionEditCooldownMinutes: 0,
+  minJustificationLength: 10,
 };
 
 const VALID_HOME_BACKGROUNDS = new Set<string>([
@@ -234,6 +235,10 @@ async function getConfig(): Promise<GameConfig> {
     suggestionEditCooldownMinutes: Math.max(
       0,
       parseInt(raw["suggestionEditCooldownMinutes"] ?? "0", 10) || 0,
+    ),
+    minJustificationLength: Math.max(
+      0,
+      parseInt(raw["minJustificationLength"] ?? "10", 10) || 0,
     ),
   };
 }
@@ -1803,6 +1808,11 @@ router.post<
         Math.max(0, Math.floor(body.suggestionEditCooldownMinutes)),
       );
     }
+    if (body.minJustificationLength !== undefined) {
+      fields["minJustificationLength"] = String(
+        Math.max(0, Math.floor(body.minJustificationLength)),
+      );
+    }
 
     if (Object.keys(fields).length > 0) {
       const entries = Object.entries(fields);
@@ -2643,10 +2653,17 @@ router.post<
 
     const body = req.body as WikiSuggestionRequest;
 
-    if (!body.description || body.description.trim().length < 10) {
+    const minJustify = config.minJustificationLength;
+    if (
+      !body.description ||
+      body.description.trim().length < Math.max(1, minJustify)
+    ) {
       res.status(400).json({
         status: "error",
-        message: "Description must be at least 10 characters.",
+        message:
+          minJustify > 1
+            ? `Description must be at least ${minJustify} characters.`
+            : "A description is required.",
       });
       return;
     }
@@ -3152,8 +3169,17 @@ router.post<
       return;
     }
     const suggestion = JSON.parse(raw) as WikiSuggestion;
-    // Reason is optional for an approval.
+    // Reason is optional for an approval, but when one is provided it must meet
+    // the configured minimum justification length.
     const acceptReason = body.reason?.trim() || null;
+    const acceptMinJustify = (await getConfig()).minJustificationLength;
+    if (acceptReason && acceptReason.length < acceptMinJustify) {
+      res.status(400).json({
+        status: "error",
+        message: `Reason must be at least ${acceptMinJustify} characters.`,
+      });
+      return;
+    }
     const acceptBaseContent = await readPageContent(subreddit, suggestion.page);
     await reddit.updateWikiPage({
       subredditName: subreddit,
@@ -3268,12 +3294,21 @@ router.post<
     }
     const body = req.body as WikiSuggestionActionRequest;
 
-    // A reason is mandatory when denying a contribution.
+    // A reason is mandatory when denying a contribution, and must meet the
+    // configured minimum justification length.
     const denyReason = body.reason?.trim();
+    const denyMinJustify = (await getConfig()).minJustificationLength;
     if (!denyReason) {
       res.status(400).json({
         status: "error",
         message: "A reason is required to deny a contribution.",
+      });
+      return;
+    }
+    if (denyReason.length < denyMinJustify) {
+      res.status(400).json({
+        status: "error",
+        message: `A reason of at least ${denyMinJustify} characters is required to deny a contribution.`,
       });
       return;
     }

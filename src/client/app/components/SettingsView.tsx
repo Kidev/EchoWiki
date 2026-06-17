@@ -83,9 +83,13 @@ function HelpTip({ text }: { text: string }) {
 function CollaborativePanel({
   config,
   onConfigChanged,
+  onDirtyChange,
+  saveRef,
 }: {
   config: GameConfig;
   onConfigChanged: (config: GameConfig) => void;
+  onDirtyChange?: (dirty: boolean) => void;
+  saveRef?: MutableRefObject<(() => Promise<void>) | null>;
 }) {
   const collaborativeMode = config.collaborativeMode;
   const [isTogglingMode, setIsTogglingMode] = useState(false);
@@ -97,11 +101,27 @@ function CollaborativePanel({
   const [editCooldownField, setEditCooldownField] = useState(
     String(config.suggestionEditCooldownMinutes),
   );
-  const [isSavingThresholds, setIsSavingThresholds] = useState(false);
-  const thresholdsDirty =
-    minKarmaField !== String(config.minKarma) ||
-    minAgeDaysField !== String(config.minAccountAgeDays) ||
-    editCooldownField !== String(config.suggestionEditCooldownMinutes);
+  const [minJustifyField, setMinJustifyField] = useState(
+    String(config.minJustificationLength),
+  );
+  const thresholdsDirty = useMemo(
+    () =>
+      minKarmaField !== String(config.minKarma) ||
+      minAgeDaysField !== String(config.minAccountAgeDays) ||
+      editCooldownField !== String(config.suggestionEditCooldownMinutes) ||
+      minJustifyField !== String(config.minJustificationLength),
+    [
+      minKarmaField,
+      minAgeDaysField,
+      editCooldownField,
+      minJustifyField,
+      config,
+    ],
+  );
+
+  useEffect(() => {
+    onDirtyChange?.(thresholdsDirty);
+  }, [thresholdsDirty, onDirtyChange]);
 
   const [flairTemplateId, setFlairTemplateId] = useState<string | null>(null);
   const [flairTemplates, setFlairTemplates] = useState<FlairTemplateInfo[]>([]);
@@ -172,7 +192,10 @@ function CollaborativePanel({
       0,
       parseInt(editCooldownField, 10) || 0,
     );
-    setIsSavingThresholds(true);
+    const minJustificationLength = Math.max(
+      0,
+      parseInt(minJustifyField, 10) || 0,
+    );
     try {
       const res = await fetch("/api/config", {
         method: "POST",
@@ -181,30 +204,35 @@ function CollaborativePanel({
           minKarma,
           minAccountAgeDays,
           suggestionEditCooldownMinutes,
+          minJustificationLength,
         }),
       });
       if (res.ok) {
         setMinKarmaField(String(minKarma));
         setMinAgeDaysField(String(minAccountAgeDays));
         setEditCooldownField(String(suggestionEditCooldownMinutes));
+        setMinJustifyField(String(minJustificationLength));
         onConfigChanged({
           ...config,
           minKarma,
           minAccountAgeDays,
           suggestionEditCooldownMinutes,
+          minJustificationLength,
         });
       }
-    } catch {
-    } finally {
-      setIsSavingThresholds(false);
-    }
+    } catch {}
   }, [
     minKarmaField,
     minAgeDaysField,
     editCooldownField,
+    minJustifyField,
     config,
     onConfigChanged,
   ]);
+
+  useEffect(() => {
+    if (saveRef) saveRef.current = handleSaveThresholds;
+  }, [saveRef, handleSaveThresholds]);
 
   const handleFlairChange = useCallback(async (templateId: string | null) => {
     setIsSavingFlair(true);
@@ -290,182 +318,224 @@ function CollaborativePanel({
     } catch {}
   }, []);
 
-  const inputCls =
-    "text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)] disabled:opacity-50";
-  const inputStyle = {
+  const inp =
+    "w-full text-xs px-2 py-1 rounded border border-gray-200 focus:outline-none focus:border-[var(--accent)]";
+  const numInp =
+    "w-16 text-xs px-1.5 py-1 rounded border border-gray-200 focus:outline-none focus:border-[var(--accent)] text-center tabular-nums";
+  const inpSt = {
     backgroundColor: "var(--control-bg)",
     color: "var(--control-text)",
   };
+  const secHdr = "text-[10px] font-semibold uppercase tracking-wide mb-2";
+  const secHdrSt = { color: "var(--text-muted)" };
+  const divSt: CSSProperties = { borderColor: "var(--thumb-bg)" };
 
   return (
-    <div className="flex flex-col gap-3 max-w-lg">
-      {}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex flex-col min-w-0">
-          <span className="text-xs font-medium">Collaborative editing</span>
-          <span className="text-[10px] text-[var(--text-muted)]">
-            Community members suggest changes; moderators approve before they go
-            live.
+    <div className="text-xs" style={{ maxWidth: 680 }}>
+      {/* Master switch */}
+      <div
+        className="flex items-center justify-between gap-3 px-3 py-2 border-b"
+        style={divSt}
+      >
+        <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+          <span className="font-semibold">Collaborative editing</span>
+          <HelpTip text="When enabled, community members can suggest changes to wiki pages, which moderators review and approve before they go live. Turning this off makes the wiki moderator-edit only." />
+          <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+            Members suggest changes; moderators approve them.
           </span>
         </div>
         <button
           onClick={() => void handleToggleMode()}
           disabled={isTogglingMode}
-          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none disabled:opacity-50 ${
-            collaborativeMode ? "bg-[var(--accent)]" : "bg-gray-300"
-          }`}
+          className={`relative shrink-0 w-8 h-4 rounded-full transition-colors cursor-pointer disabled:opacity-50 ${collaborativeMode ? "bg-[var(--accent)]" : "bg-gray-300"}`}
         >
           <span
-            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-              collaborativeMode ? "translate-x-4" : "translate-x-0"
-            }`}
+            className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform ${collaborativeMode ? "translate-x-4" : "translate-x-0"}`}
           />
         </button>
       </div>
 
       {collaborativeMode && (
         <>
-          <div className="border-t border-gray-100" />
-
-          {}
-          <div className="flex flex-col gap-1.5">
-            <span className="flex items-center gap-1 text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wide">
-              Eligibility
-              <HelpTip text="Who is allowed to submit suggestions. A member must meet both the minimum karma and the minimum account age to suggest changes. Set a value to 0 to drop that requirement. These checks fail open: if Reddit can't return a user's stats, the suggestion is allowed." />
-            </span>
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-              <label className="text-xs text-[var(--text-muted)] w-20 shrink-0">
-                Min. karma
-              </label>
-              <input
-                type="number"
-                min="0"
-                value={minKarmaField}
-                onChange={(e) => setMinKarmaField(e.target.value)}
-                placeholder="0"
-                className={`${inputCls} w-20`}
-                style={inputStyle}
-              />
-              <label className="text-xs text-[var(--text-muted)] w-24 shrink-0 ml-2">
-                Min. age (days)
-              </label>
-              <input
-                type="number"
-                min="0"
-                value={minAgeDaysField}
-                onChange={(e) => setMinAgeDaysField(e.target.value)}
-                placeholder="0"
-                className={`${inputCls} w-20`}
-                style={inputStyle}
-              />
+          {/* Eligibility + Contribution rules */}
+          <div className="flex flex-col sm:flex-row border-b" style={divSt}>
+            <div
+              className="flex-1 min-w-0 px-3 py-2 border-b sm:border-b-0 sm:border-r"
+              style={divSt}
+            >
+              <p
+                className={`${secHdr} flex items-center gap-1`}
+                style={secHdrSt}
+              >
+                Eligibility
+                <HelpTip text="Who is allowed to submit suggestions. A member must meet both the minimum karma and the minimum account age to suggest changes. Set a value to 0 to drop that requirement. These checks fail open: if Reddit can't return a user's stats, the suggestion is allowed." />
+              </p>
+              <div className="flex flex-col gap-1.5">
+                <label className="flex items-center gap-1.5">
+                  <span className="w-16 shrink-0">Min. karma</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={minKarmaField}
+                    onChange={(e) => setMinKarmaField(e.target.value)}
+                    placeholder="0"
+                    className={numInp}
+                    style={inpSt}
+                  />
+                  <span style={{ color: "var(--text-muted)" }}>0 = none</span>
+                </label>
+                <label className="flex items-center gap-1.5">
+                  <span className="w-16 shrink-0">Min. age</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={minAgeDaysField}
+                    onChange={(e) => setMinAgeDaysField(e.target.value)}
+                    placeholder="0"
+                    className={numInp}
+                    style={inpSt}
+                  />
+                  <span style={{ color: "var(--text-muted)" }}>
+                    days, 0 = none
+                  </span>
+                </label>
+              </div>
             </div>
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-              <label className="text-xs text-[var(--text-muted)] w-20 shrink-0">
-                Edit cooldown
-              </label>
-              <input
-                type="number"
-                min="0"
-                value={editCooldownField}
-                onChange={(e) => setEditCooldownField(e.target.value)}
-                placeholder="0"
-                className={`${inputCls} w-20`}
-                style={inputStyle}
-              />
-              <span className="flex items-center gap-1 text-xs text-[var(--text-muted)] shrink-0">
-                min. between edits
-                <HelpTip text="After a contributor submits a suggestion, this is how long they must wait before they can update it again. It throttles rapid re-edits of the same pending suggestion. Set to 0 to allow updates with no waiting." />
-              </span>
-              <button
-                onClick={() => void handleSaveThresholds()}
-                disabled={!thresholdsDirty || isSavingThresholds}
-                className="ml-auto text-xs px-2.5 py-1 rounded-full bg-[var(--accent)] text-white cursor-pointer disabled:opacity-30 shrink-0"
-              >
-                {isSavingThresholds ? "Saving..." : "Apply"}
-              </button>
-            </div>
-          </div>
 
-          {}
-          <div className="flex flex-col gap-1.5">
-            <span className="text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wide">
-              Contributor flair
-            </span>
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-[var(--text-muted)] w-20 shrink-0">
-                On accept
-              </label>
-              <select
-                value={flairTemplateId ?? ""}
-                onChange={(e) => void handleFlairChange(e.target.value || null)}
-                disabled={isSavingFlair || loadingInfo}
-                className={`${inputCls} flex-1`}
-                style={inputStyle}
+            <div className="flex-1 min-w-0 px-3 py-2">
+              <p
+                className={`${secHdr} flex items-center gap-1`}
+                style={secHdrSt}
               >
-                <option value="">No flair</option>
-                {flairTemplates.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.text || "(no label)"}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {}
-          <div className="flex flex-col gap-1.5">
-            <span className="text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wide">
-              Advanced contributor flair
-            </span>
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-              <label className="text-xs text-[var(--text-muted)] w-20 shrink-0">
-                After
-              </label>
-              <input
-                type="number"
-                min="0"
-                value={advCountField}
-                onChange={(e) => setAdvCountField(e.target.value)}
-                placeholder="0"
-                className={`${inputCls} w-16`}
-                style={inputStyle}
-              />
-              <span className="text-xs text-[var(--text-muted)] shrink-0">
-                accepted
-              </span>
-              <select
-                value={advFlairTemplateId ?? ""}
-                onChange={(e) => setAdvFlairTemplateId(e.target.value || null)}
-                disabled={loadingInfo}
-                className={`${inputCls} flex-1 min-w-[7rem]`}
-                style={inputStyle}
-              >
-                <option value="">No flair</option>
-                {flairTemplates.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.text || "(no label)"}
-                  </option>
-                ))}
-              </select>
-              <button
-                onClick={() => void handleSaveAdvanced()}
-                disabled={
-                  (advCountField === savedAdvCount &&
-                    advFlairTemplateId === savedAdvFlairTemplateId) ||
-                  isSavingAdv
-                }
-                className="text-xs px-2.5 py-1 rounded-full bg-[var(--accent)] text-white cursor-pointer disabled:opacity-30 shrink-0"
-              >
-                {isSavingAdv ? "Saving..." : "Apply"}
-              </button>
+                Contribution Rules
+                <HelpTip text="Rules applied to every contribution. The edit cooldown throttles how often a contributor can update the same pending suggestion. The minimum justification is how many characters the contributor (and moderators, when accepting or denying) must write to explain a change." />
+              </p>
+              <div className="flex flex-col gap-1.5">
+                <label className="flex items-center gap-1.5">
+                  <span className="w-24 shrink-0">Edit cooldown</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={editCooldownField}
+                    onChange={(e) => setEditCooldownField(e.target.value)}
+                    placeholder="0"
+                    className={numInp}
+                    style={inpSt}
+                  />
+                  <span style={{ color: "var(--text-muted)" }}>
+                    min. 0 = instant
+                  </span>
+                </label>
+                <label className="flex items-center gap-1.5">
+                  <span className="w-24 shrink-0">Min. justification</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={minJustifyField}
+                    onChange={(e) => setMinJustifyField(e.target.value)}
+                    placeholder="0"
+                    className={numInp}
+                    style={inpSt}
+                  />
+                  <span style={{ color: "var(--text-muted)" }}>
+                    chars, 0 = none
+                  </span>
+                </label>
+              </div>
             </div>
           </div>
 
-          {}
-          <div className="flex flex-col gap-1.5">
-            <span className="text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wide">
+          {/* Contributor flair + Advanced flair */}
+          <div className="flex flex-col sm:flex-row border-b" style={divSt}>
+            <div
+              className="flex-1 min-w-0 px-3 py-2 border-b sm:border-b-0 sm:border-r"
+              style={divSt}
+            >
+              <p
+                className={`${secHdr} flex items-center gap-1`}
+                style={secHdrSt}
+              >
+                Contributor Flair
+                <HelpTip text="User flair awarded automatically the first time a member's contribution is accepted. Saved as soon as you pick it. Choose 'No flair' to award nothing." />
+              </p>
+              <label className="flex items-center gap-1.5">
+                <span className="w-16 shrink-0">On accept</span>
+                <select
+                  value={flairTemplateId ?? ""}
+                  onChange={(e) =>
+                    void handleFlairChange(e.target.value || null)
+                  }
+                  disabled={isSavingFlair || loadingInfo}
+                  className={inp}
+                  style={inpSt}
+                >
+                  <option value="">No flair</option>
+                  {flairTemplates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.text || "(no label)"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="flex-1 min-w-0 px-3 py-2">
+              <p
+                className={`${secHdr} flex items-center gap-1`}
+                style={secHdrSt}
+              >
+                Advanced Flair
+                <HelpTip text="An upgraded user flair awarded once a member reaches the chosen number of accepted contributions. Set the count and flair, then Apply." />
+              </p>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="shrink-0">After</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={advCountField}
+                  onChange={(e) => setAdvCountField(e.target.value)}
+                  placeholder="0"
+                  className={numInp}
+                  style={inpSt}
+                />
+                <span className="shrink-0">accepted</span>
+                <select
+                  value={advFlairTemplateId ?? ""}
+                  onChange={(e) =>
+                    setAdvFlairTemplateId(e.target.value || null)
+                  }
+                  disabled={loadingInfo}
+                  className={`${inp} flex-1 min-w-[6rem]`}
+                  style={inpSt}
+                >
+                  <option value="">No flair</option>
+                  {flairTemplates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.text || "(no label)"}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => void handleSaveAdvanced()}
+                  disabled={
+                    (advCountField === savedAdvCount &&
+                      advFlairTemplateId === savedAdvFlairTemplateId) ||
+                    isSavingAdv
+                  }
+                  className="text-xs px-2.5 py-1 rounded-full bg-[var(--accent)] text-white cursor-pointer disabled:opacity-30 shrink-0"
+                >
+                  {isSavingAdv ? "Saving..." : "Apply"}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Banned editors */}
+          <div className="px-3 py-2 border-b" style={divSt}>
+            <p className={`${secHdr} flex items-center gap-1`} style={secHdrSt}>
               Banned editors{banned.length > 0 ? ` (${banned.length})` : ""}
-            </span>
+              <HelpTip text="Members banned from contributing to this wiki. A banned user cannot submit suggestions. This mirrors the subreddit's wiki contributor ban list." />
+            </p>
             <div className="flex gap-2">
               <input
                 type="text"
@@ -478,8 +548,8 @@ function CollaborativePanel({
                   if (e.key === "Enter") void handleBan();
                 }}
                 placeholder="username"
-                className={`${inputCls} flex-1`}
-                style={inputStyle}
+                className={`${inp} flex-1`}
+                style={inpSt}
               />
               <button
                 onClick={() => void handleBan()}
@@ -493,7 +563,7 @@ function CollaborativePanel({
               <span className="text-xs text-red-500">{banError}</span>
             )}
             {banned.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mt-0.5">
+              <div className="flex flex-wrap gap-1.5 mt-2">
                 {banned.map((u) => (
                   <div
                     key={u}
@@ -1366,6 +1436,8 @@ export function SettingsView({
   const [savingConfig, setSavingConfig] = useState(false);
   const [votingPanelDirty, setVotingPanelDirty] = useState(false);
   const votingSaveRef = useRef<(() => Promise<void>) | null>(null);
+  const [collabPanelDirty, setCollabPanelDirty] = useState(false);
+  const collabSaveRef = useRef<(() => Promise<void>) | null>(null);
 
   const isTcoaalDetected = useMemo(() => {
     const t = gameTitle.toLowerCase();
@@ -1498,12 +1570,13 @@ export function SettingsView({
     [saveStyle, editingMode],
   );
 
-  const anyDirty = configDirty || votingPanelDirty;
+  const anyDirty = configDirty || votingPanelDirty || collabPanelDirty;
 
   const handleSaveAll = useCallback(async () => {
     if (configDirty) void handleSaveConfig();
     if (votingPanelDirty) void votingSaveRef.current?.();
-  }, [configDirty, handleSaveConfig, votingPanelDirty]);
+    if (collabPanelDirty) void collabSaveRef.current?.();
+  }, [configDirty, handleSaveConfig, votingPanelDirty, collabPanelDirty]);
 
   const defaultColors = useMemo(() => {
     const accent = appearance.keyColor ?? "#d93900";
@@ -2144,6 +2217,8 @@ return asset;`}
           <CollaborativePanel
             config={config}
             onConfigChanged={onConfigChanged}
+            onDirtyChange={setCollabPanelDirty}
+            saveRef={collabSaveRef}
           />
         )}
 

@@ -54,6 +54,7 @@ export const WikiView = memo(function WikiView({
   onAnchorConsumed,
   canSuggest,
   voteOnSaveAvailable,
+  minJustificationLength,
   suggestionToLoad,
   onSuggestionLoaded,
   onNavigateToSuggestion,
@@ -76,6 +77,7 @@ export const WikiView = memo(function WikiView({
   onAnchorConsumed?: (() => void) | undefined;
   canSuggest: boolean;
   voteOnSaveAvailable?: boolean | undefined;
+  minJustificationLength: number;
   suggestionToLoad?: string | null | undefined;
   onSuggestionLoaded?: (() => void) | undefined;
   onNavigateToSuggestion?:
@@ -686,8 +688,13 @@ export const WikiView = memo(function WikiView({
   }, [deleteConfirmText, currentPage, deleteDraft, onPageDeleted]);
 
   const handleSaveConfirm = useCallback(async () => {
-    if (saveReason.trim().length < 10) {
-      setSaveError("Description must be at least 10 characters.");
+    const minJustify = Math.max(1, minJustificationLength);
+    if (saveReason.trim().length < minJustify) {
+      setSaveError(
+        minJustify > 1
+          ? `Description must be at least ${minJustify} characters.`
+          : "A description is required.",
+      );
       return;
     }
     const isVoteMode = (voteOnSaveAvailable ?? false) && createVotePost;
@@ -751,12 +758,18 @@ export const WikiView = memo(function WikiView({
     saveReason,
     username,
     voteOnSaveAvailable,
+    minJustificationLength,
     deleteDraft,
   ]);
 
   const handleSuggestConfirm = useCallback(async () => {
-    if (!suggestDescription.trim()) {
-      setSuggestError("Please describe your changes.");
+    const minJustify = Math.max(1, minJustificationLength);
+    if (suggestDescription.trim().length < minJustify) {
+      setSuggestError(
+        minJustify > 1
+          ? `Description must be at least ${minJustify} characters.`
+          : "Please describe your changes.",
+      );
       return;
     }
     setIsSaving(true);
@@ -788,7 +801,13 @@ export const WikiView = memo(function WikiView({
     } finally {
       setIsSaving(false);
     }
-  }, [currentPage, editContent, suggestDescription, deleteDraft]);
+  }, [
+    currentPage,
+    editContent,
+    suggestDescription,
+    minJustificationLength,
+    deleteDraft,
+  ]);
 
   const handleExistingSuggestionSee = useCallback(() => {
     if (!existingSuggestion) return;
@@ -1112,6 +1131,7 @@ export const WikiView = memo(function WikiView({
           voteOnSave={voteOnSaveAvailable}
           createVote={createVotePost}
           onCreateVoteChange={setCreateVotePost}
+          minLength={minJustificationLength}
         />
       )}
 
@@ -1126,6 +1146,7 @@ export const WikiView = memo(function WikiView({
           }}
           isSaving={isSaving}
           error={suggestError}
+          minLength={minJustificationLength}
         />
       )}
 

@@ -27,6 +27,7 @@ function SuggestionReviewModal({
   onClose,
   isActing,
   actError,
+  minJustificationLength,
 }: {
   suggestion: WikiSuggestion;
   currentContent: string | null;
@@ -37,9 +38,15 @@ function SuggestionReviewModal({
   onClose: () => void;
   isActing: boolean;
   actError: string | null;
+  minJustificationLength: number;
 }) {
   const [reason, setReason] = useState("");
-  const canDeny = reason.trim().length > 0;
+  const min = Math.max(1, minJustificationLength);
+  const reasonLen = reason.trim().length;
+  const canDeny = reasonLen >= min;
+  // Accept allows an empty reason, but a non-empty one must still meet the
+  // minimum justification length (the server enforces the same rule).
+  const canAccept = reasonLen === 0 || reasonLen >= min;
   const pageLabel = suggestion.page
     .replace(/_/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
@@ -71,15 +78,26 @@ function SuggestionReviewModal({
             <button
               onClick={() => onDeny(reason)}
               disabled={isActing || !canDeny}
-              title={canDeny ? undefined : "A reason is required to deny"}
+              title={
+                canDeny
+                  ? undefined
+                  : min > 1
+                    ? `A reason of at least ${min} characters is required to deny`
+                    : "A reason is required to deny"
+              }
               className="text-xs px-3 py-1.5 rounded border border-red-300 text-red-600 hover:bg-red-50 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Deny
             </button>
             <button
               onClick={() => onAccept(reason)}
-              disabled={isActing}
-              className="text-xs px-3 py-1.5 rounded bg-[var(--accent)] text-white hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50"
+              disabled={isActing || !canAccept}
+              title={
+                canAccept || min <= 1
+                  ? undefined
+                  : `A reason must be empty or at least ${min} characters`
+              }
+              className="text-xs px-3 py-1.5 rounded bg-[var(--accent)] text-white hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isActing ? "Applying..." : "Accept"}
             </button>
@@ -109,7 +127,7 @@ function SuggestionReviewModal({
           type="text"
           value={reason}
           onChange={(e) => setReason(e.target.value)}
-          placeholder="Reason (required to deny, optional to accept)..."
+          placeholder={`Reason (required to deny, optional to accept)${min > 1 ? `, min. ${min} chars` : ""}...`}
           className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-ring)]"
           style={{
             backgroundColor: "var(--control-bg)",
@@ -526,6 +544,7 @@ function SubmissionsPanel({
   isMod,
   username,
   wikiFontSize,
+  minJustificationLength,
   onPendingCountChange,
   onEditSuggestion,
 }: {
@@ -533,6 +552,7 @@ function SubmissionsPanel({
   isMod: boolean;
   username: string;
   wikiFontSize: WikiFontSize;
+  minJustificationLength: number;
   onPendingCountChange?: (count: number) => void;
   // Open one of the user's own contributions in the full split suggestion
   // editor (preview + source) on the Wiki tab, rather than a bare textarea.
@@ -667,11 +687,17 @@ function SubmissionsPanel({
     [reviewSuggestion, submitDecision],
   );
 
+  const minJustify = Math.max(1, minJustificationLength);
+  const denyTooShortMsg =
+    minJustify > 1
+      ? `A reason of at least ${minJustify} characters is required to deny.`
+      : "A reason is required to deny.";
+
   const handleDeny = useCallback(
     async (reason: string) => {
       if (!reviewSuggestion) return;
-      if (!reason.trim()) {
-        setActError("A reason is required to deny.");
+      if (reason.trim().length < minJustify) {
+        setActError(denyTooShortMsg);
         return;
       }
       setIsActing(true);
@@ -685,13 +711,13 @@ function SubmissionsPanel({
       else setReviewSuggestion(null);
       setIsActing(false);
     },
-    [reviewSuggestion, submitDecision],
+    [reviewSuggestion, submitDecision, minJustify, denyTooShortMsg],
   );
 
   const confirmQuickDeny = useCallback(async () => {
     if (!denyPromptUser) return;
-    if (!denyPromptReason.trim()) {
-      setDenyPromptError("A reason is required to deny.");
+    if (denyPromptReason.trim().length < minJustify) {
+      setDenyPromptError(denyTooShortMsg);
       return;
     }
     setDenyPromptBusy(true);
@@ -704,7 +730,13 @@ function SubmissionsPanel({
     }
     setDenyPromptUser(null);
     setDenyPromptReason("");
-  }, [denyPromptUser, denyPromptReason, submitDecision]);
+  }, [
+    denyPromptUser,
+    denyPromptReason,
+    submitDecision,
+    minJustify,
+    denyTooShortMsg,
+  ]);
 
   return (
     <>
@@ -719,6 +751,7 @@ function SubmissionsPanel({
           onClose={() => setReviewSuggestion(null)}
           isActing={isActing}
           actError={actError}
+          minJustificationLength={minJustificationLength}
         />
       )}
       {denyPromptUser && (
@@ -734,8 +767,10 @@ function SubmissionsPanel({
               Deny u/{denyPromptUser}&apos;s contribution
             </h3>
             <p className="text-xs text-[var(--text-muted)] mb-3">
-              A reason is required. It&apos;s shown to the contributor and other
-              moderators in the history.
+              A reason is required
+              {minJustify > 1 ? ` (min. ${minJustify} characters)` : ""}.
+              It&apos;s shown to the contributor and other moderators in the
+              history.
             </p>
             <textarea
               value={denyPromptReason}
@@ -762,7 +797,9 @@ function SubmissionsPanel({
               </button>
               <button
                 onClick={() => void confirmQuickDeny()}
-                disabled={denyPromptBusy || !denyPromptReason.trim()}
+                disabled={
+                  denyPromptBusy || denyPromptReason.trim().length < minJustify
+                }
                 className="text-sm px-3 py-1.5 rounded bg-red-600 text-white hover:bg-red-700 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {denyPromptBusy ? "Denying..." : "Deny"}

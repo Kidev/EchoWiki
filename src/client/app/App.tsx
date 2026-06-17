@@ -2809,6 +2809,7 @@ export const App = () => {
                 (config?.collaborativeMode ?? false) &&
                 (config?.votingEnabled ?? false)
               }
+              minJustificationLength={config?.minJustificationLength ?? 10}
               suggestionToLoad={suggestionToLoad}
               onSuggestionLoaded={handleSuggestionLoaded}
               onNavigateToSuggestion={handleNavigateToSuggestion}
@@ -2931,6 +2932,7 @@ export const App = () => {
                   isMod={isMod}
                   username={username}
                   wikiFontSize={style.wikiFontSize}
+                  minJustificationLength={config?.minJustificationLength ?? 10}
                   onPendingCountChange={setPendingCount}
                   onEditSuggestion={handleNavigateToSuggestion}
                 />

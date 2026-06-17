@@ -59,6 +59,10 @@ export type GameConfig = {
   votingMaxSuggestionEdits: number;
   votingDeleteCompletedPosts: boolean;
   suggestionEditCooldownMinutes: number;
+  // Minimum number of characters required in the justification/reason text that
+  // accompanies a contribution, an edit, or a moderator accept/deny decision.
+  // 0 disables the minimum entirely.
+  minJustificationLength: number;
 };
 
 export type ConfigResponse = {
@@ -96,6 +100,7 @@ export type ConfigUpdateRequest = {
   votingMaxSuggestionEdits?: number | undefined;
   votingDeleteCompletedPosts?: boolean | undefined;
   suggestionEditCooldownMinutes?: number | undefined;
+  minJustificationLength?: number | undefined;
 };
 
 export type ConfigUpdateResponse = {

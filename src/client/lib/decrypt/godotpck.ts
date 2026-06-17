@@ -21,7 +21,26 @@ const MIME_MAP: Record<string, string> = {
   ".mp4": "video/mp4",
 };
 
-const MEDIA_EXTS = new Set(Object.keys(MIME_MAP));
+// Beyond browser-native media, Godot packs commonly ship 3D models (glTF) and
+// GPU textures. These are emitted raw here and decoded downstream by the generic
+// pipeline (native models -> GLB, .dds/.tga -> PNG), so they must not be
+// filtered out at extraction time.
+const PASSTHROUGH_EXTS = new Set([
+  ".glb",
+  ".gltf",
+  ".obj",
+  ".fbx",
+  ".dae",
+  ".stl",
+  ".ply",
+  ".md2",
+  ".md3",
+  ".mdl",
+  ".dds",
+  ".tga",
+]);
+
+const MEDIA_EXTS = new Set([...Object.keys(MIME_MAP), ...PASSTHROUGH_EXTS]);
 
 function getExt(path: string): string {
   const dot = path.lastIndexOf(".");

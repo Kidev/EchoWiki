@@ -57,6 +57,7 @@ export function WikiSaveDialog({
   voteOnSave,
   createVote,
   onCreateVoteChange,
+  minLength,
 }: {
   reason: string;
   onReasonChange: (r: string) => void;
@@ -67,8 +68,12 @@ export function WikiSaveDialog({
   voteOnSave?: boolean | undefined;
   createVote?: boolean | undefined;
   onCreateVoteChange?: ((v: boolean) => void) | undefined;
+  minLength: number;
 }) {
   const isVoteMode = voteOnSave && createVote;
+  const min = Math.max(1, minLength);
+  const trimmedLen = reason.trim().length;
+  const remaining = min - trimmedLen;
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
@@ -104,14 +109,22 @@ export function WikiSaveDialog({
           value={reason}
           onChange={(e) => onReasonChange(e.target.value)}
           placeholder={
-            isVoteMode ? "Describe your changes..." : "Reason for edit..."
+            isVoteMode
+              ? `Describe your changes${min > 1 ? ` (min. ${min} chars)` : ""}...`
+              : `Reason for edit${min > 1 ? ` (min. ${min} chars)` : ""}...`
           }
           autoFocus
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !isSaving && reason.trim()) onConfirm();
+            if (e.key === "Enter" && !isSaving && trimmedLen >= min)
+              onConfirm();
           }}
-          className="w-full text-sm px-3 py-2 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)] mb-3"
+          className="w-full text-sm px-3 py-2 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)] mb-1"
         />
+        {trimmedLen > 0 && remaining > 0 && (
+          <p className="text-xs mb-2" style={{ color: "var(--text-muted)" }}>
+            {remaining} more character{remaining !== 1 ? "s" : ""} needed
+          </p>
+        )}
         {error !== null && <p className="text-xs text-red-500 mb-3">{error}</p>}
         <div className="flex justify-end gap-2">
           <button
@@ -123,7 +136,7 @@ export function WikiSaveDialog({
           </button>
           <button
             onClick={onConfirm}
-            disabled={isSaving || !reason.trim()}
+            disabled={isSaving || trimmedLen < min}
             className="text-sm px-3 py-1.5 rounded bg-[var(--accent)] text-white hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50"
           >
             {isSaving
@@ -147,6 +160,7 @@ export function WikiSuggestDialog({
   onDismiss,
   isSaving,
   error,
+  minLength,
 }: {
   description: string;
   onDescriptionChange: (d: string) => void;
@@ -154,7 +168,11 @@ export function WikiSuggestDialog({
   onDismiss: () => void;
   isSaving: boolean;
   error: string | null;
+  minLength: number;
 }) {
+  const min = Math.max(1, minLength);
+  const trimmedLen = description.trim().length;
+  const remaining = min - trimmedLen;
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
@@ -179,22 +197,17 @@ export function WikiSuggestDialog({
           type="text"
           value={description}
           onChange={(e) => onDescriptionChange(e.target.value)}
-          placeholder="Description of changes (min. 10 chars)..."
+          placeholder={`Description of changes${min > 1 ? ` (min. ${min} chars)` : ""}...`}
           autoFocus
           onKeyDown={(e) => {
-            if (
-              e.key === "Enter" &&
-              !isSaving &&
-              description.trim().length >= 10
-            )
+            if (e.key === "Enter" && !isSaving && trimmedLen >= min)
               onConfirm();
           }}
           className="w-full text-sm px-3 py-2 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)] mb-1"
         />
-        {description.trim().length > 0 && description.trim().length < 10 && (
+        {trimmedLen > 0 && remaining > 0 && (
           <p className="text-xs mb-2" style={{ color: "var(--text-muted)" }}>
-            {10 - description.trim().length} more character
-            {10 - description.trim().length !== 1 ? "s" : ""} needed
+            {remaining} more character{remaining !== 1 ? "s" : ""} needed
           </p>
         )}
         {error !== null && <p className="text-xs text-red-500 mb-2">{error}</p>}
@@ -208,7 +221,7 @@ export function WikiSuggestDialog({
           </button>
           <button
             onClick={onConfirm}
-            disabled={isSaving || description.trim().length < 10}
+            disabled={isSaving || trimmedLen < min}
             className="text-sm px-3 py-1.5 rounded bg-[var(--accent)] text-white hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50"
           >
             {isSaving ? "Submitting..." : "Submit"}
