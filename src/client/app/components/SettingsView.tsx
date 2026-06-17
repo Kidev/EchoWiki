@@ -1171,9 +1171,6 @@ function VersionFooter() {
           . Update available ({version.latest})
         </span>
       )}
-      {override && (
-        <span className="ml-1.5 italic opacity-70">(dev override)</span>
-      )}
     </div>
   );
 }

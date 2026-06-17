@@ -1982,11 +1982,11 @@ export const App = () => {
                     </span>
                   )}
                   <span
-                    className={`text-xs text-[var(--text-muted)] whitespace-nowrap title-crossfade tabular-nums${config?.wikiDescription ? " absolute" : ""}`}
+                    className={`flex flex-col items-center text-xs text-[var(--text-muted)] whitespace-nowrap title-crossfade tabular-nums${config?.wikiDescription ? " absolute" : ""}`}
                     style={{ opacity: loadingProgress > 0 ? 1 : 0 }}
                   >
-                    {Math.round(displayedProgress)}%
-                    {loadingStatus ? ` - ${loadingStatus}` : ""}
+                    <span>{Math.round(displayedProgress)}%</span>
+                    {loadingStatus ? <span>{loadingStatus}</span> : null}
                   </span>
                 </span>
               </p>

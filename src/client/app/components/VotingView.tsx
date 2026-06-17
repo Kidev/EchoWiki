@@ -633,12 +633,12 @@ function VotingView({
                   <span>
                     {formatAuthorKarma(data.suggestionAuthorInfo.karma)} karma
                   </span>
-                  <span>.</span>
+                  <span aria-hidden="true">·</span>
                   <span>
                     {formatAuthorAge(data.suggestionAuthorInfo.accountAgeDays)}{" "}
                     old
                   </span>
-                  <span>.</span>
+                  <span aria-hidden="true">·</span>
                   {data.suggestionAuthorInfo.acceptedContributions > 0 ? (
                     <span>
                       {data.suggestionAuthorInfo.acceptedContributions} accepted
