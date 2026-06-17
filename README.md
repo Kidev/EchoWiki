@@ -398,7 +398,7 @@ The file [docs/showcase.md](https://github.com/Kidev/EchoWiki/blob/main/docs/sho
 
 ## Asset Import
 
-If enabled, users select their game folder. The app auto-detects the engine, extracts assets entirely in the browser, and stores them in IndexedDB. Nothing is uploaded.
+If enabled, users select their game folder. The app auto-detects the engine, extracts assets entirely in the browser, and stores them in IndexedDB. Nothing is uploaded. During import a progress bar shows a live status under the percentage (detecting the engine, the running count of extracted assets, then how many are being saved), so a large archive that sits near a percentage still makes its ongoing work visible.
 
 If no game is configured, EchoWiki runs as a plain wiki: there is no "Import game" prompt, no asset browser, and no echo links. The app works entirely as a collaborative Markdown wiki without any of the asset machinery.
 
@@ -406,7 +406,7 @@ If no game is configured, EchoWiki runs as a plain wiki: there is no "Import gam
 
 ![engines](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/engines.png)
 
-Engine detection is automatic: EchoWiki fingerprints the folder, picks the right reader, and extracts everything in the browser. If yours doesn't work, or some assets fail to load, report it from `Settings` in the `General` tab.
+Engine detection is automatic: EchoWiki fingerprints the folder, picks the right reader, and extracts everything in the browser. If yours doesn't work, or some assets fail to load, report it on the EchoWiki Discord, linked from `Settings` in the `General` tab.
 
 Two ideas recur in the tables below:
 
@@ -517,7 +517,7 @@ The Settings tab is visible only to **config**-level moderators (see [Moderator 
 - **Wiki Title**: Displayed on the home screen below the logo. Leave empty for default.
 - **Wiki Description**: Short text shown below the title.
 - **Reddit Wiki moderation page**: A shortcut that opens the subreddit's underlying Reddit wiki moderation page (`reddit.com/mod/<subreddit>/wiki`), for revision management and settings that live on Reddit itself.
-- **Report issue**: Opens the EchoWiki feedback page in the browser to report a bug or share feedback about the app. The running app version is shown beneath it.
+- **EchoWiki Discord**: Opens the EchoWiki Discord server in the browser to ask for help, request features, or report bugs. The running app version is shown beneath it.
 
 ### Game
 
