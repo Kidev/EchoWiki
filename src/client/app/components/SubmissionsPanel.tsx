@@ -25,7 +25,7 @@ function SuggestionReviewModal({
   onAccept,
   onDeny,
   onClose,
-  isActing,
+  actingAction,
   actError,
   minJustificationLength,
 }: {
@@ -36,10 +36,11 @@ function SuggestionReviewModal({
   onAccept: (reason: string) => void;
   onDeny: (reason: string) => void;
   onClose: () => void;
-  isActing: boolean;
+  actingAction: "accept" | "deny" | null;
   actError: string | null;
   minJustificationLength: number;
 }) {
+  const isActing = actingAction !== null;
   const [reason, setReason] = useState("");
   const min = Math.max(1, minJustificationLength);
   const reasonLen = reason.trim().length;
@@ -87,7 +88,7 @@ function SuggestionReviewModal({
               }
               className="text-xs px-3 py-1.5 rounded border border-red-300 text-red-600 hover:bg-red-50 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Deny
+              {actingAction === "deny" ? "Denying..." : "Deny"}
             </button>
             <button
               onClick={() => onAccept(reason)}
@@ -99,7 +100,7 @@ function SuggestionReviewModal({
               }
               className="text-xs px-3 py-1.5 rounded bg-[var(--accent)] text-white hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isActing ? "Applying..." : "Accept"}
+              {actingAction === "accept" ? "Applying..." : "Accept"}
             </button>
             <button
               onClick={onClose}
@@ -567,7 +568,9 @@ function SubmissionsPanel({
   const [reviewCurrentContent, setReviewCurrentContent] = useState<
     string | null
   >(null);
-  const [isActing, setIsActing] = useState(false);
+  const [actingAction, setActingAction] = useState<"accept" | "deny" | null>(
+    null,
+  );
   const [actError, setActError] = useState<string | null>(null);
 
   // Quick-deny prompt: deny straight from the list, but still collect the
@@ -673,7 +676,7 @@ function SubmissionsPanel({
   const handleAccept = useCallback(
     async (reason: string) => {
       if (!reviewSuggestion) return;
-      setIsActing(true);
+      setActingAction("accept");
       setActError(null);
       const err = await submitDecision(
         "accept",
@@ -682,7 +685,7 @@ function SubmissionsPanel({
       );
       if (err) setActError(err);
       else setReviewSuggestion(null);
-      setIsActing(false);
+      setActingAction(null);
     },
     [reviewSuggestion, submitDecision],
   );
@@ -700,7 +703,7 @@ function SubmissionsPanel({
         setActError(denyTooShortMsg);
         return;
       }
-      setIsActing(true);
+      setActingAction("deny");
       setActError(null);
       const err = await submitDecision(
         "deny",
@@ -709,7 +712,7 @@ function SubmissionsPanel({
       );
       if (err) setActError(err);
       else setReviewSuggestion(null);
-      setIsActing(false);
+      setActingAction(null);
     },
     [reviewSuggestion, submitDecision, minJustify, denyTooShortMsg],
   );
@@ -749,7 +752,7 @@ function SubmissionsPanel({
           onAccept={(reason) => void handleAccept(reason)}
           onDeny={(reason) => void handleDeny(reason)}
           onClose={() => setReviewSuggestion(null)}
-          isActing={isActing}
+          actingAction={actingAction}
           actError={actError}
           minJustificationLength={minJustificationLength}
         />
