@@ -21,14 +21,38 @@ const ALERT_META: Record<string, { color: string; icon: string }> = {
   },
 };
 
+// Matches the path portion of an `echo://` URL. A run of "normal" chars (not
+// whitespace, quotes, `>`, or the markdown terminators `()[]`) plus balanced
+// `(...)` and `[...]` groups, so filenames containing parens (`ashley_(x).png`)
+// or brackets (`00dfc02ea4ecdd77[bust].png`) aren't truncated at the first
+// closing bracket of the enclosing `[alt](...)`.
+const ECHO_PATH_RE =
+  /echo:\/\/((?:[^\s()[\]"'>]|\([^\s()[\]"']*\)|\[[^[\]]*\])+)/g;
+
 export function extractEchoPathsFromMarkdown(content: string): string[] {
   const paths: string[] = [];
-  const re = /echo:\/\/([^\s)"'>\]]+)/g;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(content)) !== null) {
+  ECHO_PATH_RE.lastIndex = 0;
+  while ((m = ECHO_PATH_RE.exec(content)) !== null) {
     if (m[1]) paths.push(m[1]);
   }
   return [...new Set(paths)];
+}
+
+/**
+ * Decode an echo:// path back to its literal asset key. When react-markdown's
+ * HTML re-parse (rehype-raw / parse5) round-trips an `echo://` src, it
+ * percent-encodes characters like `[` -> `%5B`, `]` -> `%5D`, and any non-ASCII.
+ * Assets are stored in IndexedDB under their raw, decoded filename, so the path
+ * must be decoded before lookup or the asset reads as "not found". Malformed
+ * `%` sequences (a literal `%` in a filename) fall back to the raw path.
+ */
+export function decodeEchoPath(path: string): string {
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return path;
+  }
 }
 
 export function preprocessAlerts(md: string): string {

@@ -59,11 +59,13 @@ function span(color: string, text: string, extra = ""): string {
 }
 
 // Matches an `echo://` URL. A run of "normal" chars (anything but whitespace,
-// the markdown/quote terminators, or a closing paren) plus, crucially, balanced
-// `(...)` groups so filenames like `ashley_(content).png` aren't truncated at
-// the first `)`. The chars consumed here are already HTML-escaped, so `&` shows
-// up as `&amp;` and is matched as part of the normal run.
-const ECHO_URL_RE = /echo:\/\/(?:[^\s()"'\]]|\([^\s()"'\]]*\))+/g;
+// the markdown/quote terminators, brackets, or a paren) plus, crucially,
+// balanced `(...)` and `[...]` groups so filenames like `ashley_(content).png`
+// or `00dfc02ea4ecdd77[bust].png` aren't truncated at the first `)` / `]`. The
+// chars consumed here are already HTML-escaped, so `&` shows up as `&amp;` and
+// is matched as part of the normal run.
+const ECHO_URL_RE =
+  /echo:\/\/(?:[^\s()[\]"']|\([^\s()[\]"']*\)|\[[^[\]]*\])+/g;
 
 /**
  * Highlight a single (HTML-escaped) `echo://` URL: the base link in the echo
@@ -161,7 +163,7 @@ function highlightInline(escaped: string): string {
   // a wavy underline so the author sees it won't work. echo:// srcs are already
   // held above, so `u` is a placeholder for them and reads as valid.
   s = s.replace(
-    /!\[([^\]]*)\]\(((?:[^()]|\([^()]*\))*)\)/g,
+    /!\[((?:[^[\]]|\[[^[\]]*\])*)\]\(((?:[^()]|\([^()]*\))*)\)/g,
     (_m, t: string, u: string) => {
       if (isUnproxyableRemoteImage(u)) {
         return hold(
@@ -182,7 +184,7 @@ function highlightInline(escaped: string): string {
   // [text](url): the url destination allows balanced `(...)` (e.g. a held echo
   // link whose filename contained parens), so it isn't truncated at the first `)`
   s = s.replace(
-    /\[([^\]]+)\]\(((?:[^()]|\([^()]*\))*)\)/g,
+    /\[((?:[^[\]]|\[[^[\]]*\])+)\]\(((?:[^()]|\([^()]*\))*)\)/g,
     (_m, t: string, u: string) =>
       hold(
         span(COLOR.muted, "[") +

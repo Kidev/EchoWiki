@@ -19,6 +19,7 @@ import {
   preprocessEchoBlocks,
   echoBlocksToSource,
   extractDisplayHints,
+  decodeEchoPath,
 } from "../echoRender";
 import {
   EchoInlineAsset,
@@ -369,7 +370,11 @@ export function WikiMarkdownContent({
               className?: string | undefined;
             }) => {
               if (src?.startsWith("echo://")) {
-                const rawPath = src.slice("echo://".length).toLowerCase();
+                // Decode the path: rehype-raw's HTML re-parse percent-encodes
+                // `[`/`]` and non-ASCII in the src, which would miss the IDB key.
+                const rawPath = decodeEchoPath(
+                  src.slice("echo://".length),
+                ).toLowerCase();
                 // 3D models (![name](echo://3d/king.glb)) render in an
                 // interactive, drag-to-rotate viewer. The base extension is
                 // tested separately because the path may carry display params
@@ -470,7 +475,9 @@ export function WikiMarkdownContent({
               }
 
               if (href.startsWith("echo://")) {
-                const echoPath = href.slice("echo://".length).toLowerCase();
+                const echoPath = decodeEchoPath(
+                  href.slice("echo://".length),
+                ).toLowerCase();
                 return (
                   <EchoInlineAsset path={echoPath}>
                     {linkChildren}

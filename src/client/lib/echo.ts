@@ -20,18 +20,31 @@ const blobUrlCache = new Map<string, string>();
 const audioEditionParamsCache = new Map<string, AudioEditionParams>();
 
 let reverseMapping: Map<string, string> | null = null;
+let forwardMapping: Map<string, string> | null = null;
 
 export function setReverseMapping(
   pathToMapped: Map<string, string> | null,
 ): void {
   if (!pathToMapped || pathToMapped.size === 0) {
     reverseMapping = null;
+    forwardMapping = null;
     return;
   }
+  forwardMapping = pathToMapped;
   reverseMapping = new Map();
   for (const [original, mapped] of pathToMapped) {
     reverseMapping.set(mapped, original);
   }
+}
+
+/**
+ * The mapped (human-readable) path for a stored asset key, if a mapping is
+ * loaded. Mirrors how the asset browser surfaces `mappedPath`: callers display
+ * and link assets by this name, and resolution still finds the underlying blob
+ * via {@link setReverseMapping}'s reverse lookup.
+ */
+export function getMappedPath(path: string): string | undefined {
+  return forwardMapping?.get(path);
 }
 
 function isImagePath(p: string): boolean {

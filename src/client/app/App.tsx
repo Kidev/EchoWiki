@@ -975,9 +975,24 @@ export const App = () => {
               const echoPaths = extractEchoPathsFromMarkdown(data.content);
               const wikiN = planPreload(echoPaths);
               if (wikiN > 0) {
-                await preloadPaths(echoPaths, (loaded) => {
+                // Preload the index assets so the wiki appears without pop-in,
+                // but cap how long the loading screen waits on it. A large
+                // index can take 5-10s to fully decode, which froze the bar
+                // near 94%. Once the budget elapses, transition anyway and let
+                // the rest finish in the background (assets also lazy-load on
+                // demand via echo:// resolution).
+                const preload = preloadPaths(echoPaths, (loaded) => {
                   setLoadingProgress(93 + Math.round((loaded / wikiN) * 5));
-                });
+                }).catch(() => {});
+                const PRELOAD_BUDGET_MS = 1500;
+                let timer: ReturnType<typeof setTimeout> | undefined;
+                await Promise.race([
+                  preload,
+                  new Promise<void>((resolve) => {
+                    timer = setTimeout(resolve, PRELOAD_BUDGET_MS);
+                  }),
+                ]);
+                if (timer) clearTimeout(timer);
               }
             }
           }

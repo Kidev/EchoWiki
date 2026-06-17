@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   type MutableRefObject,
   type ReactNode,
 } from "react";
@@ -12,14 +13,22 @@ import {
   isAudioPath,
   isModelPath,
 } from "../assetUtils";
-import { useEchoUrl, preloadPaths } from "../../lib/echo";
+import { PAGE_SIZE } from "../appTypes";
+import { useEchoUrl, preloadPaths, getMappedPath } from "../../lib/echo";
+import {
+  serializeEditions,
+  getAudioEditionParams,
+  type Edition,
+} from "../../lib/editions";
 import { listAssetPaths } from "../../lib/idb";
 
 function MiniAssetPickerItem({
   path,
+  label,
   onClick,
 }: {
   path: string;
+  label: string;
   onClick: () => void;
 }) {
   const isImg = isImagePath(path);
@@ -29,7 +38,7 @@ function MiniAssetPickerItem({
     <div
       onClick={onClick}
       className="flex flex-col items-center p-1.5 rounded-lg cursor-pointer hover:bg-[var(--accent)]/10 border border-transparent hover:border-[var(--accent)]/40 transition-colors shrink-0"
-      title={path}
+      title={label}
       style={{ width: "92px" }}
     >
       <div className="w-20 h-20 flex items-center justify-center rounded-md overflow-hidden bg-[var(--thumb-bg)]">
@@ -70,22 +79,29 @@ function MiniAssetPickerItem({
         )}
       </div>
       <span className="text-[11px] text-[var(--text)] truncate w-full text-center mt-1 leading-tight">
-        {getFileName(path)}
+        {label}
       </span>
     </div>
   );
 }
+
+// One pickable asset: the raw IDB key (`path`, used for the thumbnail + image
+// preload) and the mapped echo path it should be inserted/displayed as
+// (`echoPath`, the human-readable name when a mapping is loaded).
+type PickerEntry = { path: string; echoPath: string; label: string };
 
 function MiniAssetPicker({
   type = "images",
   onSelect,
 }: {
   type?: "images" | "audio" | "models";
-  onSelect: (path: string) => void;
+  onSelect: (echoPath: string) => void;
 }) {
-  const [allPaths, setAllPaths] = useState<string[]>([]);
+  const [entries, setEntries] = useState<PickerEntry[]>([]);
   const [search, setSearch] = useState("");
   const [loadingPaths, setLoadingPaths] = useState(true);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   useEffect(() => {
     void listAssetPaths().then(async (all) => {
@@ -95,24 +111,34 @@ function MiniAssetPicker({
           : type === "models"
             ? isModelPath
             : isAudioPath;
-      const filtered = all.filter(predicate);
-      setAllPaths(filtered);
+      const built: PickerEntry[] = all.filter(predicate).map((path) => {
+        const echoPath = getMappedPath(path) ?? path;
+        return { path, echoPath, label: getFileName(echoPath) };
+      });
+      setEntries(built);
       setLoadingPaths(false);
-      if (type === "images") await preloadPaths(filtered.slice(0, 80));
+      if (type === "images") {
+        await preloadPaths(built.slice(0, PAGE_SIZE).map((e) => e.path));
+      }
     });
   }, [type]);
 
-  const visible = useMemo(() => {
+  const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return allPaths
-      .filter(
-        (p) =>
-          !q ||
-          p.toLowerCase().includes(q) ||
-          getFileName(p).toLowerCase().includes(q),
-      )
-      .slice(0, 60);
-  }, [allPaths, search]);
+    if (!q) return entries;
+    return entries.filter(
+      (e) =>
+        e.path.toLowerCase().includes(q) || e.label.toLowerCase().includes(q),
+    );
+  }, [entries, search]);
+
+  // Reset pagination whenever the result set changes (e.g. on a new search).
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [search]);
+
+  const visible = filtered.slice(0, visibleCount);
+  const hasMore = visibleCount < filtered.length;
 
   if (loadingPaths) {
     return (
@@ -121,7 +147,7 @@ function MiniAssetPicker({
       </div>
     );
   }
-  if (allPaths.length === 0) {
+  if (entries.length === 0) {
     return (
       <p className="text-xs text-[var(--text-muted)] py-4 text-center">
         No assets imported yet. Import game files first.
@@ -139,14 +165,52 @@ function MiniAssetPicker({
         className="w-full text-sm px-3 py-2 rounded-lg border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none focus:border-[var(--accent)]"
       />
       <div className="flex flex-wrap gap-1.5 justify-center max-h-[50vh] overflow-auto py-1">
-        {visible.map((p) => (
-          <MiniAssetPickerItem key={p} path={p} onClick={() => onSelect(p)} />
+        {visible.map((e) => (
+          <MiniAssetPickerItem
+            key={e.path}
+            path={e.path}
+            label={e.label}
+            onClick={() => onSelect(e.echoPath)}
+          />
         ))}
+        {visible.length === 0 && (
+          <p className="text-xs text-[var(--text-muted)] py-4 text-center w-full">
+            No assets match your search.
+          </p>
+        )}
       </div>
-      {allPaths.length > 60 && !search && (
-        <p className="text-xs text-[var(--text-muted)] text-center">
-          Showing first 60. Use search to find more.
-        </p>
+      {hasMore && (
+        <div className="flex justify-center">
+          <button
+            disabled={loadingMore}
+            onClick={async () => {
+              const newCount = visibleCount + PAGE_SIZE;
+              if (type === "images") {
+                setLoadingMore(true);
+                await preloadPaths(
+                  filtered.slice(visibleCount, newCount).map((e) => e.path),
+                );
+                setLoadingMore(false);
+              }
+              setVisibleCount(newCount);
+            }}
+            className="text-xs px-2.5 py-1 rounded-full bg-[var(--accent)] text-white transition-opacity cursor-pointer hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loadingMore ? (
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin inline-block" />
+                Loading...
+              </span>
+            ) : (
+              <>
+                Load more
+                <span className="ml-1 opacity-70">
+                  {(filtered.length - visibleCount).toLocaleString()}
+                </span>
+              </>
+            )}
+          </button>
+        </div>
       )}
     </div>
   );
@@ -200,6 +264,25 @@ function InsertDialogShell({
   );
 }
 
+// Small audio preview whose playbackRate reflects the pitch/speed editions, so
+// the author can hear the result before inserting (mirrors AssetPreview).
+function AudioEditPreview({
+  url,
+  playbackRate,
+}: {
+  url: string;
+  playbackRate: number;
+}) {
+  const ref = useRef<HTMLAudioElement>(null);
+  useEffect(() => {
+    if (ref.current) {
+      ref.current.playbackRate = playbackRate;
+      ref.current.preservesPitch = false;
+    }
+  }, [playbackRate, url]);
+  return <audio ref={ref} controls src={url} className="w-full h-9" />;
+}
+
 function ImageInsertDialog({
   onInsert,
   onDismiss,
@@ -210,30 +293,64 @@ function ImageInsertDialog({
   const [path, setPath] = useState("");
   const [alt, setAlt] = useState("");
   const [mode, setMode] = useState<"block" | "emoji">("block");
+  const [crop, setCrop] = useState(false);
+  const [spriteOn, setSpriteOn] = useState(false);
+  const [cols, setCols] = useState("4");
+  const [rows, setRows] = useState("4");
+  const [index, setIndex] = useState("0");
 
+  // Selecting any asset (including while one is already chosen) replaces the
+  // current selection and resets its edits, so the picker stays usable without
+  // having to close and reopen the dialog.
+  const selectAsset = (p: string) => {
+    setPath(p);
+    setAlt(getFileName(p));
+    setMode("block");
+    setCrop(false);
+    setSpriteOn(false);
+    setCols("4");
+    setRows("4");
+    setIndex("0");
+  };
+
+  const editions = useMemo<Edition[]>(() => {
+    const eds: Edition[] = [];
+    if (crop) eds.push({ type: "crop" });
+    if (spriteOn) {
+      const c = parseInt(cols, 10);
+      const r = parseInt(rows, 10);
+      const i = parseInt(index, 10);
+      if (c > 0 && r > 0 && Number.isFinite(i) && i >= 0) {
+        eds.push({ type: "sprite", cols: c, rows: r, index: i });
+      }
+    }
+    return eds;
+  }, [crop, spriteOn, cols, rows, index]);
+
+  const serialized = path ? serializeEditions(path, editions) : "";
+  // The emoji display hint rides after any editions.
+  const withHints =
+    mode === "emoji"
+      ? `${serialized}${serialized.includes("?") ? "&" : "?"}emoji`
+      : serialized;
   const preview = path
-    ? mode === "emoji"
-      ? `![${alt || getFileName(path)}](echo://${path}?emoji)`
-      : `![${alt || getFileName(path)}](echo://${path})`
+    ? `![${alt || getFileName(path)}](echo://${withHints})`
     : "";
+
+  // Live preview resolves through the edited path so crop/sprite are applied.
+  const { url: imgUrl } = useEchoUrl(path ? serialized : null);
 
   return (
     <InsertDialogShell title="Insert Image" onDismiss={onDismiss}>
       <div className="flex flex-col gap-4">
         <div>
           <p className="text-xs font-medium text-[var(--text-muted)] mb-1">
-            Select asset
+            Select image {path && "(click another to replace)"}
           </p>
-          <MiniAssetPicker
-            type="images"
-            onSelect={(p) => {
-              setPath(p);
-              if (!alt) setAlt(getFileName(p));
-            }}
-          />
+          <MiniAssetPicker type="images" onSelect={selectAsset} />
         </div>
         {path && (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-3">
             <div>
               <label className="text-xs font-medium text-[var(--text-muted)] block mb-1">
                 Alt text
@@ -261,6 +378,198 @@ function ImageInsertDialog({
                 ))}
               </div>
             </div>
+            <div>
+              <label className="text-xs font-medium text-[var(--text-muted)] block mb-1">
+                Edits
+              </label>
+              <div className="flex flex-col gap-2">
+                <label className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={crop}
+                    onChange={(e) => {
+                      setCrop(e.target.checked);
+                      // Crop and sprite both reshape the image; pick one.
+                      if (e.target.checked) setSpriteOn(false);
+                    }}
+                    className="cursor-pointer"
+                  />
+                  Crop transparent margins
+                </label>
+                <label className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={spriteOn}
+                    onChange={(e) => {
+                      setSpriteOn(e.target.checked);
+                      if (e.target.checked) setCrop(false);
+                    }}
+                    className="cursor-pointer"
+                  />
+                  Extract a sprite cell
+                </label>
+                {spriteOn && (
+                  <div className="flex items-center gap-2 pl-5">
+                    <label className="text-[10px] text-[var(--text-muted)] flex items-center gap-1">
+                      Cols
+                      <input
+                        type="number"
+                        min={1}
+                        value={cols}
+                        onChange={(e) => setCols(e.target.value)}
+                        className="w-12 text-xs px-1.5 py-1 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none"
+                      />
+                    </label>
+                    <label className="text-[10px] text-[var(--text-muted)] flex items-center gap-1">
+                      Rows
+                      <input
+                        type="number"
+                        min={1}
+                        value={rows}
+                        onChange={(e) => setRows(e.target.value)}
+                        className="w-12 text-xs px-1.5 py-1 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none"
+                      />
+                    </label>
+                    <label className="text-[10px] text-[var(--text-muted)] flex items-center gap-1">
+                      Index
+                      <input
+                        type="number"
+                        min={0}
+                        value={index}
+                        onChange={(e) => setIndex(e.target.value)}
+                        className="w-14 text-xs px-1.5 py-1 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none"
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+            </div>
+            {imgUrl && (
+              <div className="bg-[var(--thumb-bg)] rounded p-2 flex items-center justify-center max-h-48 overflow-hidden">
+                <img
+                  src={imgUrl}
+                  alt=""
+                  className="max-h-44 max-w-full object-contain"
+                />
+              </div>
+            )}
+            <div className="bg-[var(--thumb-bg)] rounded p-2">
+              <p className="text-[10px] text-[var(--text-muted)] mb-1">
+                Preview markdown
+              </p>
+              <code className="text-xs break-all text-[var(--text)]">
+                {preview}
+              </code>
+            </div>
+            <button
+              onClick={() => {
+                onInsert(preview);
+                onDismiss();
+              }}
+              className="self-end text-sm px-4 py-1.5 rounded bg-[var(--accent)] text-white hover:opacity-90 cursor-pointer"
+            >
+              Insert
+            </button>
+          </div>
+        )}
+      </div>
+    </InsertDialogShell>
+  );
+}
+
+function AudioInsertDialog({
+  onInsert,
+  onDismiss,
+}: {
+  onInsert: (text: string) => void;
+  onDismiss: () => void;
+}) {
+  const [path, setPath] = useState("");
+  const [caption, setCaption] = useState("");
+  const [pitch, setPitch] = useState(0);
+  const [speed, setSpeed] = useState(1);
+
+  const selectAsset = (p: string) => {
+    setPath(p);
+    setCaption(getFileName(p));
+    setPitch(0);
+    setSpeed(1);
+  };
+
+  const editions = useMemo<Edition[]>(() => {
+    const eds: Edition[] = [];
+    if (speed !== 1) eds.push({ type: "speed", value: speed });
+    if (pitch !== 0) eds.push({ type: "pitch", value: pitch });
+    return eds;
+  }, [speed, pitch]);
+
+  const serialized = path ? serializeEditions(path, editions) : "";
+  // Audio is not embeddable, so it renders as a player link (`[...]`, no `!`).
+  const preview = path
+    ? `[${caption || getFileName(path)}](echo://${serialized})`
+    : "";
+
+  // Live preview: resolve the base asset and play it back at the edited rate.
+  const { url: audUrl } = useEchoUrl(path || null);
+  const audioPlayback = getAudioEditionParams(editions).playbackRate;
+
+  return (
+    <InsertDialogShell title="Insert Audio" onDismiss={onDismiss}>
+      <div className="flex flex-col gap-4">
+        <div>
+          <p className="text-xs font-medium text-[var(--text-muted)] mb-1">
+            Select audio {path && "(click another to replace)"}
+          </p>
+          <MiniAssetPicker type="audio" onSelect={selectAsset} />
+        </div>
+        {path && (
+          <div className="flex flex-col gap-3">
+            <div>
+              <label className="text-xs font-medium text-[var(--text-muted)] block mb-1">
+                Caption
+              </label>
+              <input
+                type="text"
+                value={caption}
+                onChange={(e) => setCaption(e.target.value)}
+                className="w-full text-xs px-2 py-1.5 rounded border border-gray-300 bg-[var(--control-bg)] text-[var(--control-text)] outline-none"
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
+                <span className="w-12 shrink-0">Speed</span>
+                <input
+                  type="range"
+                  min={0.25}
+                  max={4}
+                  step={0.05}
+                  value={speed}
+                  onChange={(e) => setSpeed(parseFloat(e.target.value))}
+                  className="flex-1"
+                />
+                <span className="w-10 text-right font-mono">
+                  {speed.toFixed(2)}x
+                </span>
+              </label>
+              <label className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
+                <span className="w-12 shrink-0">Pitch</span>
+                <input
+                  type="range"
+                  min={-12}
+                  max={12}
+                  step={0.5}
+                  value={pitch}
+                  onChange={(e) => setPitch(parseFloat(e.target.value))}
+                  className="flex-1"
+                />
+                <span className="w-10 text-right font-mono">
+                  {pitch >= 0 ? `+${pitch}` : pitch}
+                </span>
+              </label>
+            </div>
+            {audUrl && (
+              <AudioEditPreview url={audUrl} playbackRate={audioPlayback} />
+            )}
             <div className="bg-[var(--thumb-bg)] rounded p-2">
               <p className="text-[10px] text-[var(--text-muted)] mb-1">
                 Preview markdown
@@ -1391,6 +1700,7 @@ function DefInsertDialog({
 
 export type ToolbarDialog =
   | "image"
+  | "audio"
   | "model"
   | "card"
   | "infobox"
@@ -1539,8 +1849,13 @@ function WikiToolbar({
             <div className="flex items-center gap-1 flex-wrap">
               <ToolbarBtn
                 label="Image"
-                title="Insert echo:// image or audio"
+                title="Insert an echo:// image (crop, sprite, emoji-size)"
                 onClick={() => setDialog("image")}
+              />
+              <ToolbarBtn
+                label="Audio"
+                title="Insert an echo:// audio clip (pitch, speed)"
+                onClick={() => setDialog("audio")}
               />
               <ToolbarBtn
                 label="3D"
@@ -1614,6 +1929,12 @@ function WikiToolbar({
 
       {dialog === "image" && (
         <ImageInsertDialog
+          onInsert={insertAtCursor}
+          onDismiss={() => setDialog(null)}
+        />
+      )}
+      {dialog === "audio" && (
+        <AudioInsertDialog
           onInsert={insertAtCursor}
           onDismiss={() => setDialog(null)}
         />
