@@ -64,8 +64,7 @@ function span(color: string, text: string, extra = ""): string {
 // or `00dfc02ea4ecdd77[bust].png` aren't truncated at the first `)` / `]`. The
 // chars consumed here are already HTML-escaped, so `&` shows up as `&amp;` and
 // is matched as part of the normal run.
-const ECHO_URL_RE =
-  /echo:\/\/(?:[^\s()[\]"']|\([^\s()[\]"']*\)|\[[^[\]]*\])+/g;
+const ECHO_URL_RE = /echo:\/\/(?:[^\s()[\]"']|\([^\s()[\]"']*\)|\[[^[\]]*\])+/g;
 
 /**
  * Highlight a single (HTML-escaped) `echo://` URL: the base link in the echo

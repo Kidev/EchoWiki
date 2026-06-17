@@ -13,9 +13,9 @@ EchoWiki turns a subreddit wiki into a proper editing and reading environment. M
   - [Remote Images](#remote-images)
 - [Collaborative Editing](#collaborative-editing)
   - [Suggestions](#suggestions)
-  - [Voting](#voting)
+  - [Community Voting](#community-voting)
   - [Moderator Review](#moderator-review)
-  - [Contribution History](#contribution-history)
+  - [User Contributions](#user-contributions)
   - [Flair Rewards](#flair-rewards)
 - [Echo Links](#echo-links)
   - [Asset Editions](#asset-editions)
@@ -32,7 +32,7 @@ EchoWiki turns a subreddit wiki into a proper editing and reading environment. M
   - [Theme](#theme)
   - [Mapping](#mapping)
   - [Collaborative](#collaborative)
-  - [Voting](#voting-1)
+  - [Voting](#voting)
 - [A Note to Game Developers](#a-note-to-game-developers)
 - [Privacy](#privacy)
 
@@ -138,7 +138,7 @@ Submitting requires a description of what changed (at least 10 characters). The 
 
 A user can update their pending suggestion from the Contributions tab. Each update resets any votes already cast on the suggestion. The maximum number of updates and the minimum time between updates are both configurable in the settings.
 
-### Voting
+### Community Voting
 
 ![Vote](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/voting.gif)
 
@@ -154,45 +154,45 @@ A minimum number of voters can be required before the time-based threshold appli
 
 ![Vote](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/comment.png)
 
-The voting post includes a pinned bot comment that records vote events: when the vote opened, when the suggestion was updated, and when the vote concluded with the outcome and reason. The comment is updated as events occur, and the post is locked once the vote concludes (or, if **Delete completed vote posts** is enabled in the [Voting settings](#voting-1), deleted from the subreddit instead). Either way the suggestion's content and the decision are preserved in the [contribution history](#contribution-history), so a concluded vote stays reviewable even after its post is gone.
+The voting post includes a pinned bot comment that records vote events: when the vote opened, when the suggestion was updated, and when the vote concluded with the outcome and reason. The comment is updated as events occur, and the post is locked once the vote concludes (or, if **Delete completed vote posts** is enabled in the [Voting settings](#voting), deleted from the subreddit instead). Either way the suggestion's content and the decision are preserved in the [user contributions](#user-contributions) history, so a concluded vote stays reviewable even after its post is gone.
 
 Voting posts are public, so a voter who has not imported the game can still review the change: the import prompt on a voting post offers a **Continue without assets** option. Choosing it opens the suggestion with its text and Diff fully readable, while `echo://` references render as inert placeholders rather than resolved assets. The choice is session-only and is never persisted, so each visit opts in again.
 
+Suggestions are tracked from a **Contributions** tab with two sub-tabs, **Pending** and **History**. Both moderators and eligible contributors get the tab; what each sees in it differs by role, described below.
+
 ### Moderator Review
 
-![Suggestions moderator](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/moderator-review.gif)
+![Moderator review](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/moderator-review.gif)
 
-Moderators with "wiki" or "config" permissions see a **Contributions** tab. Its **Pending** sub-tab lists all pending suggestions, each with the contributor, target page, description, and vote status if voting is enabled. Clicking Review opens a full-screen modal comparing the current page (left) and the suggestion (right), switchable between Normal, Source, and Diff views.
+Moderators with "wiki" or "config" permissions see every contribution across the subreddit.
 
-![Suggestions moderator](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/pending-contributions.png)
+The **Pending** sub-tab lists all pending suggestions, each with the contributor, target page, description, and vote status if voting is enabled. Clicking Review opens a full-screen modal comparing the current page (left) and the suggestion (right), switchable between Normal, Source, and Diff views. Moderators can Accept or Deny from the review modal, or Deny a suggestion straight from the list, at any time and regardless of the vote result. When a voting post exists, a link to it is shown. Accepting writes the suggested content to the Reddit wiki with the contributor's username in the revision reason.
 
-Moderators can Accept or Deny from the review modal, or Deny a suggestion straight from the list, at any time and regardless of the vote result. When a voting post exists, a link to it is shown. Accepting writes the suggested content to the Reddit wiki with the contributor's username in the revision reason.
+![Pending contributions, moderator side](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/pending-contributions.png)
 
-Contributors also see the Contributions tab's Pending sub-tab, where they can edit their own pending suggestion's content and description. A suggestion can be withdrawn entirely from the suggest dialog (which offers to delete the current one when you start another).
+The **History** sub-tab is an audit trail of every decided suggestion in full detail: who submitted it, who decided it (including which moderator approved or denied each one, and which were settled by community vote), and any later moderator actions. Each entry's **Changes** button opens a side-by-side diff of what the contribution proposed against the page as it stood when the decision was made; because that content is stored with the entry itself, it stays viewable even after the original vote post has been deleted (see [Delete completed vote posts](#voting)). The history is the durable record of what each contribution changed.
 
-### Contribution History
+![Contribution history, moderator side](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/history-contributions.png)
 
-The Contributions tab's **History** sub-tab is an audit trail of decided suggestions. Every decision (accepted or denied, whether by a moderator or by a community vote) is recorded with its full state log: who submitted it, who decided it, and any later moderator actions.
-
-Visibility depends on the role:
-
-- **Contributors** see only their own decided suggestions, and only _that_ a moderator acted, not which one (moderator identities are redacted).
-
-  ![History contributions](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/contributions-history-user.png)
-
-- **Moderators** see every decision in full detail, including which moderator approved or denied each one and which were decided by community vote.
-
-  ![History contributions](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/history-contributions.png)
-
-Every entry has a **Changes** button that opens a side-by-side diff of what the contribution proposed, against the page as it stood when the decision was made. Because this content is stored with the history entry itself, it stays viewable even when the original vote post has been deleted (see [Delete completed vote posts](#voting-1)): the history is the durable record of what each contribution changed. Contributors can review their own contributions this way; moderators can review any.
-
-Moderators can act on a past decision from the History list, without erasing it: the entry stays and instead moves to the top, logging each new state (e.g. "denied by X", then "approved post-mortem by Y"):
+Moderators can act on a past decision from the History list without erasing it: the entry stays and moves to the top, logging each new state (e.g. "denied by X", then "approved post-mortem by Y"):
 
 - **Approve** a previously denied suggestion (post-mortem), applying it to the page now.
 - **Revert** a previously approved suggestion, restoring the page to its pre-suggestion state.
 - **Restart vote** to re-open a decided suggestion as a fresh pending submission.
 
 Because the page may have changed since the original decision, the Approve and Revert actions perform a **Git-style three-way auto-merge** of the change against the live page. A clean merge is applied silently; if it conflicts, EchoWiki warns first and, on confirmation, applies the merged content with standard conflict markers (`<<<<<<<`) for the moderator to resolve by editing the page. The list shows the ten most recent entries.
+
+### User Contributions
+
+Eligible contributors see the same **Contributions** tab from their own side, with the same **Pending** and **History** sub-tabs scoped to their own work.
+
+The **Pending** sub-tab shows the contributor's active suggestion with its target page, submission date, description, and, when voting is enabled, the live vote tally and a link to the vote post. From there they can **Edit** its content and description; each update resets any votes already cast and is subject to the configured [update limit and cooldown](#voting). A suggestion can be withdrawn entirely from the suggest dialog, which offers to delete the current one when you start another.
+
+![Pending contributions, user side](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/pending-contributions-user.png)
+
+The **History** sub-tab lists the contributor's own decided suggestions. They see only _that_ a moderator acted, not which one (moderator identities are redacted), and each entry's **Changes** button opens the same diff of what they proposed against the page at decision time, so they can always review what their contribution changed.
+
+![Contribution history, user side](https://raw.githubusercontent.com/Kidev/EchoWiki/main/docs/contributions-history-user.png)
 
 ### Flair Rewards
 
@@ -638,7 +638,7 @@ Voting builds on collaborative mode, which it requires, engaging your community 
 - **Time-based threshold**: Percentage of accept votes required to pass when the deadline is reached. 0 means a simple majority wins.
 - **Allow vote changes**: Whether voters can change their vote after casting, with an optional cooldown between changes.
 - **Show voter names**: Whether voter names are visible to other users. Moderators and the suggestion author always see names.
-- **Delete completed vote posts**: When enabled, a vote post is deleted from the subreddit once its vote concludes, instead of being locked and left up. This only removes the Reddit post; the decision and its content remain in the [contribution history](#contribution-history), where they stay viewable.
+- **Delete completed vote posts**: When enabled, a vote post is deleted from the subreddit once its vote concludes, instead of being locked and left up. This only removes the Reddit post; the decision and its content remain in the [user contributions](#user-contributions) history, where they stay viewable.
 - **Max suggestion updates**: Maximum number of times a pending suggestion can be updated (0 for unlimited).
 - **Voter eligibility**: Minimum karma and account age required to vote (separate from contributor eligibility).
 - **Voting post flair**: Flair template applied to voting posts on creation.
