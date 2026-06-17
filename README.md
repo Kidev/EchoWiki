@@ -408,6 +408,8 @@ If no game is configured, EchoWiki runs as a plain wiki: there is no "Import gam
 
 Engine detection is automatic: EchoWiki fingerprints the folder, picks the right reader, and extracts everything in the browser. If yours doesn't work, or some assets fail to load, report it on the EchoWiki Discord, linked from `Settings` in the `General` tab.
 
+See it in action: a [video walkthrough](https://youtu.be/ysiZUDQ_GP4) importing Half-Life 2 (Source engine) and browsing its extracted assets.
+
 Two ideas recur in the tables below:
 
 - **Decoded -> PNG**: textures that ship in GPU or palettized formats are decoded to PNG in the browser. The DXT/BCn block-compression families (DXT1/3/5, BC4/5) and the per-engine pixel layouts are supported; formats that need heavyweight decoders (BC6H/BC7, ASTC, ETC, crunch) are skipped. Audio and video pass through unchanged.
