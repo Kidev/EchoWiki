@@ -4514,14 +4514,6 @@ router.post(
                 defaultValue: config.wikiDescription || "",
               },
               {
-                type: "string" as const,
-                name: "gameName",
-                label: "Game name (optional)",
-                helpText:
-                  "Shown on import. Warns if imported game doesn't match",
-                defaultValue: config.gameName || "",
-              },
-              {
                 label: "Post options",
                 type: "group" as const,
                 fields: [
